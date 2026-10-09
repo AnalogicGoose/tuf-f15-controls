@@ -2,6 +2,8 @@
 #include "itlmt7925.hpp"
 #include "mt7925_regs.h"
 
+#include <string.h>
+
 #define super IOService
 OSDefineMetaClassAndStructors(itlmt7925, IOService)
 
@@ -56,12 +58,38 @@ bool itlmt7925::driverOwn()
     return false;
 }
 
+// Append a short message to the log buffer, print it, and mirror it to NVRAM variable
+// 7C436110-AB2A-4BBB-A880-FE41995C9F82:itlmt7925-log (no keyboard/terminal needed to read it).
+void itlmt7925::note(const char *fmt, uint32_t a, uint32_t b, uint32_t c)
+{
+    char tmp[80];
+    snprintf(tmp, sizeof(tmp), fmt, a, b, c);
+    IOLog("itlmt7925: %s\n", tmp);
+    size_t n = strlen(tmp);
+    if (loglen + n + 2 < sizeof(logbuf)) {
+        memcpy(logbuf + loglen, tmp, n);
+        loglen += n;
+        logbuf[loglen++] = ';';
+        logbuf[loglen] = 0;
+    }
+    nvramLog(logbuf);
+}
+
+void itlmt7925::nvramLog(const char *msg)
+{
+    IORegistryEntry *opt = IORegistryEntry::fromPath("/options", gIODTPlane);
+    if (!opt) { IOLog("itlmt7925: no /options node\n"); return; }
+    bool ok = opt->setProperty("itlmt7925-log", msg);
+    if (!ok) IOLog("itlmt7925: NVRAM setProperty failed\n");
+    opt->release();
+}
+
 void itlmt7925::dumpState()
 {
     uint32_t chip = rdMapped(MT_HW_CHIPID);
     uint32_t rev  = rdMapped(MT_HW_REV);
     uint32_t lp   = rd(0x0e0000u + (MT_CONN_ON_LPCTL - 0x7c060000u));
-    IOLog("itlmt7925: CHIPID=0x%08x REV=0x%08x LPCTL=0x%08x\n", chip, rev, lp);
+    note("CHIP=%08x REV=%08x LP=%08x", chip, rev, lp);
     IOLog("itlmt7925: ASIC revision: %04x%02x (expect 7925xx)\n", chip & 0xffff, rev & 0xff);
 }
 
@@ -77,7 +105,7 @@ bool itlmt7925::start(IOService *provider)
     uint16_t vid = pci->configRead16(kIOPCIConfigVendorID);
     uint16_t did = pci->configRead16(kIOPCIConfigDeviceID);
     uint16_t cmd = pci->configRead16(kIOPCIConfigCommand);
-    IOLog("itlmt7925: probe %04x:%04x cmd=0x%04x (M0 build)\n", vid, did, cmd);
+    note("start %04x:%04x cmd=%04x", vid, did, cmd);
 
     pci->setMemoryEnable(true);
     pci->setBusMasterEnable(false);   // M0 does no DMA
@@ -86,14 +114,14 @@ bool itlmt7925::start(IOService *provider)
     if (!bar0) { IOLog("itlmt7925: BAR0 map failed\n"); goto fail; }
     regs = (volatile uint8_t *)bar0->getVirtualAddress();
     barSize = (uint32_t)bar0->getLength();
-    IOLog("itlmt7925: BAR0 mapped, size 0x%x\n", barSize);
+    note("bar0 size=%x", barSize);
     if (barSize < MT_BAR0_DIRECT_LIMIT) { IOLog("itlmt7925: BAR0 too small\n"); goto fail; }
 
-    IOLog("itlmt7925: LPCTL before own = 0x%08x\n", rd(0x0e0000u + (MT_CONN_ON_LPCTL - 0x7c060000u)));
+    note("lp0=%08x", rd(0x0e0000u + (MT_CONN_ON_LPCTL - 0x7c060000u)));
     if (!driverOwn())
-        IOLog("itlmt7925: driver own FAILED (device may be in D3, ASPM or not responding)\n");
+        note("own FAIL");
     else
-        IOLog("itlmt7925: driver own OK\n");
+        note("own OK");
     dumpState();
 
     registerService();
