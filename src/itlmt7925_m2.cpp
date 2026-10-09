@@ -97,10 +97,11 @@ void itlmt7925::m2State(const char *tag)
 // ring (mt7925_queue_rx_skb: PKT_TYPE_NORMAL, sw_type FRAME, or RX_EVENT with flag 1 -> NORMAL_MCU).
 static bool rxIsFrame(const uint8_t *p, uint32_t len)
 {
+    // enum rx_pkt_type: TXS 0, TXRXV 1, NORMAL 2, RX_DUP_RFB 3, RX_TMR 4, RETRIEVE 5, TXRX_NOTIFY 6, RX_EVENT 7, NORMAL_MCU 8
     if (len < 16) return false;
     uint32_t d0 = le32(p), type = d0 >> 27, flag = (d0 >> 16) & 0xf, sw = d0 >> 16;
-    if (type != 0 && (sw & 0x380f) == 0x3801) return true;
-    return type == 0 || (type == 5 && flag == 1);
+    if (type != 2 && (sw & 0x380f) == 0x3801) return true;
+    return type == 2 || type == 8 || (type == 7 && flag == 1);
 }
 
 // ---------------------------------------------------------------------------------------------
