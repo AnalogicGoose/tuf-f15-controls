@@ -510,6 +510,8 @@ static int applyRepeat(uint64_t initNs, uint64_t repNs, bool verbose)
 
 // Timer sanity, printed to the kernel log so `dmesg | grep ItlDiag` shows it: does IOSleep(100) take 100 ms of wall clock?
 static char lastProbe[100] = "probe: -";
+static char probeHist[380] = "";      // mach/cal/tsc of each IOSleep(100) probe, mirrored to NVRAM itlt0
+static size_t probeHistLen;
 static void timerProbe(void)
 {
     uint64_t a0 = absNs(), c0 = calUs(), t0 = rdtsc_();
@@ -518,6 +520,9 @@ static void timerProbe(void)
     uint64_t dc = (c1 - c0) / 1000;
     outLine("ItlDiag: probe sleep100: mach=%llums cal=%llums tsc=%lluMHz", (a1 - a0) / 1000000ull, dc, dc ? (t1 - t0) / (dc * 1000ull) : 0ull);
     snprintf(lastProbe, sizeof(lastProbe), "probe sleep100: mach=%llums cal=%llums tsc=%lluMHz", (a1 - a0) / 1000000ull, dc, dc ? (t1 - t0) / (dc * 1000ull) : 0ull);
+    if (probeHistLen + 24 < sizeof(probeHist))
+        probeHistLen += snprintf(probeHist + probeHistLen, sizeof(probeHist) - probeHistLen, "%llu/%llu/%llu ", (a1 - a0) / 1000000ull, dc,
+                                 dc ? (t1 - t0) / (dc * 1000ull) : 0ull);
 }
 
 static void kbWorker(void *)
@@ -1085,9 +1090,72 @@ static void nvramXrep()
     }
 }
 
+
+// itlt0: timer probe history (mach ms / calendar ms / TSC MHz for IOSleep(100)); itlt1: long-window clock ratios.
+// If mach time runs fast or slow against the calendar, every timer (key repeat, DriverKit dispatch sources) is mis-scaled.
+static void nvramTiming()
+{
+    static uint64_t a0, c0, t0;
+    uint64_t a = absNs(), c = calUs(), t = rdtsc_();
+    if (!a0) { a0 = a; c0 = c; t0 = t; }
+    nvramPut("itlt0", probeHist, strlen(probeHist));
+    uint64_t da = (a - a0) / 1000000ull, dc = (c - c0) / 1000;
+    if (da > 5000 && dc > 5000) {
+        char b[160];
+        snprintf(b, sizeof(b), "win mach=%llums cal=%llums ratio=%llu/1000 tsc=%lluMHz", da, dc, da * 1000ull / dc, (t - t0) / (dc * 1000ull));
+        nvramPut("itlt1", b, strlen(b));
+    }
+}
+
+// itly0..itly2: every IOHIDDevice with its transport, usage and what is attached below it (interface, event driver, DriverKit
+// proxy ...). Answers "which driver actually handles the keyboard / mouse" without a terminal.
+static void hidKids(IORegistryEntry *e, char *out, size_t cap, size_t &o, int depth)
+{
+    OSIterator *ci = e->getChildIterator(gIOServicePlane);
+    if (!ci) return;
+    IORegistryEntry *c;
+    int n = 0;
+    while (n < 3 && (c = OSDynamicCast(IORegistryEntry, ci->getNextObject()))) {
+        const char *cls = c->getMetaClass()->getClassName();
+        if (o + 40 < cap) o += snprintf(out + o, cap - o, depth ? ">%.22s" : "{%.22s", cls);
+        if (depth < 2) hidKids(c, out, cap, o, depth + 1);
+        n++;
+    }
+    ci->release();
+}
+
+static void nvramHid()
+{
+    static char buf[1160];
+    size_t o = 0;
+    buf[0] = 0;
+    IORegistryIterator *it = IORegistryIterator::iterateOver(gIOServicePlane, kIORegistryIterateRecursively);
+    if (!it) return;
+    IORegistryEntry *e;
+    int k = 0;
+    while ((e = it->getNextObject()) && o + 120 < sizeof(buf)) {
+        const char *cls = e->getMetaClass()->getClassName();
+        if (!hasStr(cls, "HIDDevice")) continue;
+        k++;
+        o += snprintf(buf + o, sizeof(buf) - o, "%.22s %04x:%04x %.6s pu=%x/%x ri=%d", cls, num(e, "VendorID") & 0xffff,
+                      num(e, "ProductID") & 0xffff, str(e, "Transport"), num(e, "PrimaryUsagePage") & 0xffff,
+                      num(e, "PrimaryUsage") & 0xffff, (int)num(e, "ReportInterval"));
+        hidKids(e, buf, sizeof(buf), o, 0);
+        if (o + 2 < sizeof(buf)) { buf[o++] = ' '; buf[o++] = '|'; buf[o++] = ' '; buf[o] = 0; }
+    }
+    it->release();
+    static const char *nm[3] = { "itly0", "itly1", "itly2" };
+    for (int c = 0; c < 3 && (size_t)c * 380 < o; c++) {
+        size_t f = (size_t)c * 380, t = o - f > 380 ? 380 : o - f;
+        nvramPut(nm[c], buf + f, t);
+    }
+}
+
 static void nvramDigest(int n)
 {
     nvramKextLogs();
+    nvramTiming();
+    nvramHid();
     nvramXrep();
     buildDigest();
     char hdr[32];
