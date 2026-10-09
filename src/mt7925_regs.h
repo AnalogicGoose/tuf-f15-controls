@@ -81,6 +81,7 @@
 #define MT_WFDMA0_RX_RING_EXT_CTRL(n) MT_WFDMA0(0x680 + 4 * (n))
 #define MT_TX_RING_BASE            MT_WFDMA0(0x300)
 #define MT_RX_EVENT_RING_BASE      MT_WFDMA0(0x500)
+#define MT_RX_DATA_RING_BASE       MT_WFDMA0(0x500)
 #define MT_WFDMA_DUMMY_CR          0x54000120u
 #define MT_WFDMA_NEED_REINIT       (1u << 1)
 #define MT_DMASHDL_SW_CONTROL      0x7c026004u
@@ -95,6 +96,7 @@
 #define MT7925_TXQ_MCU_WM          15
 #define MT7925_TXQ_FWDL            16
 #define MT7925_RXQ_MCU_WM          0
+#define MT7925_RXQ_BAND0           2
 
 // DMA descriptor (16 bytes)
 #define MT_DMA_CTL_SD_LEN0(l)      (((uint32_t)(l) & 0x3fffu) << 16)

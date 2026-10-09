@@ -179,8 +179,10 @@ static bool probeMedia(IOMedia *m, IOService *me, UInt64 *fileOff, UInt64 *fileS
     return true;
 }
 
+static bool fileOut;                 // boot-arg itlfile=1: also try the (never working so far, possibly blocking) USB write paths
 static void tryAttach(IOService *me)
 {
+    if (!fileOut) return;
     if (logMedia) return;
     IORegistryIterator *it = IORegistryIterator::iterateOver(gIOServicePlane, kIORegistryIterateRecursively);
     if (!it) return;
@@ -242,6 +244,7 @@ static bool bsdReady()
 
 static void vfsFlush()
 {
+    if (!fileOut) return;
     if (!txt) return;
     if (!bsdReady()) { snprintf(vfsMsg, sizeof(vfsMsg), "waiting for launchd"); return; }
     vfs_context_t ctx = vfs_context_current();
@@ -258,6 +261,7 @@ static void vfsFlush()
 
 static void flushLog()
 {
+    if (!fileOut) return;
     vfsFlush();
     if (!logMedia || !txt) return;
     size_t secs = (tlen + 511) / 512;
@@ -815,15 +819,16 @@ static void nvramKextLogs()
     IORegistryIterator *it = IORegistryIterator::iterateOver(gIOServicePlane, kIORegistryIterateRecursively);
     if (!it) return;
     IORegistryEntry *e;
-    static const char *keys[2] = { "m0-log", "m1-log" };
-    static const char *vars[2] = { "itlm0", "itlm1" };
+    static const char *keys[4] = { "m0-log", "m1-log", "m2-log", "m2-res" };
+    static const char *vars[4] = { "itlm0", "itlm1", "itlm2", "itlm3" };
     while ((e = it->getNextObject())) {
-        for (int k = 0; k < 2; k++) {
+        for (int k = 0; k < 4; k++) {
             OSString *v = OSDynamicCast(OSString, e->getProperty(keys[k]));
             if (!v) continue;
             const char *m = v->getCStringNoCopy();
             size_t n = strlen(m);
-            size_t from = n > 380 ? n - 380 : 0;
+            size_t from = (k < 3 && n > 380) ? n - 380 : 0;
+            if (k == 3 && n > 380) n = 380;
             nvramPut(vars[k], m + from, n - from);
         }
     }
@@ -893,7 +898,9 @@ bool ItlDiag::start(IOService *provider)
 {
     if (!super::start(provider)) return false;
 
-    uint32_t hold = 0;
+    uint32_t hold = 0, fo = 0;
+    PE_parse_boot_argn("itlfile", &fo, sizeof(fo));
+    fileOut = fo != 0;
     if (PE_parse_boot_argn("itldiag", &hold, sizeof(hold)) && hold) {
         txtLock = IOLockAlloc();
         txt = (char *)IOMalloc(TXT_MAX);

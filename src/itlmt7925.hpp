@@ -65,7 +65,27 @@ private:
     int  m1Run();
     void m1Main();
     static void m1Thread(void *arg);
-    itl_ring txWm, txFwdl, rxEvt;
+    itl_ring txWm, txFwdl, rxEvt, rxData;
+    // M2 (boot-arg itlmt_m2=1): UNI commands, interface setup, scan, beacon parsing
+    bool m2On = false;
+    int  uniSend(uint8_t cid, const void *payload, size_t plen, bool query, uint8_t *evOut, size_t evMax,
+                 uint32_t *evLen, uint32_t timeoutMs);
+    bool ringPeek(itl_ring &r, const uint8_t **data, uint32_t *len, int *bi);
+    void ringRelease(itl_ring &r, int bi);
+    void rxDataPoll();
+    void rxParseFrame(const uint8_t *p, uint32_t len);
+    void m2log(const char *fmt, ...);
+    void m2Publish();
+    int  m2Run();
+    char m2buf[2048] = {0};
+    size_t m2len = 0;
+    char m2res[400] = {0};
+    uint8_t mac[6] = {0};
+    bool scanDone = false;
+    uint32_t rxPkts = 0, rxBeacons = 0, rxOther = 0, rxDump = 0;
+    uint32_t evCount = 0;
+    struct itl_ap { uint8_t bssid[6]; uint8_t ch; char ssid[33]; } aps[48];
+    int nAps = 0;
     uint8_t mcuSeq = 0;
     char m1buf[3072] = {0};
     size_t m1len = 0;
