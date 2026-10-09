@@ -111,7 +111,7 @@ void itlmt7925::m1log(const char *fmt, ...)
 bool itlmt7925::dmaAlloc(itl_dma_buf &b, size_t size)
 {
     b.md = IOBufferMemoryDescriptor::inTaskWithPhysicalMask(kernel_task,
-              kIODirectionInOut | kIOMemoryPhysicallyContiguous, size, 0x00000000FFFFF000ULL);
+              kIODirectionInOut | kIOMemoryPhysicallyContiguous | kIOMapInhibitCache, size, 0x00000000FFFFF000ULL);
     if (!b.md) return false;
     b.va = (uint8_t *)b.md->getBytesNoCopy();
     b.size = size;
