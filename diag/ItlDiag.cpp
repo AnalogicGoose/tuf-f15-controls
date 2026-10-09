@@ -686,6 +686,56 @@ static void screenBlock(int n)
     outLine("ItlDiag: ===== end block %d =====", n);
 }
 
+// Last resort when no file write path works and the verbose output scrolls away: boot-arg itlpanic=<seconds> ends the run
+// with one panic whose string is the whole digest, so the panic screen is a single static frame to photograph.
+static void panicDigest()
+{
+    static char b[1100];
+    int o = 0;
+    uint64_t dCal = (calUs() - cal0us) / 1000, dAbs = (absNs() - abs0ns) / 1000000ull;
+    o += snprintf(b + o, sizeof(b) - o, "ITLDIAG cal=%llums mach=%llums tsc=%lluMHz | ", dCal, dAbs,
+                  dCal ? (rdtsc_() - tsc0) / (dCal * 1000ull) : 0ull);
+    for (int i = 0; i < nxh && o < 800; i++) {
+        Xhc &x = xh[i];
+        IOPCIDevice *p = x.p;
+        unsigned msi = 0xffff, msix = 0xffff;
+        uint8_t ptr = p->configRead8(0x34) & ~3;
+        for (int g = 0; ptr >= 0x40 && g < 32; g++) {
+            uint8_t id = p->configRead8(ptr);
+            if (id == 5) msi = p->configRead16(ptr + 2);
+            if (id == 0x11) msix = p->configRead16(ptr + 2);
+            ptr = p->configRead8(ptr + 1) & ~3;
+        }
+        const char *ic = "-";
+        unsigned nspec = 0;
+        OSArray *ca = OSDynamicCast(OSArray, p->getProperty("IOInterruptControllers"));
+        if (ca && ca->getCount()) { OSString *os = OSDynamicCast(OSString, ca->getObject(0)); if (os) ic = os->getCStringNoCopy(); }
+        OSArray *sa = OSDynamicCast(OSArray, p->getProperty("IOInterruptSpecifiers"));
+        if (sa) nspec = sa->getCount();
+        o += snprintf(b + o, sizeof(b) - o, "X%d:%04x cmd=%x msi=%x msix=%x irq=%.16s n=%u sts=%x im=%x sam=%u rise=%u max=%ums slow=%u cur=%ums erdp=%u dead=%u | ",
+                      i, x.did, p->configRead16(kIOPCIConfigCommand), msi, msix, ic, nspec, x.lastSts, x.lastIman, x.samples,
+                      x.rises, x.maxMs, x.slow, x.curMs, x.erdpCh, x.dead);
+    }
+    IORegistryIterator *it = IORegistryIterator::iterateOver(gIOServicePlane, kIORegistryIterateRecursively);
+    if (it) {
+        IORegistryEntry *e;
+        int nu = 0, nh = 0;
+        while ((e = it->getNextObject())) {
+            const char *cls = e->getMetaClass()->getClassName();
+            if (!strcmp(cls, "IOUSBHostDevice")) {
+                if (nu++ < 8 && o < 1000)
+                    o += snprintf(b + o, sizeof(b) - o, "U%04x:%04x/%x/s%u ", num(e, "idVendor") & 0xffff, num(e, "idProduct") & 0xffff,
+                                  (unsigned)num(e, "locationID") >> 20, (unsigned)num(e, "Device Speed"));
+            } else if (hasStr(cls, "HIDDevice") || hasStr(cls, "HIDKeyboard")) {
+                nh++;
+            }
+        }
+        it->release();
+        o += snprintf(b + o, sizeof(b) - o, "usb=%d hid=%d", nu, nh);
+    }
+    panic("%s", b);
+}
+
 // Runs on its own thread so the boot is never held up. Prints a compact summary block to the verbose console every few
 // seconds (photograph the last one before the GUI covers it), mirrors everything to the stick when a write path works,
 // and keeps appending (timer probes, M1 log) for ~20 minutes.
@@ -694,8 +744,11 @@ static void worker(void *arg)
     IOService *me = (IOService *)arg;
     xhcInit();
     IOCreateThread(sampler, nullptr);
+    uint32_t panicSec = 0;
+    PE_parse_boot_argn("itlpanic", &panicSec, sizeof(panicSec));
     for (int n = 0; n < 12; n++) {
         IOSleep(n ? 5000 : 8000);
+        if (panicSec && (absNs() - abs0ns) / 1000000000ull >= panicSec) panicDigest();
         if (!logMedia && !vfsOk) { vfsFlush(); tryAttach(me); }
         screenBlock(n);
         if (n == 2) {
@@ -710,6 +763,7 @@ static void worker(void *arg)
     flushLog();
     for (int pass = 0; pass < 120; pass++) {
         IOSleep(10000);
+        if (panicSec && (absNs() - abs0ns) / 1000000000ull >= panicSec) panicDigest();
         if (!logMedia && !vfsOk) tryAttach(me);
         screenBlock(100 + pass);
         copyKextLogs();
