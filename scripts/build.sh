@@ -29,3 +29,14 @@ echo "--- load commands"
 otool -l "$OUT/Contents/MacOS/itlmt7925" | grep -E "segname|sectname|cmd " | head -60 || true
 echo "--- kextlibs"
 kextlibs -xml -all-symbols "$OUT" 2>&1 | head -40 || true
+
+# ---- ItlDiag (boot-time PCI/USB dump) ----
+D=build/ItlDiag.kext
+rm -rf "$D"; mkdir -p "$D/Contents/MacOS"
+cp diag/Info.plist "$D/Contents/Info.plist"
+clang $COMMON -c diag/kmod_info.c -o build/obj/diag_kmod_info.o
+clang++ $COMMON -std=c++17 -fno-exceptions -fno-rtti -c diag/ItlDiag.cpp -o build/obj/ItlDiag.o
+clang++ -arch x86_64 -mmacosx-version-min=12.0 -nostdlib -Xlinker -kext -Xlinker -no_data_const \
+  -L"$SDK_DIR/Library/x86_64" -lkmodc++ -lkmod -lcc_kext \
+  build/obj/diag_kmod_info.o build/obj/ItlDiag.o -o "$D/Contents/MacOS/ItlDiag"
+file "$D/Contents/MacOS/ItlDiag"

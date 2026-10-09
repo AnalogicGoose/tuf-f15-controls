@@ -8,5 +8,5 @@ jobs:
       - run: bash scripts/build.sh
       - uses: actions/upload-artifact@v4
         with:
-          name: itlmt7925.kext
-          path: build/itlmt7925.kext
+          name: kexts
+          path: build/*.kext
