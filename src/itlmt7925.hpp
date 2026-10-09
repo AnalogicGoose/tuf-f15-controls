@@ -26,6 +26,7 @@ private:
     uint32_t rdMapped(uint32_t addr);       // translates a few CONN addresses
     bool driverOwn();
     void dumpState();
+    void holdLog();
     void nvramLog(const char *msg);       // survives reboot, readable from Windows
     char logbuf[240] = {0};
     size_t loglen = 0;

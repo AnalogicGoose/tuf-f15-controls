@@ -3,6 +3,7 @@
 #include "mt7925_regs.h"
 
 #include <string.h>
+#include <pexpert/pexpert.h>
 
 #define super IOService
 OSDefineMetaClassAndStructors(itlmt7925, IOService)
@@ -93,6 +94,18 @@ void itlmt7925::dumpState()
     IOLog("itlmt7925: ASIC revision: %04x%02x (expect 7925xx)\n", chip & 0xffff, rev & 0xff);
 }
 
+// Debug aid: with boot-arg itlmt_hold=<seconds> repeat the log on the verbose console so it can be photographed.
+void itlmt7925::holdLog()
+{
+    uint32_t hold = 0;
+    if (PE_parse_boot_argn("itlmt_hold", &hold, sizeof(hold)) && hold) {
+        for (uint32_t t = 0; t < hold; t += 3) {
+            IOLog("itlmt7925: [t=%us] %s\n", t, logbuf);
+            IOSleep(3000);
+        }
+    }
+}
+
 bool itlmt7925::start(IOService *provider)
 {
     if (!super::start(provider)) return false;
@@ -124,10 +137,13 @@ bool itlmt7925::start(IOService *provider)
         note("own OK");
     dumpState();
 
+    holdLog();
+
     registerService();
     return true;
 
 fail:
+    holdLog();
     stop(provider);
     return false;
 }

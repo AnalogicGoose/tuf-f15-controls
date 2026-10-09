@@ -3,9 +3,9 @@
 Add-Type -TypeDefinition @"
 using System; using System.Runtime.InteropServices; using System.Text;
 public static class Fw {
-  [DllImport("kernel32.dll", SetLastError=true)] public static extern uint GetFirmwareEnvironmentVariableW(string n, string g, byte[] buf, uint size);
+  [DllImport("kernel32.dll", SetLastError=true, CharSet=CharSet.Unicode)] public static extern uint GetFirmwareEnvironmentVariableW(string n, string g, byte[] buf, uint size);
   [DllImport("advapi32.dll", SetLastError=true)] public static extern bool OpenProcessToken(IntPtr h, uint a, out IntPtr t);
-  [DllImport("advapi32.dll", SetLastError=true)] public static extern bool LookupPrivilegeValue(string s, string n, out long luid);
+  [DllImport("advapi32.dll", SetLastError=true, CharSet=CharSet.Unicode)] public static extern bool LookupPrivilegeValue(string s, string n, out long luid);
   [DllImport("advapi32.dll", SetLastError=true)] public static extern bool AdjustTokenPrivileges(IntPtr t, bool d, ref TP n, int l, IntPtr p, IntPtr r);
   [StructLayout(LayoutKind.Sequential, Pack=1)] public struct TP { public int Count; public long Luid; public int Attr; }
   public static void Enable() { IntPtr t; OpenProcessToken(System.Diagnostics.Process.GetCurrentProcess().Handle, 0x28, out t);
