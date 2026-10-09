@@ -15,7 +15,10 @@ int main()
     itl_hmac_sha1(v_hmac_key, sizeof(v_hmac_key), v_hmac_d1, sizeof(v_hmac_d1), v_hmac_d2, sizeof(v_hmac_d2), h);
     CHECK(!memcmp(h, v_hmac_out, 20), "hmac-sha1 (long key, two parts)");
     uint8_t pmk[32];
-    itl_wpa_pmk((const char *)v_pass, v_ssid, sizeof(v_ssid), pmk);
+    char pass[sizeof(v_pass) + 1];
+    memcpy(pass, v_pass, sizeof(v_pass));
+    pass[sizeof(v_pass)] = 0;           // itl_wpa_pmk takes a C string
+    itl_wpa_pmk(pass, v_ssid, sizeof(v_ssid), pmk);
     CHECK(!memcmp(pmk, v_pmk, 32), "pbkdf2 pmk");
     itl_ptk ptk;
     itl_wpa_ptk(pmk, v_aa, v_spa, v_an, v_sn, &ptk);
