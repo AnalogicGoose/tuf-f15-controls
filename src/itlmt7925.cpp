@@ -77,12 +77,20 @@ void itlmt7925::note(const char *fmt, uint32_t a, uint32_t b, uint32_t c)
     nvramLog(logbuf);
 }
 
+// Same recipe as ItlDiag: the value must be OSData, and the sync has to be forced or it never reaches the firmware variable store
+// (string properties were silently dropped: itlmt7925-log never showed up in Windows).
+static void nvramSet(IORegistryEntry *opt, const char *name, const char *s, size_t n)
+{
+    OSData *d = OSData::withBytes(s, (unsigned)n);
+    if (d) { opt->setProperty(name, d); d->release(); }
+    opt->setProperty("IONVRAM-FORCESYNCNOW-PROPERTY", name);
+}
+
 void itlmt7925::nvramLog(const char *msg)
 {
     IORegistryEntry *opt = IORegistryEntry::fromPath("/options", gIODTPlane);
     if (!opt) { IOLog("itlmt7925: no /options node\n"); return; }
-    bool ok = opt->setProperty("itlmt7925-log", msg);
-    if (!ok) IOLog("itlmt7925: NVRAM setProperty failed\n");
+    nvramSet(opt, "itlmt7925-log", msg, strlen(msg));
     opt->release();
 }
 
@@ -102,7 +110,7 @@ void itlmt7925::nvramChunks(const char *buf)
         if (strcmp(piece, last[c]) == 0) continue;
         strlcpy(last[c], piece, sizeof(last[c]));
         snprintf(name, sizeof(name), "itlk%d", c);
-        opt->setProperty(name, piece);
+        nvramSet(opt, name, piece, n);
     }
     opt->release();
 }

@@ -647,6 +647,10 @@ static uint64_t xhcStart;
 // Mapping xHCI-owned RAM (event ring, device contexts) is only done with boot-arg itlxr=1: the first boot that did it
 // panicked in AppleUSBXHCIDevice::free during a port terminate. Default is registers only.
 static bool physOk;
+// itlxr=1: event ring of interrupter 0 + device contexts (panicked once); itlxr=2: only the event ring of interrupter 1, which is the one
+// the HID devices use (interrupter 0 carries just the 2 s MFINDEX wrap events). 0x20 bytes of runtime registers per interrupter.
+static bool xrCtx;
+static uint32_t xrOff;
 
 struct PM { IOMemoryDescriptor *d; IOMemoryMap *m; uint64_t pa; };
 static PM pmc[32];
@@ -672,8 +676,8 @@ static void xrInit(int i)
     Xhc &x = xh[i];
     XRing &r = xr[i];
     if (r.ok || !x.b || !physOk) return;
-    uint32_t szReg = rd32(x, x.rt + 0x28) & 0xffff;
-    uint64_t erstba = ((uint64_t)rd32(x, x.rt + 0x34) << 32) | (rd32(x, x.rt + 0x30) & ~0x3fu);
+    uint32_t szReg = rd32(x, x.rt + 0x28 + xrOff) & 0xffff;
+    uint64_t erstba = ((uint64_t)rd32(x, x.rt + 0x34 + xrOff) << 32) | (rd32(x, x.rt + 0x30 + xrOff) & ~0x3fu);
     if (!szReg || !erstba) return;
     volatile uint8_t *erst = physMap(erstba, 16);
     if (!erst) return;
@@ -718,8 +722,8 @@ static void xrPoll(int i, uint64_t now, uint64_t start)
         xrRecord(i, k, now, start, d2, d3);
     }
     // which TRB will the OS handle next?
-    uint32_t erdpLo = rd32(x, x.rt + 0x38);
-    uint64_t erdp = ((uint64_t)rd32(x, x.rt + 0x3c) << 32) | (erdpLo & ~0xfu);
+    uint32_t erdpLo = rd32(x, x.rt + 0x38 + xrOff);
+    uint64_t erdp = ((uint64_t)rd32(x, x.rt + 0x3c + xrOff) << 32) | (erdpLo & ~0xfu);
     if (erdp != r.lastErdp) {
         r.erdpAdv++; r.lastErdp = erdp;
         uint32_t tms = (uint32_t)((now - start) / 1000000ull);
@@ -755,7 +759,7 @@ static void xrPoll(int i, uint64_t now, uint64_t start)
         }
     }
     // IMAN.IP pending time
-    bool ip = rd32(x, x.rt + 0x20) & 1;
+    bool ip = rd32(x, x.rt + 0x20 + xrOff) & 1;
     if (ip && !r.ipUp) { r.ipUp = true; r.ipRise = now; r.ipN++; }
     else if (!ip && r.ipUp) {
         r.ipUp = false;
@@ -785,7 +789,7 @@ static void xrReport(int i, char *out, size_t cap, uint64_t start)
     ADV("x%d T=%u ring=%d ev=%u tx=%u late5=%u maxlat=%ums pend=%u ip=%u/%ums ehb=%u/%ums(cur%u) adv=%u mf=%u/1000 |", i, nowMs,
                   r.ok ? 1 : 0, r.nev, r.nxfer, r.late5, r.maxLat, r.pendMax, r.ipN, r.ipMax, r.ehbN, r.ehbMax, r.ehbCur,
                   r.erdpAdv, mfRatio);
-    if (x.b && physOk) {
+    if (x.b && physOk && xrCtx) {
         uint32_t hcc = rd32(x, 0x10);
         uint32_t csz = (hcc & 4) ? 64 : 32;
         uint64_t dcbaa = ((uint64_t)rd32(x, x.op + 0x34) << 32) | (rd32(x, x.op + 0x30) & ~0x3fu);
@@ -1224,6 +1228,8 @@ static void worker(void *arg)
     uint32_t xr1 = 0;
     PE_parse_boot_argn("itlxr", &xr1, sizeof(xr1));
     physOk = xr1 != 0;
+    xrCtx = xr1 == 1;
+    xrOff = xr1 == 2 ? 0x20 : 0;
     nvramPut("itlx0", "worker up", 9);
     xhcInit();
     { char hb[64]; snprintf(hb, sizeof(hb), "xhcInit nxh=%d physOk=%d", nxh, physOk ? 1 : 0); nvramPut("itlx0", hb, strlen(hb)); }
