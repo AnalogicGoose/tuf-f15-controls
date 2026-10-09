@@ -630,6 +630,8 @@ struct XRing {
     XPend pend[32]; int npend;
     uint64_t mfAbs0, mfAbsTot, mfTot; uint32_t mfLast; uint64_t ipRise; bool ipUp;
     uint64_t ehbRise; bool ehbUp; uint32_t ehbMax, ehbCur, erdpAdv, ehbN, ipN; uint64_t lastErdp;
+    // time line of ERDP advances (= events the OS consumed), bursts within 3 ms merged: tms, events
+    uint32_t advT[64], advN[64], advHead; uint64_t advLast;
 };
 static XRing xr[8];
 static uint64_t xhcStart;
@@ -709,7 +711,13 @@ static void xrPoll(int i, uint64_t now, uint64_t start)
     // which TRB will the OS handle next?
     uint32_t erdpLo = rd32(x, x.rt + 0x38);
     uint64_t erdp = ((uint64_t)rd32(x, x.rt + 0x3c) << 32) | (erdpLo & ~0xfu);
-    if (erdp != r.lastErdp) { r.erdpAdv++; r.lastErdp = erdp; }
+    if (erdp != r.lastErdp) {
+        r.erdpAdv++; r.lastErdp = erdp;
+        uint32_t tms = (uint32_t)((now - start) / 1000000ull);
+        if (r.advHead && now - r.advLast < 3000000ull) r.advN[(r.advHead - 1) & 63]++;
+        else { r.advT[r.advHead & 63] = tms; r.advN[r.advHead & 63] = 1; r.advHead++; }
+        r.advLast = now;
+    }
     // ERDP.EHB (bit 3): set by the controller when it raised the interrupt, cleared only when the OS acknowledged it
     bool ehb = erdpLo & 8;
     if (ehb && !r.ehbUp) { r.ehbUp = true; r.ehbRise = now; r.ehbN++; }
@@ -783,6 +791,15 @@ static void xrReport(int i, char *out, size_t cap, uint64_t start)
                 for (int d = 1; d <= 9; d++)
                     ADV("%u", *(volatile uint32_t *)(ctx + d * csz) & 7);
             }
+        }
+    }
+    ADV(" | adv:");
+    {
+        uint32_t na = r.advHead < 64 ? r.advHead : 64;
+        // newest first so the part that fits is the part around the key test
+        for (uint32_t k = 0; k < na && o + 16 < cap; k++) {
+            uint32_t ix = (r.advHead - 1 - k) & 63;
+            ADV(" %u:%u", r.advT[ix] / 100, r.advN[ix]);
         }
     }
     ADV(" | cnt:");
