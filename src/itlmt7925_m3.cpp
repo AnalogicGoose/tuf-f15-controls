@@ -32,6 +32,7 @@ void itlmt7925::m3log(const char *fmt, ...)
         m3buf[m3len] = 0;
     }
     setProperty("m3-log", m3buf);
+    nvramLog(tmp);                            // last step survives a hang or reboot (variable itlmt7925-log)
 }
 
 void itlmt7925::m3Publish(const char *stage)
