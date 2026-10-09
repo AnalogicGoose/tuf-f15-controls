@@ -120,6 +120,19 @@ private:
     char m3res[400] = {0};
     char m3ssid[33] = {0};
     char m3psk[72] = {0};
+    // step 3: authentication / association over the data TX ring
+    uint8_t m3pmk[32] = {0};
+    uint8_t m3wantFc = 0;                    // fc byte 0 of the management frame we are waiting for (0 = none)
+    uint8_t m3rx[600] = {0};
+    uint32_t m3rxLen = 0;
+    int m3txSlot = 0;
+    uint16_t m3tok = 0, m3aid = 0;
+    uint32_t m3rxOther = 0;
+    bool m3Tx(const uint8_t *frame, uint32_t len, uint8_t type, uint8_t subtype);
+    bool m3RxMgmt(const uint8_t *p, uint32_t len);
+    bool m3Xchg(const uint8_t *frame, uint32_t len, uint8_t subtype, uint8_t wantFc, uint32_t waitMs);
+    int  m3Auth();
+    int  m3Assoc();
     // target AP, captured from a beacon / probe response during the scan
     bool tgtFound = false;
     uint8_t tgtBssid[6] = {0};

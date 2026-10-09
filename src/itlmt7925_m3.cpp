@@ -352,7 +352,7 @@ int itlmt7925::m3Roc(bool acquire)
         t[12] = 0;                                           // bw_from_ap
         t[13] = tgtCh;                                       // center_chan_from_ap
         t[15] = 0;                                           // reqtype JOIN
-        put32(t + 16, 1000);                                 // maxinterval (ms)
+        put32(t + 16, 5000);                                 // maxinterval (ms)
         t[20] = 0xff;                                        // dbdcband: auto
         return m3Cmd(UNI_ROC, req, sizeof(req), "roc_acquire");
     }
@@ -362,6 +362,129 @@ int itlmt7925::m3Roc(bool acquire)
     t[5] = rocTok;
     t[6] = 0xff;                                             // dbdcband
     return m3Cmd(UNI_ROC, req, 4 + 12, "roc_abort");
+}
+
+// ---------------------------------------------------------------------------------------------
+// Management frame TX / RX (mt7925e_tx_prepare_skb + mt7925_mac_write_txwi, CT path with a token in the hw txp)
+// ---------------------------------------------------------------------------------------------
+static inline void membar() { __sync_synchronize(); }
+#define M3_RATE_IDX 18                                           // fixed-rate table: OFDM 6 Mb/s (see m3HwPrep)
+
+// TXD (32) + hw txp (32) in the ring buffer, the 802.11 frame 128 bytes further; the ring entry covers TXD + txp only.
+bool itlmt7925::m3Tx(const uint8_t *frame, uint32_t len, uint8_t type, uint8_t subtype)
+{
+    if (!txData.n || len > 700 || len < 24) return false;
+    size_t base = (size_t)(m3txSlot++ & 3) * 1024;
+    uint8_t *w = txData.buf.va + base;
+    uint64_t pa = txData.buf.pa + base;
+    bzero(w, 128);
+    memcpy(w + 128, frame, len);
+
+    put32(w + 0, (len + 32) | (0u << 23) | (0x10u << 25));       // TX_BYTES | PKT_FMT=CT | Q_IDX=ALTX0
+    put32(w + 4, M3_AP_WCID | (2u << 14) | ((24u / 2) << 16) | (1u << 31));   // wlan idx, HDR_FORMAT=802.11, HDR_INFO, FIXED_RATE
+    put32(w + 8, ((uint32_t)type << 4) | subtype);
+    put32(w + 12, (15u << 11) | (1u << 28));                     // REM_TX_COUNT=15, BA_DISABLE (fixed rate)
+    put32(w + 20, 1);                                            // PID = MT_PACKET_ID_NO_SKB
+    put32(w + 24, (1u << 2) | (1u << 4) | (1u << 3) | ((uint32_t)M3_RATE_IDX << 16));   // DAS, MSDU_CNT=1, DIS_MAT, TX_RATE
+
+    m3tok = (m3tok + 1) & 0x1fff;
+    put16(w + 32, (uint16_t)(m3tok | 0x8000));                   // txp.msdu_id[0] | VALID
+    put32(w + 40, (uint32_t)(pa + 128));                         // txp.ptr[0].buf0
+    put16(w + 44, (uint16_t)(len | 0x8000));                     // len0 | LAST
+    membar();
+
+    uint8_t *d = txData.desc.va + txData.head * 16;
+    put32(d + 0, (uint32_t)pa);
+    put32(d + 8, 0);
+    put32(d + 12, 0);
+    put32(d + 4, MT_DMA_CTL_SD_LEN0(64) | MT_DMA_CTL_LAST_SEC0);
+    txData.head = (txData.head + 1) % txData.n;
+    membar();
+    wr(txData.regs + Q_CPU_IDX, txData.head);
+    for (int us = 0; us < 200000; us += 20) {
+        if ((int)(rd(txData.regs + Q_DMA_IDX) & 0xffff) == txData.head) return true;
+        IODelay(20);
+    }
+    m3log("tx stall cpu=%u dma=%u", txData.head, rd(txData.regs + Q_DMA_IDX) & 0xffff);
+    return false;
+}
+
+// Looks for a management frame (header after the RXD groups) from the AP to us whose fc byte 0 is m3wantFc.
+bool itlmt7925::m3RxMgmt(const uint8_t *p, uint32_t len)
+{
+    if (len < 32 + 24 || m3rxLen) return false;
+    for (uint32_t off = 32; off + 24 <= len && off < 160; off++) {
+        if (p[off] != m3wantFc) continue;
+        if (memcmp(p + off + 4, mac, 6) != 0 || memcmp(p + off + 10, tgtBssid, 6) != 0) continue;
+        uint32_t n = len - off;
+        if (n > sizeof(m3rx)) n = sizeof(m3rx);
+        memcpy(m3rx, p + off, n);
+        m3rxLen = n;
+        return true;
+    }
+    return false;
+}
+
+// Sends `frame` (up to 4 times, 150 ms apart) until a frame with fc byte 0 == wantFc comes back.
+bool itlmt7925::m3Xchg(const uint8_t *frame, uint32_t len, uint8_t subtype, uint8_t wantFc, uint32_t waitMs)
+{
+    m3rxLen = 0;
+    m3wantFc = wantFc;
+    bool got = false;
+    for (int attempt = 1; attempt <= 4 && !got; attempt++) {
+        bool ok = m3Tx(frame, len, 0, subtype);
+        m3log("tx %02x len=%u #%d %s", frame[0], len, attempt, ok ? "queued" : "FAILED");
+        for (uint32_t i = 0; i < waitMs && !m3rxLen; i++) m3Pump(1);
+        got = m3rxLen != 0;
+    }
+    m3wantFc = 0;
+    if (!got) m3log("no response fc=%02x rxpk=%u txcpu=%u txdma=%u", wantFc, rxPkts, txData.head, rd(txData.regs + Q_DMA_IDX) & 0xffff);
+    return got;
+}
+
+static void m3Hdr(uint8_t *h, uint8_t fc0, const uint8_t *bssid, const uint8_t *sa)
+{
+    bzero(h, 24);
+    h[0] = fc0;
+    memcpy(h + 4, bssid, 6);
+    memcpy(h + 10, sa, 6);
+    memcpy(h + 16, bssid, 6);
+}
+
+int itlmt7925::m3Auth()
+{
+    uint8_t f[30];
+    m3Hdr(f, 0xb0, tgtBssid, mac);
+    put16(f + 24, 0);                                            // open system
+    put16(f + 26, 1);                                            // transaction 1
+    put16(f + 28, 0);
+    if (!m3Xchg(f, sizeof(f), 11, 0xb0, 150)) return ITL_TIMEOUT;
+    uint16_t alg = (uint16_t)(m3rx[24] | (m3rx[25] << 8)), seq = (uint16_t)(m3rx[26] | (m3rx[27] << 8)),
+             st = (uint16_t)(m3rx[28] | (m3rx[29] << 8));
+    m3log("auth resp alg=%u seq=%u status=%u", alg, seq, st);
+    return (alg == 0 && seq == 2 && st == 0) ? 0 : ITL_EIO;
+}
+
+int itlmt7925::m3Assoc()
+{
+    uint8_t f[160];
+    m3Hdr(f, 0x00, tgtBssid, mac);
+    uint8_t *p = f + 24;
+    put16(p, 0x0411); p += 2;                                    // ESS | PRIVACY | short slot
+    put16(p, 10); p += 2;                                        // listen interval
+    uint8_t sl = (uint8_t)strlen(m3ssid);
+    *p++ = 0; *p++ = sl; memcpy(p, m3ssid, sl); p += sl;
+    static const uint8_t rates[8] = {0x8c, 0x12, 0x98, 0x24, 0xb0, 0x48, 0x60, 0x6c};
+    *p++ = 1; *p++ = 8; memcpy(p, rates, 8); p += 8;
+    static const uint8_t rsn[22] = {0x30, 0x14, 0x01, 0x00, 0x00, 0x0f, 0xac, 0x04, 0x01, 0x00, 0x00, 0x0f, 0xac, 0x04,
+                                    0x01, 0x00, 0x00, 0x0f, 0xac, 0x02, 0x00, 0x00};
+    memcpy(p, rsn, sizeof(rsn)); p += sizeof(rsn);
+    if (!m3Xchg(f, (uint32_t)(p - f), 0, 0x10, 150)) return ITL_TIMEOUT;
+    uint16_t st = (uint16_t)(m3rx[26] | (m3rx[27] << 8)), aid = (uint16_t)((m3rx[28] | (m3rx[29] << 8)) & 0x3fff);
+    m3log("assoc resp status=%u aid=%u", st, aid);
+    if (st) return ITL_EIO;
+    m3aid = aid;
+    return 0;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -398,8 +521,9 @@ int itlmt7925::m3Run()
     // PMK now (4096 PBKDF2 iterations), kept for the 4-way handshake
     uint8_t pmk[32];
     itl_wpa_pmk(m3psk, (const uint8_t *)m3ssid, strlen(m3ssid), pmk);
-    m3log("pmk ready");
+    memcpy(m3pmk, pmk, sizeof(m3pmk));
     bzero(pmk, sizeof(pmk));
+    m3log("pmk ready");
     m3Publish("pmk");
 
     // step 2: firmware / hardware prep, BSS + STA records in the "not associated" state, ROC on the AP's channel
@@ -408,9 +532,19 @@ int itlmt7925::m3Run()
     m3Bss(false);
     m3Sta(0, true, 0);
     m3Roc(true);
-    m3Pump(2000);
+    for (int i = 0; i < 1000 && !rocGrant; i++) m3Pump(1);
     m3log("roc grant=%d status=%u", rocGrant ? 1 : 0, rocStatus);
-    m3Publish(rocGrant && rocStatus == 0 ? "roc-ok" : "roc-fail");
+    if (!rocGrant || rocStatus != 0) { m3Publish("roc-fail"); m3Roc(false); return ITL_EIO; }
+
+    // step 3: open-system authentication and association, both on the channel held by the ROC
+    m3log("sta mac %02x:%02x:%02x:%02x:%02x:%02x", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    int rc = m3Auth();
+    m3Publish(rc ? "auth-fail" : "auth-ok");
+    if (!rc) {
+        rc = m3Assoc();
+        m3Publish(rc ? "assoc-fail" : "assoc-ok");
+    }
     m3Roc(false);
-    return 0;
+    bzero(m3pmk, sizeof(m3pmk));
+    return rc;
 }

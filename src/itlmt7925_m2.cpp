@@ -162,6 +162,7 @@ int itlmt7925::uniSend(uint8_t cid, const void *payload, size_t plen, bool query
 // ---------------------------------------------------------------------------------------------
 void itlmt7925::rxParseFrame(const uint8_t *p, uint32_t len)
 {
+    if (m3wantFc && m3RxMgmt(p, len)) return;
     // 802.11 mgmt header (24) + beacon fixed fields (12) + at least one IE; the frame sits after the RXD groups,
     // so look for "FC=beacon/probe-resp, addr2 == addr3" instead of decoding the group flags.
     if (len < 32 + 36 + 2) return;
