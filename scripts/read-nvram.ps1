@@ -1,5 +1,5 @@
 # Reads firmware (NVRAM) variables written by macOS under the Apple GUID and prints them. Needs an elevated PowerShell.
-# usage: .\read-nvram.ps1 [name ...]   (default: boot-args itl0..itl15)
+# usage: .\read-nvram.ps1 [name ...]   (default: boot-args itl0..itl3 itlm0 itlm1)
 param([string[]]$Names)
 Add-Type -TypeDefinition @'
 using System;
@@ -27,7 +27,7 @@ public static class Fw {
 }
 '@
 if (-not [Fw]::Priv()) { Write-Host "need an elevated (Administrator) PowerShell"; exit 1 }
-if (-not $Names) { $Names = @('boot-args') + (0..15 | ForEach-Object { "itl$_" }) }
+if (-not $Names) { $Names = @('boot-args') + @('itl0','itl1','itl2','itl3','itlm0','itlm1') }
 foreach ($n in $Names) {
     $v = [Fw]::Get($n, '{7C436110-AB2A-4BBB-A880-FE41995C9F82}')
     if ($null -eq $v) { Write-Host "[$n] -" } else { Write-Host "[$n] $v" }

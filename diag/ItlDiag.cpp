@@ -23,6 +23,7 @@
 #include <stdarg.h>
 #include <string.h>
 #include <libkern/libkern.h>
+#include <libkern/OSAtomic.h>
 
 class ItlDiag : public IOService {
     OSDeclareDefaultStructors(ItlDiag)
@@ -689,6 +690,55 @@ static void screenBlock(int n)
 
 // Last resort when no file write path works and the verbose output scrolls away: boot-arg itlpanic=<seconds> ends the run
 // with one panic whose string is the whole digest, so the panic screen is a single static frame to photograph.
+// ---------------------------------------------------------------- cross-CPU clock skew
+// If the TSC is not synchronised between cores, mach_absolute_time() read on one core can be earlier than a value another core
+// published a moment before. Event timestamps (key-down on one core, key-up on another) would then be out of order and the
+// HID event system can drop or reorder them. Every thread publishes its time and checks it against the latest published one.
+static volatile uint64_t skLast;
+static volatile uint64_t skMaxBack;
+static volatile uint32_t skBackAt;           // (publisher apic << 16) | reader apic of the worst case
+static volatile uint32_t skSeen[4];          // bitmap of x2APIC ids that ran a skew thread
+static volatile uint32_t skStop, skCount, skThreads;
+static volatile uint64_t skPub;              // apic id of the last publisher
+
+static inline uint32_t apicId()
+{
+    uint32_t a = 0xb, b, c = 0, d;
+    __asm__ volatile("cpuid" : "+a"(a), "=b"(b), "+c"(c), "=d"(d));
+    return d;
+}
+
+static void skewThread(void *)
+{
+    OSIncrementAtomic((volatile SInt32 *)&skThreads);
+    uint32_t me = apicId() & 0x7f;
+    while (!skStop) {
+        uint64_t prev = skLast;
+        uint32_t who = (uint32_t)skPub;
+        uint64_t t = absNs();
+        me = apicId() & 0x7f;
+        OSBitOrAtomic(1u << (me & 31), (volatile UInt32 *)&skSeen[(me >> 5) & 3]);
+        if (t < prev) {
+            OSIncrementAtomic((volatile SInt32 *)&skCount);
+            if (prev - t > skMaxBack) { skMaxBack = prev - t; skBackAt = (who << 16) | me; }
+        }
+        while (t > prev) {
+            if (OSCompareAndSwap64(prev, t, &skLast)) { skPub = me; break; }
+            prev = skLast;
+        }
+    }
+    OSDecrementAtomic((volatile SInt32 *)&skThreads);
+}
+
+static void skewTest(int nthreads, unsigned ms)
+{
+    skStop = 0;
+    for (int i = 0; i < nthreads; i++) IOCreateThread(skewThread, nullptr);
+    IOSleep(ms);
+    skStop = 1;
+    IOSleep(50);
+}
+
 static char digestBuf[1100];
 static void buildDigest()
 {
@@ -697,6 +747,10 @@ static void buildDigest()
     uint64_t dCal = (calUs() - cal0us) / 1000, dAbs = (absNs() - abs0ns) / 1000000ull;
     o += snprintf(b + o, sizeof(digestBuf) - o, "ITLDIAG cal=%llums mach=%llums tsc=%lluMHz | ", dCal, dAbs,
                   dCal ? (rdtsc_() - tsc0) / (dCal * 1000ull) : 0ull);
+    o += snprintf(b + o, sizeof(digestBuf) - o, "nxh=%d ", nxh);
+    o += snprintf(b + o, sizeof(digestBuf) - o, "SKEW back=%lluns n=%u pub%u>rd%u cpus=%x/%x/%x/%x | ", (unsigned long long)skMaxBack,
+                  (unsigned)skCount, (unsigned)(skBackAt >> 16), (unsigned)(skBackAt & 0xffff), (unsigned)skSeen[0], (unsigned)skSeen[1],
+                  (unsigned)skSeen[2], (unsigned)skSeen[3]);
     for (int i = 0; i < nxh && o < 800; i++) {
         Xhc &x = xh[i];
         IOPCIDevice *p = x.p;
@@ -809,6 +863,8 @@ static void worker(void *arg)
         IOSleep(n ? 5000 : 8000);
         if (panicSec && (absNs() - abs0ns) / 1000000000ull >= panicSec) panicDigest();
         if (!logMedia && !vfsOk) { vfsFlush(); tryAttach(me); }
+        if (!nxh) xhcInit();
+        if (n == 1 || n == 7) skewTest(24, 2500);
         screenBlock(n);
         nvramDigest(n);
         if (n == 2) {
@@ -825,6 +881,7 @@ static void worker(void *arg)
         IOSleep(10000);
         if (panicSec && (absNs() - abs0ns) / 1000000000ull >= panicSec) panicDigest();
         if (!logMedia && !vfsOk) tryAttach(me);
+        if (!nxh) xhcInit();
         screenBlock(100 + pass);
         nvramDigest(100 + pass);
         copyKextLogs();
