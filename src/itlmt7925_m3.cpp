@@ -11,6 +11,9 @@
 #include <string.h>
 #include <stdarg.h>
 #include <libkern/libkern.h>
+#include <sys/random.h>
+#include <kern/clock.h>
+#include <mach/mach_time.h>
 
 #define ITL_TIMEOUT -110
 #define ITL_EIO     -5
@@ -115,7 +118,7 @@ void itlmt7925::m3Pump(uint32_t ms)
             }
             ringRelease(rxEvt, bi);
         }
-        IODelay(1000);
+        if (m3sleepy) IOSleep(1); else IODelay(1000);
     }
 }
 
@@ -391,10 +394,17 @@ static inline void membar() { __sync_synchronize(); }
 #define M3_RATE_IDX 18                                           // fixed-rate table: OFDM 6 Mb/s (see m3HwPrep)
 
 // TXD (32) + hw txp (32) in the ring buffer, the 802.11 frame 128 bytes further; the ring entry covers TXD + txp only.
-bool itlmt7925::m3Tx(const uint8_t *frame, uint32_t len, uint8_t type, uint8_t subtype)
+struct M3Lock {
+    IOLock *l;
+    explicit M3Lock(IOLock *x) : l(x) { if (l) IOLockLock(l); }
+    ~M3Lock() { if (l) IOLockUnlock(l); }
+};
+
+bool itlmt7925::m3Tx(const uint8_t *frame, uint32_t len, uint8_t type, uint8_t subtype, bool protect)
 {
-    if (!txData.n || len > 700 || len < 24) return false;
-    size_t base = (size_t)(m3txSlot++ & 3) * 1024;
+    if (!txData.n || len > 1900 || len < 24) return false;
+    M3Lock lk(txLock);                                           // management frames from the m3 thread, data from the network stack
+    size_t base = (size_t)(m3txSlot++ & 63) * 2048;
     uint8_t *w = txData.buf.va + base;
     uint64_t pa = txData.buf.pa + base;
     bzero(w, 128);
@@ -403,7 +413,7 @@ bool itlmt7925::m3Tx(const uint8_t *frame, uint32_t len, uint8_t type, uint8_t s
     put32(w + 0, (len + 32) | (0u << 23) | (0x10u << 25));       // TX_BYTES | PKT_FMT=CT | Q_IDX=ALTX0
     put32(w + 4, M3_AP_WCID | (2u << 14) | ((24u / 2) << 16) | (1u << 31));   // wlan idx, HDR_FORMAT=802.11, HDR_INFO, FIXED_RATE
     put32(w + 8, ((uint32_t)type << 4) | subtype);
-    put32(w + 12, (15u << 11) | (1u << 28));                     // REM_TX_COUNT=15, BA_DISABLE (fixed rate)
+    put32(w + 12, (15u << 11) | (1u << 28) | (protect ? 2u : 0));   // REM_TX_COUNT=15, BA_DISABLE (fixed rate), PROTECT_FRAME
     put32(w + 20, 3 | (1u << 10));                               // PID = MT_PACKET_ID_FIRST, TX_STATUS_HOST: report completion
     put32(w + 24, (1u << 2) | (1u << 4) | (1u << 3) | ((uint32_t)M3_RATE_IDX << 16));   // DAS, MSDU_CNT=1, DIS_MAT, TX_RATE
 
@@ -579,7 +589,256 @@ int itlmt7925::m3Run()
         rc = m3Assoc();
         m3Publish(rc ? "assoc-fail" : "assoc-ok");
     }
+
+    // step 4: BSS up, station state "associated", 4-way handshake with key install, Ethernet interface
+    if (!rc) {
+        m3Bss(true);
+        m3Sta(2, false, m3aid);
+        rc = m3Handshake();
+        m3wantEapol = false;
+        m3Publish(rc ? "hs-fail" : "hs-ok");
+    }
     m3Roc(false);
     bzero(m3pmk, sizeof(m3pmk));
+    if (!rc) {
+        m3log("RESULT rc=0 link up");
+        m3Link();                                            // never returns
+    }
     return rc;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Step 4: data frames, 4-way handshake, keys, link
+// ---------------------------------------------------------------------------------------------
+static inline uint16_t be16p(const uint8_t *p) { return (uint16_t)(p[0] << 8 | p[1]); }
+
+// First few interesting packets (ARP, UDP incl. DHCP, ICMP) in either direction, to see how far traffic gets.
+void itlmt7925::m3Note(const char *dir, const uint8_t *e, uint32_t len)
+{
+    if (stNote >= 24 || len < 34) return;
+    uint16_t et = be16p(e + 12);
+    if (et == 0x0806) {
+        stNote++;
+        m3log("%s arp op=%u", dir, e[21]);
+    } else if (et == 0x0800) {
+        const uint8_t *ip = e + 14;
+        uint32_t ihl = (ip[0] & 15) * 4;
+        if (ip[9] == 17 && len >= 14 + ihl + 8) {
+            stNote++;
+            m3log("%s udp %u>%u len=%u", dir, be16p(ip + ihl), be16p(ip + ihl + 2), len);
+        } else if (ip[9] == 1 && len > 14 + ihl) {
+            stNote++;
+            m3log("%s icmp type=%u", dir, ip[ihl]);
+        }
+    }
+}
+
+// RX data frame from the AP (802.11 header + LLC/SNAP after the RXD groups; header translation is off, decryption is done by
+// the hardware once the keys are installed). EAPOL goes to the handshake, everything else to the Ethernet interface.
+bool itlmt7925::m3RxData(const uint8_t *p, uint32_t len)
+{
+    for (uint32_t off = 32; off + 24 <= len && off < 120; off++) {
+        uint8_t fc0 = p[off], fc1 = p[off + 1];
+        if ((fc0 & 0x0c) != 0x08 || (fc1 & 3) != 2) continue;               // data frame, From DS
+        if (memcmp(p + off + 10, tgtBssid, 6) != 0) continue;
+        bool group = p[off + 4] & 1;
+        if (!group && memcmp(p + off + 4, mac, 6) != 0) continue;
+        if (fc0 & 0x40) return true;                                         // null / QoS null: no payload
+        uint32_t hl = (fc0 & 0x80) ? 26 : 24;
+        static const uint8_t llc[6] = {0xaa, 0xaa, 0x03, 0x00, 0x00, 0x00};
+        for (uint32_t g = 0; g <= 12 && off + hl + g + 8 <= len; g++) {
+            const uint8_t *l = p + off + hl + g;
+            if (memcmp(l, llc, 6) != 0) continue;
+            uint16_t et = be16p(l + 6);
+            const uint8_t *pl = l + 8;
+            uint32_t pn = len - (uint32_t)(pl - p);
+            stRxData++;
+            if (et == 0x888e) {
+                stRxEapol++;
+                if (m3wantEapol && !m3eapolLen) {
+                    uint32_t n = pn > sizeof(m3eapol) ? (uint32_t)sizeof(m3eapol) : pn;
+                    memcpy(m3eapol, pl, n);
+                    m3eapolLen = n;
+                }
+                return true;
+            }
+            if (!m3linkUp || pn > 1600) { stRxDrop++; return true; }
+            if (memcmp(p + off + 16, mac, 6) == 0) return true;             // our own broadcast echoed back
+            static uint8_t eb[14 + 1600];
+            memcpy(eb, p + off + 4, 6);                                      // DA
+            memcpy(eb + 6, p + off + 16, 6);                                 // SA = addr3
+            eb[12] = (uint8_t)(et >> 8); eb[13] = (uint8_t)et;
+            memcpy(eb + 14, pl, pn);
+            stRxEth++;
+            m3Note("rx", eb, 14 + pn);
+            ethRx(eb, 14 + pn);
+            return true;
+        }
+        return false;
+    }
+    return false;
+}
+
+bool itlmt7925::m3TxData(const uint8_t *da, uint16_t ethertype, const uint8_t *payload, uint32_t plen, bool protect)
+{
+    uint8_t f[32 + 1560];
+    if (plen > 1560) return false;
+    bzero(f, 24);
+    f[0] = 0x08;                                             // data
+    f[1] = protect ? 0x41 : 0x01;                            // To DS (+ Protected: the hardware adds the CCMP header)
+    memcpy(f + 4, tgtBssid, 6);
+    memcpy(f + 10, mac, 6);
+    memcpy(f + 16, da, 6);
+    static const uint8_t llc[6] = {0xaa, 0xaa, 0x03, 0x00, 0x00, 0x00};
+    memcpy(f + 24, llc, 6);
+    f[30] = (uint8_t)(ethertype >> 8); f[31] = (uint8_t)ethertype;
+    memcpy(f + 32, payload, plen);
+    return m3Tx(f, 32 + plen, 2, 0, protect);
+}
+
+// Ethernet frame from the network stack
+bool itlmt7925::ethTx(const uint8_t *e, uint32_t len)
+{
+    if (!m3linkUp || len < 14) return false;
+    bool ok = m3TxData(e, be16p(e + 12), e + 14, len - 14, true);
+    if (ok) stTx++; else stTxFail++;
+    m3Note("tx", e, len);
+    return ok;
+}
+
+// STA_REC_KEY_V3 (mt7925_mcu_sta_key_tlv): CCMP key on the AP's wcid (pairwise) or on the BSS's broadcast wcid (group)
+int itlmt7925::m3Key(uint16_t wcid, bool pairwise, uint8_t keyId, const uint8_t *key, uint8_t keyLen)
+{
+    M3Msg m;
+    m.init(8);
+    m.b[0] = M3_BSS_IDX;
+    m.b[1] = wcid & 0xff;
+    m.b[4] = 1;                                              // is_tlv_append
+    m.b[5] = pairwise ? 0 : 0xe;                             // muar_idx: omac for a station, 0xe for the broadcast wcid
+    m.b[6] = wcid >> 8;
+    uint8_t *s = m.tlv(0x27, 68);                            // STA_REC_KEY_V3
+    s[4] = 1;                                                // add
+    s[5] = pairwise ? 1 : 0;                                 // tx_key
+    s[6] = pairwise ? 1 : 0;                                 // key_type
+    s[7] = 0;                                                // is_authenticator
+    memcpy(s + 8, tgtBssid, 6);                              // peer_addr
+    s[14] = M3_BSS_IDX;
+    s[15] = 4;                                               // CONNAC3_CIPHER_AES_CCMP
+    s[16] = keyId;
+    s[17] = keyLen;
+    s[18] = wcid & 0xff;
+    s[19] = 1;                                               // mgmt_prot
+    memcpy(s + 20, key, keyLen);
+    int rc = m3Cmd(UNI_STA_REC_UPDATE, m.b, m.n, pairwise ? "key(ptk)" : "key(gtk)");
+    bzero(m.b, sizeof(m.b));
+    return rc;
+}
+
+int itlmt7925::m3Handshake()
+{
+    static const uint8_t rsnIe[22] = {0x30, 0x14, 0x01, 0x00, 0x00, 0x0f, 0xac, 0x04, 0x01, 0x00, 0x00, 0x0f, 0xac, 0x04,
+                                      0x01, 0x00, 0x00, 0x0f, 0xac, 0x02, 0x00, 0x00};
+    uint8_t snonce[32], zero[32], replay[8], out[160], kd[8 * 40];
+    itl_eapol_key k;
+    bzero(zero, sizeof(zero));
+    read_random(snonce, sizeof(snonce));
+    m3dataOn = true;
+    m3eapolLen = 0;
+    m3wantEapol = true;
+
+    for (uint32_t i = 0; i < 6000 && !m3eapolLen; i++) m3Pump(1);
+    if (!m3eapolLen) { m3log("eapol: no msg1 (rxdata=%u rxpk=%u)", stRxData, rxPkts); return ITL_TIMEOUT; }
+    if (itl_eapol_parse(m3eapol, m3eapolLen, &k) || !(k.info & ITL_KI_ACK) || (k.info & ITL_KI_MIC)) {
+        m3log("eapol: bad msg1 len=%u", m3eapolLen);
+        return ITL_EIO;
+    }
+    m3log("eapol m1 info=%04x len=%u", k.info, m3eapolLen);
+    memcpy(replay, k.replay, 8);
+    itl_ptk ptk;
+    itl_wpa_ptk(m3pmk, tgtBssid, mac, k.nonce, snonce, &ptk);
+
+    size_t n2 = itl_eapol_build(out, 0x010a, 0, replay, snonce, rsnIe, sizeof(rsnIe));       // ver 2 | pairwise | MIC
+    itl_eapol_mic(ptk.kck, out, n2);
+
+    bool got3 = false;
+    for (int attempt = 1; attempt <= 4 && !got3; attempt++) {
+        m3eapolLen = 0;
+        bool ok = m3TxData(tgtBssid, 0x888e, out, (uint32_t)n2, false);
+        m3log("eapol m2 tx #%d %s", attempt, ok ? "queued" : "FAILED");
+        for (uint32_t i = 0; i < 1500 && !got3; i++) {
+            m3Pump(1);
+            if (!m3eapolLen) continue;
+            if (itl_eapol_parse(m3eapol, m3eapolLen, &k) == 0 && (k.info & ITL_KI_MIC) && (k.info & ITL_KI_INSTALL)) got3 = true;
+            else m3eapolLen = 0;                              // a repeated msg1: wait on, the AP will still send msg3
+        }
+    }
+    if (!got3) { m3log("eapol: no msg3"); return ITL_TIMEOUT; }
+    uint32_t elen = 4u + be16p(m3eapol + 2);
+    if (!itl_eapol_mic_ok(ptk.kck, m3eapol, elen)) { m3log("eapol: msg3 MIC bad"); return ITL_EIO; }
+    m3log("eapol m3 info=%04x mic ok datalen=%u", k.info, k.datalen);
+
+    // key data: wrapped RSN IE + GTK KDE
+    uint8_t gtk[32], gtkId = 0, gtkLen = 0;
+    if ((k.info & ITL_KI_ENCRYPTED) && k.datalen >= 24 && k.datalen <= sizeof(kd) + 8 &&
+        itl_aes128_unwrap(ptk.kek, k.data, k.datalen, kd) == 0) {
+        const uint8_t *e = kd, *end = kd + k.datalen - 8;
+        while (e + 2 <= end && e + 2 + e[1] <= end) {
+            if (e[0] == 0xdd && e[1] >= 22 && e[2] == 0x00 && e[3] == 0x0f && e[4] == 0xac && e[5] == 1) {
+                gtkLen = (uint8_t)(e[1] - 6);
+                if (gtkLen > sizeof(gtk)) gtkLen = 0;
+                else { gtkId = e[6] & 3; memcpy(gtk, e + 8, gtkLen); }
+                break;
+            }
+            e += 2 + e[1];
+        }
+    } else {
+        m3log("eapol: key data not usable (info=%04x len=%u)", k.info, k.datalen);
+    }
+    m3log("gtk id=%u len=%u", gtkId, gtkLen);
+    if (gtkLen != 16) return ITL_EIO;
+
+    // msg4: ver 2 | pairwise | MIC | secure
+    uint8_t replay3[8];
+    memcpy(replay3, k.replay, 8);
+    size_t n4 = itl_eapol_build(out, 0x030a, 0, replay3, zero, nullptr, 0);
+    itl_eapol_mic(ptk.kck, out, n4);
+    bool ok = m3TxData(tgtBssid, 0x888e, out, (uint32_t)n4, false);
+    m3log("eapol m4 tx %s", ok ? "queued" : "FAILED");
+    for (int i = 0; i < 30; i++) m3Pump(1);                    // let it go out in the clear before the keys arrive
+
+    m3cipher = 4;
+    m3Bss(true);                                               // BSS now secured with CCMP
+    int r1 = m3Key(M3_AP_WCID, true, 0, ptk.tk, 16);
+    int r2 = m3Key(M3_BMC_WCID, false, gtkId, gtk, 16);
+    memcpy(m3ptk, &ptk, sizeof(m3ptk));
+    bzero(&ptk, sizeof(ptk));
+    bzero(gtk, sizeof(gtk));
+    bzero(kd, sizeof(kd));
+    return (r1 || r2) ? ITL_EIO : 0;
+}
+
+// Link is up: expose the Ethernet interface and keep servicing the receive rings forever (this thread never returns).
+void itlmt7925::m3Link()
+{
+    bool eok = ethCreate();
+    m3log("ethernet interface %s", eok ? "created" : "FAILED");
+    m3linkUp = true;
+    m3sleepy = true;
+    uint64_t t0 = 0;
+    absolutetime_to_nanoseconds(mach_absolute_time(), &t0);
+    uint64_t lastStat = 0;
+    for (;;) {
+        m3Pump(1);
+        uint64_t now = 0;
+        absolutetime_to_nanoseconds(mach_absolute_time(), &now);
+        uint64_t up = (now - t0) / 1000000000ull;
+        if (up >= lastStat + (up < 300 ? 5 : 60)) {
+            lastStat = up;
+            char st[200];
+            snprintf(st, sizeof(st), "up=%llus rxd=%u eapol=%u eth=%u drop=%u tx=%u fail=%u rxpk=%u", up, stRxData, stRxEapol,
+                     stRxEth, stRxDrop, stTx, stTxFail, rxPkts);
+            nvramStat(st);
+            nvramChunks(m3buf);
+        }
+    }
 }

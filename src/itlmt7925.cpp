@@ -98,11 +98,11 @@ void itlmt7925::nvramLog(const char *msg)
 // ItlDiag is disabled (it is the thing under suspicion for the input lag).
 void itlmt7925::nvramChunks(const char *buf)
 {
-    static char last[5][384];
+    static char last[8][384];
     IORegistryEntry *opt = IORegistryEntry::fromPath("/options", gIODTPlane);
     if (!opt) return;
     size_t len = strlen(buf);
-    for (int c = 0; c < 5 && (size_t)c * 380 < len; c++) {
+    for (int c = 0; c < 8 && (size_t)c * 380 < len; c++) {
         char piece[384], name[8];
         size_t from = (size_t)c * 380, n = len - from > 380 ? 380 : len - from;
         memcpy(piece, buf + from, n);
@@ -112,6 +112,15 @@ void itlmt7925::nvramChunks(const char *buf)
         snprintf(name, sizeof(name), "itlk%d", c);
         nvramSet(opt, name, piece, n);
     }
+    opt->release();
+}
+
+// Rolling one-line status of the data path (itls0), overwritten each time.
+void itlmt7925::nvramStat(const char *msg)
+{
+    IORegistryEntry *opt = IORegistryEntry::fromPath("/options", gIODTPlane);
+    if (!opt) return;
+    nvramSet(opt, "itls0", msg, strlen(msg));
     opt->release();
 }
 
@@ -140,6 +149,7 @@ bool itlmt7925::start(IOService *provider)
 {
     if (!super::start(provider)) return false;
     uint32_t m1 = 0;
+    txLock = IOLockAlloc();
 
     pci = OSDynamicCast(IOPCIDevice, provider);
     if (!pci) { IOLog("itlmt7925: provider is not IOPCIDevice\n"); return false; }

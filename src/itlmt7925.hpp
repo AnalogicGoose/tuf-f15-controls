@@ -7,6 +7,9 @@
 #include <IOKit/IOLib.h>
 #include <IOKit/IODeviceTreeSupport.h>
 #include <IOKit/IOBufferMemoryDescriptor.h>
+#include <IOKit/IOLocks.h>
+
+class itlmt7925Eth;
 
 struct itl_dma_buf {
     IOBufferMemoryDescriptor *md = nullptr;
@@ -32,6 +35,10 @@ public:
     bool start(IOService *provider) override;
     void stop(IOService *provider) override;
     void free() override;
+    // Ethernet interface glue (itlmt7925_eth.cpp): frames from the network stack / frames received from the AP
+    bool ethTx(const uint8_t *frame, uint32_t len);
+    bool ethCreate();
+    void ethRx(const uint8_t *frame, uint32_t len);
 
 private:
     IOPCIDevice *pci = nullptr;
@@ -115,7 +122,7 @@ private:
     uint8_t apSupp = 0, apBasic = 0;         // 5 GHz legacy rate bitmaps (6,9,12,18,24,36,48,54 -> bit 0..7)
     uint8_t apRsn[64] = {0};
     uint8_t apRsnLen = 0;
-    char m3buf[1900] = {0};
+    char m3buf[3000] = {0};
     size_t m3len = 0;
     char m3res[400] = {0};
     char m3ssid[33] = {0};
@@ -129,7 +136,26 @@ private:
     uint16_t m3tok = 0, m3aid = 0;
     uint32_t m3rxOther = 0, m3fwLogged = 0;
     bool m3hw = false;
-    bool m3Tx(const uint8_t *frame, uint32_t len, uint8_t type, uint8_t subtype);
+    // step 4: association complete -> 4-way handshake, keys, Ethernet interface, data path
+    bool m3dataOn = false;                   // data frames from the AP are handled (set after association)
+    bool m3wantEapol = false;
+    uint8_t m3eapol[420] = {0};
+    uint32_t m3eapolLen = 0;
+    uint8_t m3ptk[48] = {0};                 // KCK(16) KEK(16) TK(16)
+    bool m3sleepy = false;                   // m3Pump sleeps instead of spinning once the link is up
+    volatile bool m3linkUp = false;
+    itlmt7925Eth *eth = nullptr;
+    IOLock *txLock = nullptr;
+    uint32_t stRxData = 0, stRxEapol = 0, stRxEth = 0, stRxDrop = 0, stTx = 0, stTxFail = 0, stNote = 0;
+    int  m3Handshake();
+    bool m3Eapol(const uint8_t *eapol, uint32_t len);
+    int  m3Key(uint16_t wcid, bool pairwise, uint8_t keyId, const uint8_t *key, uint8_t keyLen);
+    bool m3RxData(const uint8_t *p, uint32_t len);
+    bool m3TxData(const uint8_t *da, uint16_t ethertype, const uint8_t *payload, uint32_t plen, bool protect);
+    void m3Note(const char *dir, const uint8_t *eth, uint32_t len);
+    void m3Link();
+    void nvramStat(const char *msg);
+    bool m3Tx(const uint8_t *frame, uint32_t len, uint8_t type, uint8_t subtype, bool protect = false);
     bool m3RxMgmt(const uint8_t *p, uint32_t len);
     bool m3Xchg(const uint8_t *frame, uint32_t len, uint8_t subtype, uint8_t wantFc, uint32_t waitMs);
     int  m3Auth();
@@ -148,7 +174,7 @@ private:
     void dumpState();
     void holdLog();
     void nvramLog(const char *msg);       // survives reboot, readable from Windows
-    void nvramChunks(const char *buf);    // whole m3 log -> itlk0..itlk4
+    void nvramChunks(const char *buf);    // whole m3 log -> itlk0..itlk7
     char logbuf[240] = {0};
     size_t loglen = 0;
     void note(const char *fmt, uint32_t a = 0, uint32_t b = 0, uint32_t c = 0);
