@@ -74,6 +74,7 @@ private:
     void ringRelease(itl_ring &r, int bi);
     void rxDataPoll();
     void rxParseFrame(const uint8_t *p, uint32_t len);
+    void rxFrameDump(const uint8_t *p, uint32_t len);
     void m2log(const char *fmt, ...);
     void m2State(const char *tag);
     uint32_t fwLogCnt = 0;

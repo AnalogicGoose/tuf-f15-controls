@@ -93,6 +93,16 @@ void itlmt7925::m2State(const char *tag)
 // ---------------------------------------------------------------------------------------------
 // UNI command: 48 byte txd (mt76_connac2_mcu_uni_txd) + payload on the WM ring, wait for the event with the same seq.
 // evOut receives the whole event (rxd + payload), payload starting at offset 40.
+// Scan results (beacons / probe responses) are delivered on the MCU event ring (ring 0) as 802.11 frame packets, not on the data
+// ring (mt7925_queue_rx_skb: PKT_TYPE_NORMAL, sw_type FRAME, or RX_EVENT with flag 1 -> NORMAL_MCU).
+static bool rxIsFrame(const uint8_t *p, uint32_t len)
+{
+    if (len < 16) return false;
+    uint32_t d0 = le32(p), type = d0 >> 27, flag = (d0 >> 16) & 0xf, sw = d0 >> 16;
+    if (type != 0 && (sw & 0x380f) == 0x3801) return true;
+    return type == 0 || (type == 5 && flag == 1);
+}
+
 // ---------------------------------------------------------------------------------------------
 int itlmt7925::uniSend(uint8_t cid, const void *payload, size_t plen, bool query, uint8_t *evOut, size_t evMax,
                        uint32_t *evLen, uint32_t timeoutMs)
@@ -122,6 +132,7 @@ int itlmt7925::uniSend(uint8_t cid, const void *payload, size_t plen, bool query
     for (uint32_t us = 0; us < timeoutMs * 1000; us += 50) {
         const uint8_t *ev; uint32_t len; int bi;
         while (ringPeek(r, &ev, &len, &bi)) {
+            if (rxIsFrame(ev, len)) { rxPkts++; rxFrameDump(ev, len); rxParseFrame(ev, len); ringRelease(r, bi); continue; }
             bool match = len >= 44 && ev[37] == seq;
             evCount++;
             if (len >= 44 && ev[36] == 0x04) fwLogCnt++;
@@ -188,6 +199,14 @@ void itlmt7925::rxParseFrame(const uint8_t *p, uint32_t len)
     rxOther++;
 }
 
+void itlmt7925::rxFrameDump(const uint8_t *p, uint32_t len)
+{
+    if (rxDump >= 3) return;
+    rxDump++;
+    m2log("rxframe#%u len=%u d0=%08x d1=%08x d2=%08x d3=%08x pkt_type=%u", rxPkts, len, le32(p), le32(p + 4),
+          len >= 12 ? le32(p + 8) : 0, len >= 16 ? le32(p + 12) : 0, le32(p) >> 27);
+}
+
 void itlmt7925::rxDataPoll()
 {
     if (!rxData.n) return;
@@ -232,6 +251,7 @@ int itlmt7925::m2Run()
     for (int i = 0; i < 100; i++) { rxDataPoll(); IODelay(1000); }
     const uint8_t *e; uint32_t l; int bi;
     while (ringPeek(rxEvt, &e, &l, &bi)) {
+        if (rxIsFrame(e, l)) { ringRelease(rxEvt, bi); continue; }
         if (l >= 44 && e[36] != 0x04) m2log("pre ev eid=%02x seq=%u len=%u", e[36], e[37], l);
         ringRelease(rxEvt, bi);
     }
@@ -326,6 +346,7 @@ int itlmt7925::m2Run()
     for (uint32_t ms = 0; ms < 15000; ms++) {
         rxDataPoll();
         while (ringPeek(rxEvt, &e, &l, &bi)) {
+            if (rxIsFrame(e, l)) { rxPkts++; rxFrameDump(e, l); rxParseFrame(e, l); ringRelease(rxEvt, bi); continue; }
             if (l >= 44 && e[36] != 0x04) m2log("ev eid=%02x seq=%u len=%u", e[36], e[37], l);
             if (l >= 44 && e[36] == UNI_EVENT_SCAN_DONE) scanDone = true;
             ringRelease(rxEvt, bi);
