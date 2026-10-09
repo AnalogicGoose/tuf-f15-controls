@@ -19,6 +19,8 @@
 			<key>IOPCIMatch</key><string>0x792514c3</string>
 			<key>IOProbeScore</key><integer>2000</integer>
 			<key>IOProviderClass</key><string>IOPCIDevice</string>
+			<key>itl_ssid</key><string></string>
+			<key>itl_psk</key><string></string>
 		</dict>
 	</dict>
 	<key>OSBundleLibraries</key>

@@ -93,6 +93,7 @@
 #define Q_CPU_IDX    0x8
 #define Q_DMA_IDX    0xc
 
+#define MT7925_TXQ_BAND0           0
 #define MT7925_TXQ_MCU_WM          15
 #define MT7925_TXQ_FWDL            16
 #define MT7925_RXQ_MCU_WM          0

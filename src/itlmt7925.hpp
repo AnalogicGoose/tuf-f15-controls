@@ -90,6 +90,25 @@ private:
     struct itl_ap { uint8_t bssid[6]; uint8_t ch; char ssid[33]; } aps[48];
     int nAps = 0;
     uint8_t mcuSeq = 0;
+    // M3 (boot-arg itlmt_m3=1, implies M2): associate to the configured network, WPA2-PSK, Ethernet interface
+    bool m3On = false;
+    itl_ring txData;                         // band0 data TX ring (mgmt + data frames)
+    void m3log(const char *fmt, ...);
+    void m3Publish(const char *stage);
+    int  m3Run();
+    void m3Capture(const uint8_t *frame, uint32_t len, const char *ssid, uint8_t ch);
+    char m3buf[1700] = {0};
+    size_t m3len = 0;
+    char m3res[400] = {0};
+    char m3ssid[33] = {0};
+    char m3psk[72] = {0};
+    // target AP, captured from a beacon / probe response during the scan
+    bool tgtFound = false;
+    uint8_t tgtBssid[6] = {0};
+    uint8_t tgtCh = 0;
+    uint16_t tgtCap = 0, tgtBcnInt = 0;
+    uint8_t tgtIe[512] = {0};
+    uint32_t tgtIeLen = 0;
     char m1buf[3072] = {0};
     size_t m1len = 0;
     bool m1Started = false;

@@ -465,7 +465,8 @@ int itlmt7925::m1Run()
     if (!ringInit(txWm, MT7925_TXQ_MCU_WM, MT_TX_RING_BASE, 256, false) ||
         !ringInit(txFwdl, MT7925_TXQ_FWDL, MT_TX_RING_BASE, 128, false) ||
         !ringInit(rxEvt, MT7925_RXQ_MCU_WM, MT_RX_EVENT_RING_BASE, 128, true) ||
-        (m2On && !ringInit(rxData, MT7925_RXQ_BAND0, MT_RX_DATA_RING_BASE, 128, true))) {
+        (m2On && !ringInit(rxData, MT7925_RXQ_BAND0, MT_RX_DATA_RING_BASE, 128, true)) ||
+        (m3On && !ringInit(txData, MT7925_TXQ_BAND0, MT_TX_RING_BASE, 256, false))) {
         m1log("ring alloc failed");
         return ITL_EIO;
     }
@@ -509,9 +510,10 @@ int itlmt7925::m1Run()
 
 void itlmt7925::m1Main()
 {
-    uint32_t delay = 0, m2 = 0;
+    uint32_t delay = 0, m2 = 0, m3 = 0;
     PE_parse_boot_argn("itlmt_m1", &delay, sizeof(delay));
     if (PE_parse_boot_argn("itlmt_m2", &m2, sizeof(m2)) && m2) m2On = true;
+    if (PE_parse_boot_argn("itlmt_m3", &m3, sizeof(m3)) && m3) m3On = m2On = true;
     m1log("armed, starting in %us", delay);
     IOSleep(delay * 1000);
     int rc = m1Run();
@@ -524,6 +526,12 @@ void itlmt7925::m1Main()
         m2log("RESULT rc=%d", r2);
         snprintf(s, sizeof(s), "M1 rc=0 M2 rc=%d", r2);
         nvramLog(s);
+        if (m3On) {
+            int r3 = m3Run();
+            m3log("RESULT rc=%d", r3);
+            snprintf(s, sizeof(s), "M1 rc=0 M2 rc=%d M3 rc=%d", r2, r3);
+            nvramLog(s);
+        }
     }
 }
 

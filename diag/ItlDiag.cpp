@@ -1041,10 +1041,10 @@ static void nvramKextLogs()
     IORegistryIterator *it = IORegistryIterator::iterateOver(gIOServicePlane, kIORegistryIterateRecursively);
     if (!it) return;
     IORegistryEntry *e;
-    static const char *keys[4] = { "m0-log", "m1-log", "m2-log", "m2-res" };
-    static const char *vars[4] = { "itlm0", "itlm1", "itlm2", "itlm3" };
+    static const char *keys[6] = { "m0-log", "m1-log", "m2-log", "m2-res", "m3-log", "m3-res" };
+    static const char *vars[6] = { "itlm0", "itlm1", "itlm2", "itlm3", "itln0", "itln4" };
     while ((e = it->getNextObject())) {
-        for (int k = 0; k < 4; k++) {
+        for (int k = 0; k < 6; k++) {
             OSString *v = OSDynamicCast(OSString, e->getProperty(keys[k]));
             if (!v) continue;
             const char *m = v->getCStringNoCopy();
@@ -1057,8 +1057,16 @@ static void nvramKextLogs()
                 }
                 continue;
             }
+            if (k == 4) {                                   // m3-log: from the start, 380 chars per variable, itln0..itln3
+                static const char *m3v[4] = { "itln0", "itln1", "itln2", "itln3" };
+                for (int c = 0; c < 4 && (size_t)c * 380 < n; c++) {
+                    size_t f = (size_t)c * 380, t = n - f > 380 ? 380 : n - f;
+                    nvramPut(m3v[c], m + f, t);
+                }
+                continue;
+            }
             size_t from = (k < 3 && n > 380) ? n - 380 : 0;
-            if (k == 3 && n > 380) n = 380;
+            if ((k == 3 || k == 5) && n > 380) n = 380;
             nvramPut(vars[k], m + from, n - from);
         }
     }

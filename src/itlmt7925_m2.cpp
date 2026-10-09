@@ -187,6 +187,7 @@ void itlmt7925::rxParseFrame(const uint8_t *p, uint32_t len)
             if (ssid[i] < 0x20 || ssid[i] > 0x7e) ssid[i] = '?';
 
         rxBeacons++;
+        m3Capture(p + off, len - off, ssid, ch);
         for (int i = 0; i < nAps; i++)
             if (!memcmp(aps[i].bssid, p + off + 16, 6)) return;       // already known
         if (nAps < (int)(sizeof(aps) / sizeof(aps[0]))) {
@@ -293,7 +294,7 @@ int itlmt7925::m2Run()
     dev[8] = 1; dev[9] = 0;
     memcpy(dev + 10, mac, 6);
     rc = uniSend(MCU_UNI_DEV_INFO_UPDATE, dev, sizeof(dev), false, ev, sizeof(ev), &evl, 3000);
-    m2log("dev_info rc=%d status=%u cid=%02x", rc, evl >= 48 ? le32(ev + 44) : 0xdead, evl >= 41 ? ev[40] : 0);
+    m2log("dev_info rc=%d status=%u cid=%02x", rc, evl >= 52 ? le32(ev + 48) : 0xdead, evl >= 41 ? ev[40] : 0);
 
     // 3. BSS_INFO_UPDATE basic: {bss_idx, pad[3]} + mt76_connac_bss_basic_tlv (32 bytes)
     uint8_t bss[4 + 32];
@@ -312,7 +313,7 @@ int itlmt7925::m2Run()
     put16(b + 26, 19);               // sta_idx
     b[31] = 0;                       // link_idx
     rc = uniSend(MCU_UNI_BSS_INFO_UPDATE, bss, sizeof(bss), false, ev, sizeof(ev), &evl, 3000);
-    m2log("bss_info rc=%d status=%u cid=%02x", rc, evl >= 48 ? le32(ev + 44) : 0xdead, evl >= 41 ? ev[40] : 0);
+    m2log("bss_info rc=%d status=%u cid=%02x", rc, evl >= 52 ? le32(ev + 48) : 0xdead, evl >= 41 ? ev[40] : 0);
 
     // 4. SCAN_REQ: hdr{seq_num, bss_idx, pad[2]} + scan_req + ssid + bssid + channel + misc TLVs
     static uint8_t sc[4 + 20 + 368 + 16 + 136 + 12];
@@ -341,7 +342,7 @@ int itlmt7925::m2Run()
     w += 136;
     put16(w + 0, 14); put16(w + 2, 12);             // UNI_SCAN_MISC (random_mac left zero)
     rc = uniSend(MCU_UNI_SCAN_REQ, sc, sizeof(sc), false, ev, sizeof(ev), &evl, 3000);
-    m2log("scan_req rc=%d status=%u cid=%02x", rc, evl >= 48 ? le32(ev + 44) : 0xdead, evl >= 41 ? ev[40] : 0);
+    m2log("scan_req rc=%d status=%u cid=%02x", rc, evl >= 52 ? le32(ev + 48) : 0xdead, evl >= 41 ? ev[40] : 0);
 
     // 5. collect: events + beacons until SCAN_DONE (or 15 s)
     for (uint32_t ms = 0; ms < 15000; ms++) {
