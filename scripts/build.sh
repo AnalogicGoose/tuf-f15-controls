@@ -20,8 +20,9 @@ clang $COMMON -c src/kmod_info.c -o build/obj/kmod_info.o
 clang++ $COMMON -std=c++17 -fno-exceptions -fno-rtti -c src/itlmt7925.cpp -o build/obj/itlmt7925.o
 clang++ $COMMON -std=c++17 -fno-exceptions -fno-rtti -c src/itlmt7925_m1.cpp -o build/obj/itlmt7925_m1.o
 clang++ $COMMON -std=c++17 -fno-exceptions -fno-rtti -c src/itlmt7925_m2.cpp -o build/obj/itlmt7925_m2.o
+clang++ $COMMON -std=c++17 -fno-exceptions -fno-rtti -c src/itl_wpa.cpp -o build/obj/itl_wpa.o
 clang $COMMON -c src/fw_blob.c -o build/obj/fw_blob.o     # embeds fw/*.bin, path relative to repo root
-clang++ -arch x86_64 -mmacosx-version-min=12.0 -nostdlib -Xlinker -kext -Xlinker -no_data_const   -L"$SDK_DIR/Library/x86_64" -lkmodc++ -lkmod -lcc_kext   build/obj/kmod_info.o build/obj/itlmt7925.o build/obj/itlmt7925_m1.o build/obj/itlmt7925_m2.o build/obj/fw_blob.o   -o "$OUT/Contents/MacOS/itlmt7925"
+clang++ -arch x86_64 -mmacosx-version-min=12.0 -nostdlib -Xlinker -kext -Xlinker -no_data_const   -L"$SDK_DIR/Library/x86_64" -lkmodc++ -lkmod -lcc_kext   build/obj/kmod_info.o build/obj/itlmt7925.o build/obj/itlmt7925_m1.o build/obj/itlmt7925_m2.o build/obj/itl_wpa.o build/obj/fw_blob.o   -o "$OUT/Contents/MacOS/itlmt7925"
 
 echo "built $OUT"
 file "$OUT/Contents/MacOS/itlmt7925"
