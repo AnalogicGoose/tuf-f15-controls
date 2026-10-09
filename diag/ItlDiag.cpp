@@ -12,6 +12,9 @@
 #include <IOKit/IOBufferMemoryDescriptor.h>
 #include <IOKit/pci/IOPCIDevice.h>
 #include <IOKit/storage/IOMedia.h>
+#include <sys/vnode.h>
+#include <sys/fcntl.h>
+#include <sys/uio.h>
 #include <kern/clock.h>
 #include <mach/mach_time.h>
 #include <pexpert/pexpert.h>
@@ -34,16 +37,20 @@ OSDefineMetaClassAndStructors(ItlDiag, IOService)
 static char *txt;
 static size_t tlen;
 static bool tfull;
+static IOLock *txtLock;              // kbWorker and worker both append
 
 static void rawAppend(const char *s, size_t n)
 {
     if (!txt) return;
+    if (txtLock) IOLockLock(txtLock);
     if (tlen + n + 1 >= TXT_MAX) {
         if (!tfull) { tfull = true; const char *m = "\n[buffer full]\n"; size_t k = strlen(m); memcpy(txt + tlen, m, k); tlen += k; }
+        if (txtLock) IOLockUnlock(txtLock);
         return;
     }
     memcpy(txt + tlen, s, n);
     tlen += n;
+    if (txtLock) IOLockUnlock(txtLock);
 }
 
 static void fileLine(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
@@ -212,8 +219,32 @@ static void tryAttach(IOService *me)
     snprintf(attachMsg, sizeof(attachMsg), "media seen=%d, last: %s", seen, last);
 }
 
+// ---------------------------------------------------------------- plain file write through the mounted volume
+// Recovery's DiskArbitration mounts the stick as /Volumes/<label>. Writing through the filesystem needs no FAT parsing and
+// no exclusive IOMedia open, so it works where the raw path cannot. The whole text is rewritten each time.
+
+#define VFS_PATH "/Volumes/1401/ITLLOG.TXT"
+static bool vfsOk;
+static char vfsMsg[100] = "not tried";
+
+static void vfsFlush()
+{
+    if (!txt) return;
+    vfs_context_t ctx = vfs_context_current();
+    vnode_t vp = NULLVP;
+    errno_t e = vnode_open(VFS_PATH, O_CREAT | O_TRUNC | FWRITE, 0644, 0, &vp, ctx);
+    if (e) { vfsOk = false; snprintf(vfsMsg, sizeof(vfsMsg), "vnode_open %s err %d", VFS_PATH, (int)e); return; }
+    int resid = 0;
+    int len = (int)tlen;
+    e = vn_rdwr(UIO_WRITE, vp, (caddr_t)txt, len, 0, UIO_SYSSPACE, IO_SYNC | IO_NOCACHE, vfs_context_ucred(ctx), &resid, vfs_context_proc(ctx));
+    vnode_close(vp, FWRITE, ctx);
+    vfsOk = (e == 0 && resid == 0);
+    snprintf(vfsMsg, sizeof(vfsMsg), "%s: write %d bytes err %d resid %d", VFS_PATH, len, (int)e, resid);
+}
+
 static void flushLog()
 {
+    vfsFlush();
     if (!logMedia || !txt) return;
     size_t secs = (tlen + 511) / 512;
     if (secs * 512 > logCap) secs = (size_t)(logCap / 512);
@@ -333,6 +364,7 @@ static void collect()
     uint64_t dTsc = rdtsc_() - tsc0;
     add("clk cal=%llums mach=%llums tsc=%lluMHz", dCal, dAbs, dCal ? dTsc / (dCal * 1000ull) : 0ull);
     add("usblog: %s", attachMsg);
+    add("vfs: %s", vfsMsg);
 
     IORegistryIterator *it = IORegistryIterator::iterateOver(gIOServicePlane, kIORegistryIterateRecursively);
     if (!it) return;
@@ -465,7 +497,7 @@ static void timerProbe(void)
     IOSleep(100);
     uint64_t a1 = absNs(), c1 = calUs(), t1 = rdtsc_();
     uint64_t dc = (c1 - c0) / 1000;
-    IOLog("ItlDiag: probe sleep100: mach=%llums cal=%llums tsc=%lluMHz\n", (a1 - a0) / 1000000ull, dc, dc ? (t1 - t0) / (dc * 1000ull) : 0ull);
+    outLine("ItlDiag: probe sleep100: mach=%llums cal=%llums tsc=%lluMHz", (a1 - a0) / 1000000ull, dc, dc ? (t1 - t0) / (dc * 1000ull) : 0ull);
 }
 
 static void kbWorker(void *)
@@ -481,15 +513,47 @@ static void kbWorker(void *)
     }
 }
 
-// Runs on its own thread so the boot is never held up. Polls (1 s steps) until the USB log file is found, then writes
-// a snapshot immediately and two more a few seconds apart (the last one includes the registry tree).
+// itlmt7925 keeps its stage log in the registry ("m0-log" at probe, "m1-log" for the firmware download); copy any that
+// grew into the file so the M1 result is on the stick even if nothing could be typed in Recovery.
+static void copyKextLogs()
+{
+    static size_t seen0, seen1;
+    IORegistryIterator *it = IORegistryIterator::iterateOver(gIOServicePlane, kIORegistryIterateRecursively);
+    if (!it) return;
+    IORegistryEntry *e;
+    while ((e = it->getNextObject())) {
+        static const char *keys[2] = { "m0-log", "m1-log" };
+        size_t *seen[2] = { &seen0, &seen1 };
+        for (int k = 0; k < 2; k++) {
+            OSString *v = OSDynamicCast(OSString, e->getProperty(keys[k]));
+            if (!v) continue;
+            const char *m = v->getCStringNoCopy();
+            size_t n = strlen(m);
+            if (n == *seen[k]) continue;
+            *seen[k] = n;
+            fileLine("---- %s (%lu bytes) ----", keys[k], (unsigned long)n);
+            for (size_t o = 0; o < n; o += 100) {
+                char seg[104];
+                strlcpy(seg, m + o, 101);
+                fileLine("%s", seg);
+            }
+        }
+    }
+    it->release();
+}
+
+// Runs on its own thread so the boot is never held up. Polls (1 s steps) until some write path works (filesystem write
+// to the mounted stick, or the raw FAT file), then writes a snapshot immediately and two more a few seconds apart (the
+// last one includes the registry tree), then keeps appending (timer probes, M1 log) for ~20 minutes.
 static void worker(void *arg)
 {
     IOService *me = (IOService *)arg;
     uint32_t maxWait = 0;
-    PE_parse_boot_argn("itldiag", &maxWait, sizeof(maxWait));    // seconds to keep looking for the USB file
+    PE_parse_boot_argn("itldiag", &maxWait, sizeof(maxWait));    // seconds to keep looking for a place to write
 
-    for (uint32_t i = 0; i < maxWait && !logMedia; i++) {
+    for (uint32_t i = 0; i < maxWait && !logMedia && !vfsOk; i++) {
+        vfsFlush();
+        if (vfsOk) break;
         tryAttach(me);
         if (!logMedia) IOSleep(1000);
     }
@@ -503,21 +567,28 @@ static void worker(void *arg)
         if (n == 2) dumpTree();
         flushLog();
     }
-    outLine("ItlDiag: done (usblog: %s)", attachMsg);
+    outLine("ItlDiag: done (usblog: %s | vfs: %s)", attachMsg, vfsMsg);
     flushLog();
+    for (int pass = 0; pass < 120; pass++) {
+        IOSleep(10000);
+        if (!logMedia && !vfsOk) tryAttach(me);
+        copyKextLogs();
+        flushLog();
+    }
 }
 
 bool ItlDiag::start(IOService *provider)
 {
     if (!super::start(provider)) return false;
 
-    IOCreateThread(kbWorker, this);
-
     uint32_t hold = 0;
-    if (!PE_parse_boot_argn("itldiag", &hold, sizeof(hold)) || !hold) return true;
-
-    txt = (char *)IOMalloc(TXT_MAX);
-    if (txt) bzero(txt, TXT_MAX);
+    if (PE_parse_boot_argn("itldiag", &hold, sizeof(hold)) && hold) {
+        txtLock = IOLockAlloc();
+        txt = (char *)IOMalloc(TXT_MAX);
+        if (txt) bzero(txt, TXT_MAX);
+    }
+    IOCreateThread(kbWorker, this);
+    if (!hold) return true;
 
     tsc0 = rdtsc_();
     abs0ns = absNs();
