@@ -1013,6 +1013,20 @@ static void panicDigest()
 // (scripts/read-nvram.ps1, elevated). Works even when no USB write path does.
 static void nvramPut(const char *name, const char *s, size_t n)
 {
+    // The firmware variable store only reclaims deleted copies at boot, so rewriting 14 variables every 10 s fills it up and
+    // later writes fail silently. Skip writes whose content did not change.
+    static struct { char nm[8]; uint32_t h; } seen[32];
+    uint32_t h = 2166136261u;
+    for (size_t i = 0; i < n; i++) { h ^= (uint8_t)s[i]; h *= 16777619u; }
+    h ^= (uint32_t)n;
+    for (int i = 0; i < 32; i++) {
+        if (!seen[i].nm[0]) { strlcpy(seen[i].nm, name, sizeof(seen[i].nm)); seen[i].h = h; break; }
+        if (strncmp(seen[i].nm, name, sizeof(seen[i].nm)) == 0) {
+            if (seen[i].h == h) return;
+            seen[i].h = h;
+            break;
+        }
+    }
     IORegistryEntry *o = IORegistryEntry::fromPath("/options", gIODTPlane);
     if (!o) return;
     OSData *d = OSData::withBytes(s, (unsigned)n);
