@@ -32,7 +32,13 @@ static const char *firstChildClass(IORegistryEntry *e)
     return r;
 }
 
-static bool hasStr(const char *h, const char *n) { return h && strstr(h, n) != nullptr; }
+static bool hasStr(const char *h, const char *n)
+{
+    if (!h) return false;
+    size_t nl_ = strlen(n);
+    for (; *h; h++) if (!strncmp(h, n, nl_)) return true;
+    return false;
+}
 
 static void collect()
 {
