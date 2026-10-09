@@ -1,5 +1,5 @@
 #!/bin/sh
-# Run from Recovery Terminal:  diskutil mount $(diskutil list | awk '/ 1401 /{print $NF}'); sh /Volumes/1401/dump.sh
+# Recovery Terminal (stick auto-mounts as /Volumes/1401, MBR FAT32):  sh /Volumes/1401/d
 OUT=/Volumes/1401/dump
 mkdir -p "$OUT" || { echo "stick not mounted at /Volumes/1401"; exit 1; }
 cd "$OUT" || exit 1
