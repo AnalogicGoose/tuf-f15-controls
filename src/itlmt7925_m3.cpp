@@ -385,6 +385,10 @@ int itlmt7925::m3Run()
 
     // The scan already ran (M2). Anything captured so far came from it; if the target is missing there is nothing to join.
     for (int i = 0; i < 20 && !tgtFound; i++) { rxDataPoll(); IOSleep(100); }
+    for (int attempt = 1; attempt <= 2 && !tgtFound; attempt++) {
+        m3log("rescan #%d (directed) ", attempt);
+        m2Scan(m3ssid);
+    }
     m3Publish("scan");
     if (!tgtFound) { m3log("target ssid not seen in the scan"); return ITL_EIO; }
     m3log("target %02x:%02x:%02x:%02x:%02x:%02x ch=%u cap=%04x bi=%u ies=%u", tgtBssid[0], tgtBssid[1], tgtBssid[2],

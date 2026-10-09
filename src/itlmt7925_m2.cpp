@@ -188,6 +188,7 @@ void itlmt7925::rxParseFrame(const uint8_t *p, uint32_t len)
             if (ssid[i] < 0x20 || ssid[i] > 0x7e) ssid[i] = '?';
 
         rxBeacons++;
+        if (ch < sizeof(chHist)) chHist[ch]++;
         m3Capture(p + off, len - off, ssid, ch);
         for (int i = 0; i < nAps; i++)
             if (!memcmp(aps[i].bssid, p + off + 16, 6)) return;       // already known
@@ -231,16 +232,86 @@ void itlmt7925::m2Publish()
 {
     size_t n = 0;
     m2res[0] = 0;
-    n += snprintf(m2res + n, sizeof(m2res) - n, "rx=%u bcn=%u oth=%u ap=%d sd=%d:", rxPkts, rxBeacons, rxOther, nAps,
-                  scanDone ? 1 : 0);
+    n += snprintf(m2res + n, sizeof(m2res) - n, "rx=%u bcn=%u oth=%u ap=%d sd=%d@%ums h:", rxPkts, rxBeacons, rxOther, nAps,
+                  scanDone ? 1 : 0, scanMs);
+    for (unsigned c = 0; c < sizeof(chHist) && n + 12 < sizeof(m2res); c++)
+        if (chHist[c]) n += snprintf(m2res + n, sizeof(m2res) - n, "%u=%u,", c, chHist[c]);
+    n += snprintf(m2res + n, sizeof(m2res) - n, ":");
     for (int i = 0; i < nAps && n + 40 < sizeof(m2res); i++)
         n += snprintf(m2res + n, sizeof(m2res) - n, " %s/%u/%02x%02x", aps[i].ssid, aps[i].ch, aps[i].bssid[4],
                       aps[i].bssid[5]);
     setProperty("m2-res", m2res);
 }
 
-// ---------------------------------------------------------------------------------------------
 // Scan sequence
+// ---------------------------------------------------------------------------------------------
+int itlmt7925::m2Scan(const char *ssidArg)
+{
+    static uint8_t ev[512];
+    uint32_t evl = 0;
+    int rc;
+    const uint8_t *e; uint32_t l; int bi;
+    scanDone = false;
+    bzero(chHist, sizeof(chHist));
+    // SCAN_REQ: hdr{seq_num, bss_idx, pad[2]} + scan_req + ssid + bssid + channel + misc TLVs
+    static uint8_t sc[4 + 20 + 368 + 16 + 136 + 12];
+    bzero(sc, sizeof(sc));
+    uint8_t *w = sc;
+    w[0] = (uint8_t)(++scanSeq & 0x7f) | 0x80;                 // seq_num | band_idx << 7 (band_idx 0xff truncates to 0x80)
+    w[1] = 0;                        // bss_idx
+    w += 4;
+    put16(w + 0, 1); put16(w + 2, 20);              // UNI_SCAN_REQ
+    w[4] = 1;                                         // active scan
+    w[5] = 2;                                         // probe_req_num
+    w[6] = 1u << 5;                                   // SCAN_FUNC_SPLIT_SCAN
+    w += 20;
+    put16(w + 0, 10); put16(w + 2, 368);            // UNI_SCAN_SSID
+    if (ssidArg && ssidArg[0]) {                        // directed probe request
+        w[4] = 1u << 2; w[5] = 1;                       // ssid_type: specific, ssids_num
+        uint32_t sl = (uint32_t)strlen(ssidArg);
+        put32(w + 8, sl);
+        memcpy(w + 12, ssidArg, sl);
+    } else w[4] = 1;                                    // ssid_type: wildcard
+    w += 368;
+    put16(w + 0, 11); put16(w + 2, 16);             // UNI_SCAN_BSSID
+    memset(w + 4, 0xff, 6);
+    w += 16;
+    put16(w + 0, 12); put16(w + 2, 136);            // UNI_SCAN_CHANNEL
+    static const uint8_t chans[][2] = { {1, 1}, {1, 6}, {1, 11}, {2, 36}, {2, 40}, {2, 44}, {2, 48}, {2, 149}, {2, 153},
+                                        {2, 157}, {2, 161} };
+    w[4] = 4;                                         // specified channels
+    w[5] = sizeof(chans) / sizeof(chans[0]);
+    for (unsigned i = 0; i < sizeof(chans) / sizeof(chans[0]); i++) { w[8 + 2 * i] = chans[i][0]; w[9 + 2 * i] = chans[i][1]; }
+    w += 136;
+    put16(w + 0, 14); put16(w + 2, 12);             // UNI_SCAN_MISC (random_mac left zero)
+    rc = uniSend(MCU_UNI_SCAN_REQ, sc, sizeof(sc), false, ev, sizeof(ev), &evl, 3000);
+    m2log("scan_req rc=%d status=%u cid=%02x", rc, evl >= 52 ? le32(ev + 48) : 0xdead, evl >= 41 ? ev[40] : 0);
+
+    scanMs = 0;
+    // 5. collect: events + beacons until SCAN_DONE (or 15 s)
+    for (uint32_t ms = 0; ms < 15000; ms++) {
+        rxDataPoll();
+        while (ringPeek(rxEvt, &e, &l, &bi)) {
+            if (rxIsFrame(e, l)) { rxPkts++; rxFrameDump(e, l); rxParseFrame(e, l); ringRelease(rxEvt, bi); continue; }
+            if (l >= 44 && e[36] != 0x04 && evLogged++ < 12) m2log("ev eid=%02x seq=%u len=%u", e[36], e[37], l);
+            if (l >= 44 && e[36] == UNI_EVENT_SCAN_DONE) scanDone = true;
+            m3Event(e, l);
+            ringRelease(rxEvt, bi);
+        }
+        if (scanDone && !scanMs) scanMs = ms;
+        if (scanDone) {
+            // a little extra time for beacons still in flight
+            for (int i = 0; i < 300; i++) { rxDataPoll(); IODelay(1000); }
+            break;
+        }
+        if ((ms % 1000) == 999) m2Publish();
+        IODelay(1000);
+    }
+    m2Publish();
+    m2log("scan finished done=%d@%ums rx=%u bcn=%u aps=%d", scanDone ? 1 : 0, scanMs, rxPkts, rxBeacons, nAps);
+    return rc;
+}
+
 // ---------------------------------------------------------------------------------------------
 int itlmt7925::m2Run()
 {
@@ -316,53 +387,7 @@ int itlmt7925::m2Run()
     rc = uniSend(MCU_UNI_BSS_INFO_UPDATE, bss, sizeof(bss), false, ev, sizeof(ev), &evl, 3000);
     m2log("bss_info rc=%d status=%u cid=%02x", rc, evl >= 52 ? le32(ev + 48) : 0xdead, evl >= 41 ? ev[40] : 0);
 
-    // 4. SCAN_REQ: hdr{seq_num, bss_idx, pad[2]} + scan_req + ssid + bssid + channel + misc TLVs
-    static uint8_t sc[4 + 20 + 368 + 16 + 136 + 12];
-    bzero(sc, sizeof(sc));
-    uint8_t *w = sc;
-    w[0] = 1 | 0x80;                 // seq_num | band_idx << 7 (band_idx 0xff truncates to 0x80)
-    w[1] = 0;                        // bss_idx
-    w += 4;
-    put16(w + 0, 1); put16(w + 2, 20);              // UNI_SCAN_REQ
-    w[4] = 1;                                         // active scan
-    w[5] = 2;                                         // probe_req_num
-    w[6] = 1u << 5;                                   // SCAN_FUNC_SPLIT_SCAN
-    w += 20;
-    put16(w + 0, 10); put16(w + 2, 368);            // UNI_SCAN_SSID
-    w[4] = 1;                                         // ssid_type: wildcard
-    w += 368;
-    put16(w + 0, 11); put16(w + 2, 16);             // UNI_SCAN_BSSID
-    memset(w + 4, 0xff, 6);
-    w += 16;
-    put16(w + 0, 12); put16(w + 2, 136);            // UNI_SCAN_CHANNEL
-    static const uint8_t chans[][2] = { {1, 1}, {1, 6}, {1, 11}, {2, 36}, {2, 40}, {2, 44}, {2, 48}, {2, 149}, {2, 153},
-                                        {2, 157}, {2, 161} };
-    w[4] = 4;                                         // specified channels
-    w[5] = sizeof(chans) / sizeof(chans[0]);
-    for (unsigned i = 0; i < sizeof(chans) / sizeof(chans[0]); i++) { w[8 + 2 * i] = chans[i][0]; w[9 + 2 * i] = chans[i][1]; }
-    w += 136;
-    put16(w + 0, 14); put16(w + 2, 12);             // UNI_SCAN_MISC (random_mac left zero)
-    rc = uniSend(MCU_UNI_SCAN_REQ, sc, sizeof(sc), false, ev, sizeof(ev), &evl, 3000);
-    m2log("scan_req rc=%d status=%u cid=%02x", rc, evl >= 52 ? le32(ev + 48) : 0xdead, evl >= 41 ? ev[40] : 0);
-
-    // 5. collect: events + beacons until SCAN_DONE (or 15 s)
-    for (uint32_t ms = 0; ms < 15000; ms++) {
-        rxDataPoll();
-        while (ringPeek(rxEvt, &e, &l, &bi)) {
-            if (rxIsFrame(e, l)) { rxPkts++; rxFrameDump(e, l); rxParseFrame(e, l); ringRelease(rxEvt, bi); continue; }
-            if (l >= 44 && e[36] != 0x04) m2log("ev eid=%02x seq=%u len=%u", e[36], e[37], l);
-            if (l >= 44 && e[36] == UNI_EVENT_SCAN_DONE) scanDone = true;
-            ringRelease(rxEvt, bi);
-        }
-        if (scanDone) {
-            // a little extra time for beacons still in flight
-            for (int i = 0; i < 300; i++) { rxDataPoll(); IODelay(1000); }
-            break;
-        }
-        if ((ms % 1000) == 999) m2Publish();
-        IODelay(1000);
-    }
-    m2Publish();
-    m2log("scan finished done=%d rx=%u bcn=%u aps=%d", scanDone ? 1 : 0, rxPkts, rxBeacons, nAps);
+    if (m3On) m3HwPrep();            // channel domain must be known to the firmware before it scans (Linux sends it at start)
+    rc = m2Scan(nullptr);
     return rc;
 }

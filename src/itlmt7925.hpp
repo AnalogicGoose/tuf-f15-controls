@@ -80,6 +80,10 @@ private:
     uint32_t fwLogCnt = 0;
     void m2Publish();
     int  m2Run();
+    int  m2Scan(const char *ssid);
+    uint8_t scanSeq = 0;
+    uint32_t scanMs = 0, evLogged = 0;
+    uint8_t chHist[200] = {0};
     char m2buf[2048] = {0};
     size_t m2len = 0;
     char m2res[400] = {0};
