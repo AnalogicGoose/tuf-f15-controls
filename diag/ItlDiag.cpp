@@ -755,8 +755,30 @@ static void nvramPut(const char *name, const char *s, size_t n)
     o->release();
 }
 
+// itlm0 / itlm1: tail of the itlmt7925 stage logs (M0 probe, M1 firmware download), same registry properties copyKextLogs reads.
+static void nvramKextLogs()
+{
+    IORegistryIterator *it = IORegistryIterator::iterateOver(gIOServicePlane, kIORegistryIterateRecursively);
+    if (!it) return;
+    IORegistryEntry *e;
+    static const char *keys[2] = { "m0-log", "m1-log" };
+    static const char *vars[2] = { "itlm0", "itlm1" };
+    while ((e = it->getNextObject())) {
+        for (int k = 0; k < 2; k++) {
+            OSString *v = OSDynamicCast(OSString, e->getProperty(keys[k]));
+            if (!v) continue;
+            const char *m = v->getCStringNoCopy();
+            size_t n = strlen(m);
+            size_t from = n > 380 ? n - 380 : 0;
+            nvramPut(vars[k], m + from, n - from);
+        }
+    }
+    it->release();
+}
+
 static void nvramDigest(int n)
 {
+    nvramKextLogs();
     buildDigest();
     char hdr[32];
     snprintf(hdr, sizeof(hdr), "n=%d ", n);
@@ -804,7 +826,7 @@ static void worker(void *arg)
         if (panicSec && (absNs() - abs0ns) / 1000000000ull >= panicSec) panicDigest();
         if (!logMedia && !vfsOk) tryAttach(me);
         screenBlock(100 + pass);
-        if (pass % 3 == 0) nvramDigest(100 + pass);
+        nvramDigest(100 + pass);
         copyKextLogs();
         flushLog();
     }
