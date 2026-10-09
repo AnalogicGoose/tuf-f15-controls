@@ -110,6 +110,7 @@ void itlmt7925::holdLog()
 bool itlmt7925::start(IOService *provider)
 {
     if (!super::start(provider)) return false;
+    uint32_t m1 = 0;
 
     pci = OSDynamicCast(IOPCIDevice, provider);
     if (!pci) { IOLog("itlmt7925: provider is not IOPCIDevice\n"); return false; }
@@ -143,7 +144,6 @@ bool itlmt7925::start(IOService *provider)
     registerService();
 
     // M1 only runs when asked for: boot-arg itlmt_m1=<seconds to wait before touching DMA/firmware>
-    uint32_t m1 = 0;
     if (PE_parse_boot_argn("itlmt_m1", &m1, sizeof(m1)) && !m1Started) {
         m1Started = true;
         IOCreateThread(m1Thread, this);
