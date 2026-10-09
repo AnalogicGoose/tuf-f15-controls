@@ -73,6 +73,7 @@ void itlmt7925::note(const char *fmt, uint32_t a, uint32_t b, uint32_t c)
         logbuf[loglen++] = ';';
         logbuf[loglen] = 0;
     }
+    setProperty("m0-log", logbuf);   // visible to ItlDiag / ioreg
     nvramLog(logbuf);
 }
 
