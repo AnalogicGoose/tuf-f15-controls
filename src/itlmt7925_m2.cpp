@@ -346,9 +346,12 @@ int itlmt7925::m2Run()
         m2log("nic capa retry rc=%d evlen=%u", rc, evl);
     }
     bool gotMac = false;
-    if (rc == 0 && evl > 44) {
-        const uint8_t *q = ev + 40;
+    // The event is rxd (44 bytes) + {n_element, rsv[2]} + TLVs {tag, len, data}; try neighbouring bases in case the layout differs.
+    static const uint8_t bases[3] = {44, 40, 48};
+    for (int bi2 = 0; rc == 0 && !gotMac && bi2 < 3; bi2++) {
+        const uint8_t *q = ev + bases[bi2];
         const uint8_t *end = ev + evl;
+        if (q + 4 > end) continue;
         uint16_t n = q[0] | (q[1] << 8);
         q += 4;
         for (uint16_t i = 0; i < n && q + 4 <= end; i++) {
@@ -357,7 +360,12 @@ int itlmt7925::m2Run()
             if (tag == MT_NIC_CAP_MAC_ADDR && tl >= 10) { memcpy(mac, q + 4, 6); gotMac = true; }
             q += tl;
         }
+        if (gotMac) m2log("nic capa base=%u n=%u", bases[bi2], n);
     }
+    if (!gotMac && rc == 0)
+        m2log("nic capa hex@40: %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x %02x%02x%02x%02x",
+              ev[40], ev[41], ev[42], ev[43], ev[44], ev[45], ev[46], ev[47], ev[48], ev[49], ev[50], ev[51], ev[52], ev[53],
+              ev[54], ev[55], ev[56], ev[57], ev[58], ev[59], ev[60], ev[61], ev[62], ev[63]);
     if (!gotMac) { static const uint8_t def[6] = {0x02, 0x11, 0x22, 0x33, 0x44, 0x55}; memcpy(mac, def, 6); }
     m2log("mac=%02x:%02x:%02x:%02x:%02x:%02x%s", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], gotMac ? "" : " (default)");
 

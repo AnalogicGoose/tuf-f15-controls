@@ -384,7 +384,7 @@ bool itlmt7925::m3Tx(const uint8_t *frame, uint32_t len, uint8_t type, uint8_t s
     put32(w + 4, M3_AP_WCID | (2u << 14) | ((24u / 2) << 16) | (1u << 31));   // wlan idx, HDR_FORMAT=802.11, HDR_INFO, FIXED_RATE
     put32(w + 8, ((uint32_t)type << 4) | subtype);
     put32(w + 12, (15u << 11) | (1u << 28));                     // REM_TX_COUNT=15, BA_DISABLE (fixed rate)
-    put32(w + 20, 1);                                            // PID = MT_PACKET_ID_NO_SKB
+    put32(w + 20, 3 | (1u << 10));                               // PID = MT_PACKET_ID_FIRST, TX_STATUS_HOST: report completion
     put32(w + 24, (1u << 2) | (1u << 4) | (1u << 3) | ((uint32_t)M3_RATE_IDX << 16));   // DAS, MSDU_CNT=1, DIS_MAT, TX_RATE
 
     m3tok = (m3tok + 1) & 0x1fff;
@@ -412,6 +412,12 @@ bool itlmt7925::m3Tx(const uint8_t *frame, uint32_t len, uint8_t type, uint8_t s
 // Looks for a management frame (header after the RXD groups) from the AP to us whose fc byte 0 is m3wantFc.
 bool itlmt7925::m3RxMgmt(const uint8_t *p, uint32_t len)
 {
+    uint32_t pt = len >= 8 ? le32(p) >> 27 : 0;
+    if ((pt == 0 || pt == 6) && len >= 24 && m3rxOther < 8) {      // TXS / TXRX_NOTIFY: did the firmware transmit our frame?
+        m3rxOther++;
+        m3log("rx pt=%u len=%u %08x %08x %08x %08x %08x %08x", pt, len, le32(p), le32(p + 4), le32(p + 8), le32(p + 12),
+              le32(p + 16), le32(p + 20));
+    }
     if (len < 32 + 24 || m3rxLen) return false;
     for (uint32_t off = 32; off + 24 <= len && off < 160; off++) {
         if (p[off] != m3wantFc) continue;
@@ -421,6 +427,15 @@ bool itlmt7925::m3RxMgmt(const uint8_t *p, uint32_t len)
         memcpy(m3rx, p + off, n);
         m3rxLen = n;
         return true;
+    }
+    // Anything else coming from the AP while we wait (not beacons / probe responses): log a few for diagnosis
+    static int dumped = 0;
+    for (uint32_t off = 32; dumped < 6 && off + 24 <= len && off < 160; off++) {
+        if (memcmp(p + off + 10, tgtBssid, 6) != 0 || p[off] == 0x80 || p[off] == 0x50 || p[off + 1] > 0x7f) continue;
+        dumped++;
+        m3log("other frame off=%u fc=%02x%02x a1=%02x%02x%02x%02x%02x%02x len=%u", off, p[off], p[off + 1], p[off + 4],
+              p[off + 5], p[off + 6], p[off + 7], p[off + 8], p[off + 9], len);
+        break;
     }
     return false;
 }
