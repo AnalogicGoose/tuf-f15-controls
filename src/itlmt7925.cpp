@@ -8,13 +8,13 @@ OSDefineMetaClassAndStructors(itlmt7925, IOService)
 uint32_t itlmt7925::rd(uint32_t off)
 {
     if (!regs || off + 4 > barSize) return 0xffffffffu;
-    return OSReadLittleEndian32(regs + off);
+    return *(volatile uint32_t *)(regs + off);   // x86 is little endian
 }
 
 void itlmt7925::wr(uint32_t off, uint32_t val)
 {
     if (!regs || off + 4 > barSize) return;
-    OSWriteLittleEndian32((volatile void *)(regs + off), val);
+    *(volatile uint32_t *)(regs + off) = val;
 }
 
 // Only the addresses M0 needs. The full table is in mt7925/pci.c (__mt7925_reg_addr).

@@ -5,7 +5,6 @@
 #include <IOKit/pci/IOPCIDevice.h>
 #include <IOKit/IOMemoryDescriptor.h>
 #include <IOKit/IOLib.h>
-#include <libkern/OSByteOrder.h>
 
 class itlmt7925 : public IOService {
     OSDeclareDefaultStructors(itlmt7925)
