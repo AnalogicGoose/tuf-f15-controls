@@ -581,6 +581,9 @@ struct Xhc {
     uint32_t lastCmd, samples, rises, maxMs, slow, curMs, erdpCh, dead, lastSts, lastIman, lastErdp;
     uint64_t riseNs;
     bool up;
+    // interrupters 1..3: does an interrupter other than 0 ever raise its interrupt (IMAN.IP) or get its ring serviced?
+    uint32_t maxIntr;
+    struct Intr { uint32_t erstsz, iman, erdp, last, chg, rises, maxMs, ehb; uint64_t riseNs; bool up; } in[4];
 };
 static Xhc xh[8];
 static int nxh;
@@ -608,6 +611,7 @@ static void xhcInit()
                 x.op = *(volatile uint32_t *)x.b & 0xff;
                 x.rt = *(volatile uint32_t *)(x.b + 0x18) & ~0x1fu;
                 if (x.op < 0x10 || x.op > 0x100 || !x.rt || x.rt > 0x10000) x.b = nullptr;
+                else x.maxIntr = (*(volatile uint32_t *)(x.b + 4) >> 8) & 0x7ff;
             }
         }
         nxh++;
@@ -844,6 +848,24 @@ static void sampler(void *)
                 if (ms >= 20) x.slow++;
             }
             x.curMs = x.up ? (uint32_t)((now - x.riseNs) / 1000000ull) : 0;
+            for (uint32_t k = 1; k < 4 && k < x.maxIntr; k++) {
+                Xhc::Intr &s = x.in[k];
+                uint32_t base = x.rt + 0x20 + 0x20 * k;
+                s.erstsz = rd32(x, base + 8) & 0xffff;
+                s.iman = rd32(x, base);
+                uint32_t ed = rd32(x, base + 0x18);
+                s.erdp = ed & ~0xfu;
+                s.ehb = (ed >> 3) & 1;
+                if (s.erstsz && s.last && s.erdp != s.last) s.chg++;
+                s.last = s.erdp;
+                bool ip = s.iman & 1;
+                if (ip && !s.up) { s.up = true; s.riseNs = now; s.rises++; }
+                else if (!ip && s.up) {
+                    s.up = false;
+                    uint32_t ms = (uint32_t)((now - s.riseNs) / 1000000ull);
+                    if (ms > s.maxMs) s.maxMs = ms;
+                }
+            }
             if (x.samples > 1 && erdp != last[i]) x.erdpCh++;
             last[i] = erdp;
             xrPoll(i, now, start);
@@ -1151,11 +1173,31 @@ static void nvramHid()
     }
 }
 
+// itli0: per xHCI, number of interrupters and for interrupters 1..3 {ERST size, IMAN, ERDP, ERDP changes, IP rises, longest IP ms}.
+// macOS spreads devices over several interrupters; an AMD xHCI with a single MSI vector may never signal the extra ones.
+static void nvramIntr()
+{
+    char b[400];
+    int o = 0;
+    for (int i = 0; i < nxh && o + 110 < (int)sizeof(b); i++) {
+        Xhc &x = xh[i];
+        if (!x.b) continue;
+        o += snprintf(b + o, sizeof(b) - o, "X%d mi=%u", i, x.maxIntr);
+        for (uint32_t k = 1; k < 4 && k < x.maxIntr; k++) {
+            Xhc::Intr &s = x.in[k];
+            o += snprintf(b + o, sizeof(b) - o, " %u:z%u,im%x,eh%u,c%u,r%u,m%u", k, s.erstsz, s.iman, s.ehb, s.chg, s.rises, s.maxMs);
+        }
+        o += snprintf(b + o, sizeof(b) - o, " | ");
+    }
+    nvramPut("itli0", b, strlen(b));
+}
+
 static void nvramDigest(int n)
 {
     nvramKextLogs();
     nvramTiming();
     nvramHid();
+    nvramIntr();
     nvramXrep();
     buildDigest();
     char hdr[32];

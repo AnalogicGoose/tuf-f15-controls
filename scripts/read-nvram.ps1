@@ -27,7 +27,7 @@ public static class Fw {
 }
 '@
 if (-not [Fw]::Priv()) { Write-Host "need an elevated (Administrator) PowerShell"; exit 1 }
-if (-not $Names) { $Names = @('boot-args') + @('itl0','itl1','itl2','itl3','itlm0','itlm1','itlm2','itlm4','itlm5','itlm3','itln0','itln1','itln2','itln3','itln4','itlt0','itlt1','itly0','itly1','itly2','itlx0','itlx1','itlx2','itlx3') }
+if (-not $Names) { $Names = @('boot-args') + @('itl0','itl1','itl2','itl3','itlm0','itlm1','itlm2','itlm4','itlm5','itlm3','itln0','itln1','itln2','itln3','itln4','itlt0','itlt1','itli0','itly0','itly1','itly2','itlx0','itlx1','itlx2','itlx3') }
 foreach ($n in $Names) {
     $v = [Fw]::Get($n, '{7C436110-AB2A-4BBB-A880-FE41995C9F82}')
     if ($null -eq $v) { Write-Host "[$n] -" } else { Write-Host "[$n] $v" }
