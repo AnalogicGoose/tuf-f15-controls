@@ -13,6 +13,7 @@
 #include <IOKit/pci/IOPCIDevice.h>
 #include <IOKit/storage/IOMedia.h>
 #include <sys/vnode.h>
+#include <sys/proc.h>
 #include <sys/fcntl.h>
 #include <sys/uio.h>
 #include <kern/clock.h>
@@ -227,9 +228,20 @@ static void tryAttach(IOService *me)
 static bool vfsOk;
 static char vfsMsg[100] = "not tried";
 
+// The VFS (root vnode, namei locks) is only usable once launchd runs; calling vnode_open from a kext start() thread at
+// 0.7 s uptime panicked in namei(). pid 1 existing is the guard.
+static bool bsdReady()
+{
+    proc_t p = proc_find(1);
+    if (!p) return false;
+    proc_rele(p);
+    return true;
+}
+
 static void vfsFlush()
 {
     if (!txt) return;
+    if (!bsdReady()) { snprintf(vfsMsg, sizeof(vfsMsg), "waiting for launchd"); return; }
     vfs_context_t ctx = vfs_context_current();
     vnode_t vp = NULLVP;
     errno_t e = vnode_open(VFS_PATH, O_CREAT | O_TRUNC | FWRITE, 0644, 0, &vp, ctx);
