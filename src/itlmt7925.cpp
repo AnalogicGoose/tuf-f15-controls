@@ -86,6 +86,27 @@ void itlmt7925::nvramLog(const char *msg)
     opt->release();
 }
 
+// Whole m3 log in 380 byte pieces (itlk0..itlk4), written only when a piece changed. Lets the log reach Windows even when
+// ItlDiag is disabled (it is the thing under suspicion for the input lag).
+void itlmt7925::nvramChunks(const char *buf)
+{
+    static char last[5][384];
+    IORegistryEntry *opt = IORegistryEntry::fromPath("/options", gIODTPlane);
+    if (!opt) return;
+    size_t len = strlen(buf);
+    for (int c = 0; c < 5 && (size_t)c * 380 < len; c++) {
+        char piece[384], name[8];
+        size_t from = (size_t)c * 380, n = len - from > 380 ? 380 : len - from;
+        memcpy(piece, buf + from, n);
+        piece[n] = 0;
+        if (strcmp(piece, last[c]) == 0) continue;
+        strlcpy(last[c], piece, sizeof(last[c]));
+        snprintf(name, sizeof(name), "itlk%d", c);
+        opt->setProperty(name, piece);
+    }
+    opt->release();
+}
+
 void itlmt7925::dumpState()
 {
     uint32_t chip = rdMapped(MT_HW_CHIPID);

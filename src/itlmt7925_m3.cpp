@@ -33,6 +33,7 @@ void itlmt7925::m3log(const char *fmt, ...)
     }
     setProperty("m3-log", m3buf);
     nvramLog(tmp);                            // last step survives a hang or reboot (variable itlmt7925-log)
+    nvramChunks(m3buf);                       // and the whole log (itlk0..itlk4)
 }
 
 void itlmt7925::m3Publish(const char *stage)
@@ -121,6 +122,14 @@ void itlmt7925::m3Pump(uint32_t ms)
 // Unsolicited firmware events we care about.
 void itlmt7925::m3Event(const uint8_t *ev, uint32_t len)
 {
+    if (m3On && len > 48 && ev[36] == 0x04 && m3fwLogged < 24 && (m3wantFc || m3fwLogged < 6)) {   // firmware log text
+        m3fwLogged++;
+        char t[96];
+        uint32_t k = 0;
+        for (uint32_t i = 44; i < len && k < sizeof(t) - 1; i++) t[k++] = (ev[i] >= 0x20 && ev[i] < 0x7f) ? (char)ev[i] : '.';
+        t[k] = 0;
+        m3log("fw: %s", t);
+    }
     if (!m3On || len < 55) return;
     if (ev[36] == UNI_ROC) {                  // ROC grant: TLV at 48 {tag, len, bss_idx, tokenid, status}
         rocTok = ev[53];
@@ -177,6 +186,17 @@ int itlmt7925::m3HwPrep()
     wrA(MT_MDP_DCR1, (v & ~0xfff8u) | (1536u & 0xfff8u));
     wrA(MT_MDP_DCR0, rdA(MT_MDP_DCR0) | MT_MDP_DCR0_DAMSDU_EN);
     m3log("mdp dcr0=%08x dcr1=%08x", rdA(MT_MDP_DCR0), rdA(MT_MDP_DCR1));
+
+    if (!m3hw) {
+        // steps the Linux driver does once after the firmware runs: firmware log to host, eeprom = efuse, RTS threshold
+        m3hw = true;
+        static const uint8_t fwlog[12] = {0, 0, 0, 0, 0, 0, 8, 0, 1, 0, 0, 0};            // UNI_WSYS_CONFIG_FW_LOG_CTRL, ctrl 1
+        static const uint8_t eeprom[12] = {0, 0, 0, 0, 2, 0, 8, 0, 0, 0, 0, 0};          // UNI_EFUSE_BUFFER_MODE: efuse, whole
+        static const uint8_t rts[16] = {0, 0, 0, 0, 8, 0, 12, 0, 0x2b, 0x09, 0, 0, 2, 0, 0, 0};   // band 0, len 0x92b, pkt 2
+        m3Cmd(0x0b, fwlog, sizeof(fwlog), "fw_log");
+        m3Cmd(0x2d, eeprom, sizeof(eeprom), "eeprom(efuse)");
+        m3Cmd(0x08, rts, sizeof(rts), "rts_thresh");
+    }
 
     // fixed-rate table: idx 14 + i, i = mt76_rates[]: CCK 1,2,5.5,11 then OFDM 6..54 Mb/s
     static const uint16_t rates[12] = { (0 << 6) | 0, (0 << 6) | 1, (0 << 6) | 2, (0 << 6) | 3,

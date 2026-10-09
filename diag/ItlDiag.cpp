@@ -1264,6 +1264,14 @@ bool ItlDiag::start(IOService *provider)
 {
     if (!super::start(provider)) return false;
 
+    // itloff=1: stay completely passive (no threads, no registry walks, no MMIO sampling) to see whether the diagnostics
+    // themselves are what makes the USB keyboard / mouse lag.
+    uint32_t off = 0;
+    if (PE_parse_boot_argn("itloff", &off, sizeof(off)) && off) {
+        IOLog("ItlDiag: itloff=1, passive\n");
+        return true;
+    }
+
     uint32_t hold = 0, fo = 0;
     PE_parse_boot_argn("itlfile", &fo, sizeof(fo));
     fileOut = fo != 0;
