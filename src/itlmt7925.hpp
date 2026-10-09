@@ -97,6 +97,20 @@ private:
     void m3Publish(const char *stage);
     int  m3Run();
     void m3Capture(const uint8_t *frame, uint32_t len, const char *ssid, uint8_t ch);
+    int  m3Cmd(uint8_t cid, const void *payload, size_t plen, const char *name);
+    int  m3HwPrep();
+    int  m3Bss(bool enable);
+    int  m3Sta(uint8_t state, bool newly, uint16_t aid);
+    int  m3Roc(bool acquire);
+    void m3Pump(uint32_t ms);
+    void m3Event(const uint8_t *ev, uint32_t len);
+    void m3ParseAp();
+    volatile bool rocGrant = false;
+    uint8_t rocTok = 0, rocStatus = 0xff;
+    uint8_t m3cipher = 0;                    // 0 = open, 4 = CCMP (BSS_INFO sec TLV)
+    uint8_t apSupp = 0, apBasic = 0;         // 5 GHz legacy rate bitmaps (6,9,12,18,24,36,48,54 -> bit 0..7)
+    uint8_t apRsn[64] = {0};
+    uint8_t apRsnLen = 0;
     char m3buf[1700] = {0};
     size_t m3len = 0;
     char m3res[400] = {0};

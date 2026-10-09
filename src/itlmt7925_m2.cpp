@@ -136,6 +136,7 @@ int itlmt7925::uniSend(uint8_t cid, const void *payload, size_t plen, bool query
             if (rxIsFrame(ev, len)) { rxPkts++; rxFrameDump(ev, len); rxParseFrame(ev, len); ringRelease(r, bi); continue; }
             bool match = len >= 44 && ev[37] == seq;
             evCount++;
+            m3Event(ev, len);
             if (len >= 44 && ev[36] == 0x04) fwLogCnt++;
             if (len >= 44 && ev[36] != 0x04)    // eid 4 = firmware log, too chatty
                 m2log("ev eid=%02x seq=%u len=%u%s", ev[36], ev[37], len, match ? " <match" : "");
