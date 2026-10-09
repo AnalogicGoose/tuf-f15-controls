@@ -35,7 +35,7 @@ static inline void membar() { __sync_synchronize(); }
 
 void itlmt7925::m2log(const char *fmt, ...)
 {
-    char tmp[200];
+    char tmp[320];
     va_list ap;
     va_start(ap, fmt);
     vsnprintf(tmp, sizeof(tmp), fmt, ap);
@@ -80,6 +80,16 @@ void itlmt7925::ringRelease(itl_ring &r, int bi)
     wr(r.regs + Q_CPU_IDX, r.head);
 }
 
+// One-line snapshot of everything that could explain a silent firmware.
+void itlmt7925::m2State(const char *tag)
+{
+    m2log("%s: lp=%08x misc=%08x dummy=%08x glo=%08x txwm cpu=%u dma=%u rxevt cpu=%u dma=%u tail=%d rxdat dma=%u evs=%u fwlog=%u",
+          tag, rdA(MT_CONN_ON_LPCTL), rdA(MT_CONN_ON_MISC), rdA(MT_WFDMA_DUMMY_CR), rdA(MT_WFDMA0_GLO_CFG),
+          rd(txWm.regs + Q_CPU_IDX), rd(txWm.regs + Q_DMA_IDX) & 0xffff, rd(rxEvt.regs + Q_CPU_IDX),
+          rd(rxEvt.regs + Q_DMA_IDX) & 0xffff, rxEvt.tail, rxData.n ? rd(rxData.regs + Q_DMA_IDX) & 0xffff : 0, evCount,
+          fwLogCnt);
+}
+
 // ---------------------------------------------------------------------------------------------
 // UNI command: 48 byte txd (mt76_connac2_mcu_uni_txd) + payload on the WM ring, wait for the event with the same seq.
 // evOut receives the whole event (rxd + payload), payload starting at offset 40.
@@ -114,6 +124,7 @@ int itlmt7925::uniSend(uint8_t cid, const void *payload, size_t plen, bool query
         while (ringPeek(r, &ev, &len, &bi)) {
             bool match = len >= 44 && ev[37] == seq;
             evCount++;
+            if (len >= 44 && ev[36] == 0x04) fwLogCnt++;
             if (len >= 44 && ev[36] != 0x04)    // eid 4 = firmware log, too chatty
                 m2log("ev eid=%02x seq=%u len=%u%s", ev[36], ev[37], len, match ? " <match" : "");
             if (len >= 44 && ev[36] == UNI_EVENT_SCAN_DONE) scanDone = true;
@@ -129,6 +140,7 @@ int itlmt7925::uniSend(uint8_t cid, const void *payload, size_t plen, bool query
         IODelay(50);
     }
     m2log("no response cid=%02x seq=%u", cid, seq);
+    m2State("noresp");
     return ITL_TIMEOUT;
 }
 
@@ -215,6 +227,7 @@ int itlmt7925::m2Run()
     int rc;
 
     m2log("armed");
+    m2State("start");
     // flush anything that arrived while M1 finished
     for (int i = 0; i < 100; i++) { rxDataPoll(); IODelay(1000); }
     const uint8_t *e; uint32_t l; int bi;
@@ -227,6 +240,14 @@ int itlmt7925::m2Run()
     uint8_t cap[8] = {0, 0, 0, 0, UNI_CHIP_CONFIG_NIC_CAPA, 0, 4, 0};      // rsv[4], tag, len(= sizeof - 4)
     rc = uniSend(MCU_UNI_CHIP_CONFIG, cap, sizeof(cap), false, ev, sizeof(ev), &evl, 3000);
     m2log("nic capa rc=%d evlen=%u", rc, evl);
+    if (rc) {
+        // second attempt: take driver ownership again and wait a moment, in case the firmware went to sleep
+        bool own = driverOwn();
+        IOSleep(1500);
+        m2log("retry after driverOwn=%d", own ? 1 : 0);
+        rc = uniSend(MCU_UNI_CHIP_CONFIG, cap, sizeof(cap), true, ev, sizeof(ev), &evl, 3000);   // option with ACK
+        m2log("nic capa retry rc=%d evlen=%u", rc, evl);
+    }
     bool gotMac = false;
     if (rc == 0 && evl > 44) {
         const uint8_t *q = ev + 40;

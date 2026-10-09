@@ -827,6 +827,14 @@ static void nvramKextLogs()
             if (!v) continue;
             const char *m = v->getCStringNoCopy();
             size_t n = strlen(m);
+            if (k == 2) {                                   // m2-log: from the start, 380 chars per variable
+                static const char *more[3] = { "itlm2", "itlm4", "itlm5" };
+                for (int c = 0; c < 3 && (size_t)c * 380 < n; c++) {
+                    size_t f = (size_t)c * 380, t = n - f > 380 ? 380 : n - f;
+                    nvramPut(more[c], m + f, t);
+                }
+                continue;
+            }
             size_t from = (k < 3 && n > 380) ? n - 380 : 0;
             if (k == 3 && n > 380) n = 380;
             nvramPut(vars[k], m + from, n - from);
