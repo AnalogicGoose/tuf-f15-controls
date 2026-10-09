@@ -114,10 +114,7 @@ static void collect()
     uint64_t dCal = (calUs() - cal0us) / 1000;                 // ms, RTC
     uint64_t dAbs = (absNs() - abs0ns) / 1000000ull;           // ms, mach_absolute_time
     uint64_t dTsc = rdtsc_() - tsc0;
-    add("clk cal=%llums mach=%llums tsc=%lluMHz | pe cpu=%lluMHz bus=%lluMHz tb=%luMHz",
-        dCal, dAbs, dCal ? dTsc / (dCal * 1000ull) : 0ull,
-        gPEClockFrequencyInfo.cpu_frequency_hz / 1000000ull, gPEClockFrequencyInfo.bus_frequency_hz / 1000000ull,
-        gPEClockFrequencyInfo.timebase_frequency_hz / 1000000ul);
+    add("clk cal=%llums mach=%llums tsc=%lluMHz", dCal, dAbs, dCal ? dTsc / (dCal * 1000ull) : 0ull);
 
     IORegistryIterator *it = IORegistryIterator::iterateOver(gIOServicePlane, kIORegistryIterateRecursively);
     if (!it) return;
