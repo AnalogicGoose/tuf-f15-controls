@@ -385,7 +385,7 @@ int itlmt7925::m3Run()
 
     // The scan already ran (M2). Anything captured so far came from it; if the target is missing there is nothing to join.
     for (int i = 0; i < 20 && !tgtFound; i++) { rxDataPoll(); IOSleep(100); }
-    for (int attempt = 1; attempt <= 2 && !tgtFound; attempt++) {
+    for (int attempt = 1; attempt <= 4 && !tgtFound; attempt++) {
         m3log("rescan #%d (directed) ", attempt);
         m2Scan(m3ssid);
     }

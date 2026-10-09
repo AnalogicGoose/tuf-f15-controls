@@ -264,6 +264,8 @@ int itlmt7925::m2Scan(const char *ssidArg)
     w[4] = 1;                                         // active scan
     w[5] = 2;                                         // probe_req_num
     w[6] = 1u << 5;                                   // SCAN_FUNC_SPLIT_SCAN
+    put16(w + 8, 60);                                 // channel_min_dwell_time (ms): the firmware default (~35 ms) misses most beacons
+    put16(w + 10, 120);                               // channel_dwell_time
     w += 20;
     put16(w + 0, 10); put16(w + 2, 368);            // UNI_SCAN_SSID
     if (ssidArg && ssidArg[0]) {                        // directed probe request
@@ -278,7 +280,7 @@ int itlmt7925::m2Scan(const char *ssidArg)
     w += 16;
     put16(w + 0, 12); put16(w + 2, 136);            // UNI_SCAN_CHANNEL
     static const uint8_t chans[][2] = { {1, 1}, {1, 6}, {1, 11}, {2, 36}, {2, 40}, {2, 44}, {2, 48}, {2, 149}, {2, 153},
-                                        {2, 157}, {2, 161} };
+                                        {2, 157}, {2, 161}, {2, 165} };
     w[4] = 4;                                         // specified channels
     w[5] = sizeof(chans) / sizeof(chans[0]);
     for (unsigned i = 0; i < sizeof(chans) / sizeof(chans[0]); i++) { w[8 + 2 * i] = chans[i][0]; w[9 + 2 * i] = chans[i][1]; }
