@@ -402,6 +402,32 @@ static void dumpTree()
     fileLine("---- end tree ----");
 }
 
+// Runs on its own thread so the boot is never held up. Polls (1 s steps) until the USB log file is found, then writes
+// a snapshot immediately and two more a few seconds apart (the last one includes the registry tree).
+static void worker(void *arg)
+{
+    IOService *me = (IOService *)arg;
+    uint32_t maxWait = 0;
+    PE_parse_boot_argn("itldiag", &maxWait, sizeof(maxWait));    // seconds to keep looking for the USB file
+
+    for (uint32_t i = 0; i < maxWait && !logMedia; i++) {
+        tryAttach(me);
+        if (!logMedia) IOSleep(1000);
+    }
+    static const uint32_t gap[3] = { 0, 5000, 5000 };
+    for (int n = 0; n < 3; n++) {
+        if (gap[n]) IOSleep(gap[n]);
+        collect();
+        outLine("ItlDiag: ===== dump %d, %d lines =====", n, nl);
+        for (int i = 0; i < nl; i++) outLine("%s", lines[i]);
+        outLine("ItlDiag: ===== end =====");
+        if (n == 2) dumpTree();
+        flushLog();
+    }
+    outLine("ItlDiag: done (usblog: %s)", attachMsg);
+    flushLog();
+}
+
 bool ItlDiag::start(IOService *provider)
 {
     if (!super::start(provider)) return false;
@@ -415,20 +441,8 @@ bool ItlDiag::start(IOService *provider)
     tsc0 = rdtsc_();
     abs0ns = absNs();
     cal0us = calUs();
+    fileLine("ItlDiag log, itldiag=%u", hold);
 
-    IOLog("ItlDiag: armed, waiting 10s for PCI/USB enumeration\n");
-    fileLine("ItlDiag log, hold=%u", hold);
-    IOSleep(10000);
-    int n = 0;
-    for (uint32_t t = 0; t < hold; t += 15, n++) {
-        if (!logMedia) tryAttach(this);
-        collect();
-        outLine("ItlDiag: ===== dump at +%us, %d lines =====", 10 + t, nl);
-        for (int i = 0; i < nl; i++) outLine("%s", lines[i]);
-        outLine("ItlDiag: ===== end =====");
-        if (n == 1 || t + 15 >= hold) dumpTree();
-        flushLog();
-        IOSleep(15000);
-    }
+    IOCreateThread(worker, this);
     return true;
 }
