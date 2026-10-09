@@ -7,6 +7,8 @@
 #include <IOKit/network/IOEthernetController.h>
 #include <IOKit/network/IOEthernetInterface.h>
 #include <IOKit/network/IONetworkMedium.h>
+#include <IOKit/network/IOOutputQueue.h>
+#include <sys/kpi_mbuf.h>
 #include <string.h>
 
 class itlmt7925Eth : public IOEthernetController {
