@@ -6,7 +6,7 @@ using System;
 using System.Runtime.InteropServices;
 using System.Text;
 public static class Fw {
-    [DllImport("kernel32.dll", SetLastError=true)] static extern uint GetFirmwareEnvironmentVariableW(string n, string g, byte[] b, uint sz);
+    [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)] static extern uint GetFirmwareEnvironmentVariableW(string n, string g, byte[] b, uint sz);
     [DllImport("advapi32.dll", SetLastError=true)] static extern bool OpenProcessToken(IntPtr p, uint a, out IntPtr t);
     [DllImport("advapi32.dll", SetLastError=true)] static extern bool LookupPrivilegeValue(string s, string n, out long l);
     [StructLayout(LayoutKind.Sequential, Pack=1)] struct TP { public int Count; public long Luid; public int Attr; }

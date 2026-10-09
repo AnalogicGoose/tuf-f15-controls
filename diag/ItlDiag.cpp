@@ -8,6 +8,7 @@
 // verified before anything is written.
 #include <IOKit/IOService.h>
 #include <IOKit/IOLib.h>
+#include <IOKit/IODeviceTreeSupport.h>
 #include <IOKit/IORegistryEntry.h>
 #include <IOKit/IOBufferMemoryDescriptor.h>
 #include <IOKit/pci/IOPCIDevice.h>
@@ -567,7 +568,7 @@ struct Xhc {
     volatile uint8_t *b;
     uint32_t op, rt;
     unsigned vid, did;
-    uint32_t samples, rises, maxMs, slow, curMs, erdpCh, dead, lastSts, lastIman, lastErdp;
+    uint32_t lastCmd, samples, rises, maxMs, slow, curMs, erdpCh, dead, lastSts, lastIman, lastErdp;
     uint64_t riseNs;
     bool up;
 };
@@ -615,7 +616,7 @@ static void sampler(void *)
             if (!x.b) continue;
             uint32_t sts = rd32(x, x.op + 4), iman = rd32(x, x.rt + 0x20), erdp = rd32(x, x.rt + 0x38) & ~0xfu;
             x.samples++;
-            x.lastSts = sts; x.lastIman = iman; x.lastErdp = erdp;
+            x.lastSts = sts; x.lastIman = iman; x.lastCmd = rd32(x, x.op); x.lastErdp = erdp;
             if (sts == 0xffffffffu) { x.dead++; continue; }
             bool eint = (sts & 8) || (iman & 1);
             if (eint && !x.up) { x.up = true; x.riseNs = now; x.rises++; }
@@ -688,12 +689,13 @@ static void screenBlock(int n)
 
 // Last resort when no file write path works and the verbose output scrolls away: boot-arg itlpanic=<seconds> ends the run
 // with one panic whose string is the whole digest, so the panic screen is a single static frame to photograph.
-static void panicDigest()
+static char digestBuf[1100];
+static void buildDigest()
 {
-    static char b[1100];
+    char *b = digestBuf;
     int o = 0;
     uint64_t dCal = (calUs() - cal0us) / 1000, dAbs = (absNs() - abs0ns) / 1000000ull;
-    o += snprintf(b + o, sizeof(b) - o, "ITLDIAG cal=%llums mach=%llums tsc=%lluMHz | ", dCal, dAbs,
+    o += snprintf(b + o, sizeof(digestBuf) - o, "ITLDIAG cal=%llums mach=%llums tsc=%lluMHz | ", dCal, dAbs,
                   dCal ? (rdtsc_() - tsc0) / (dCal * 1000ull) : 0ull);
     for (int i = 0; i < nxh && o < 800; i++) {
         Xhc &x = xh[i];
@@ -712,8 +714,8 @@ static void panicDigest()
         if (ca && ca->getCount()) { OSString *os = OSDynamicCast(OSString, ca->getObject(0)); if (os) ic = os->getCStringNoCopy(); }
         OSArray *sa = OSDynamicCast(OSArray, p->getProperty("IOInterruptSpecifiers"));
         if (sa) nspec = sa->getCount();
-        o += snprintf(b + o, sizeof(b) - o, "X%d:%04x cmd=%x msi=%x msix=%x irq=%.16s n=%u sts=%x im=%x sam=%u rise=%u max=%ums slow=%u cur=%ums erdp=%u dead=%u | ",
-                      i, x.did, p->configRead16(kIOPCIConfigCommand), msi, msix, ic, nspec, x.lastSts, x.lastIman, x.samples,
+        o += snprintf(b + o, sizeof(digestBuf) - o, "X%d:%04x ucmd=%x cmd=%x msi=%x msix=%x irq=%.16s n=%u sts=%x im=%x sam=%u rise=%u max=%ums slow=%u cur=%ums erdp=%u dead=%u | ",
+                      i, x.did, x.lastCmd, p->configRead16(kIOPCIConfigCommand), msi, msix, ic, nspec, x.lastSts, x.lastIman, x.samples,
                       x.rises, x.maxMs, x.slow, x.curMs, x.erdpCh, x.dead);
     }
     IORegistryIterator *it = IORegistryIterator::iterateOver(gIOServicePlane, kIORegistryIterateRecursively);
@@ -724,16 +726,51 @@ static void panicDigest()
             const char *cls = e->getMetaClass()->getClassName();
             if (!strcmp(cls, "IOUSBHostDevice")) {
                 if (nu++ < 8 && o < 1000)
-                    o += snprintf(b + o, sizeof(b) - o, "U%04x:%04x/%x/s%u ", num(e, "idVendor") & 0xffff, num(e, "idProduct") & 0xffff,
+                    o += snprintf(b + o, sizeof(digestBuf) - o, "U%04x:%04x/%x/s%u ", num(e, "idVendor") & 0xffff, num(e, "idProduct") & 0xffff,
                                   (unsigned)num(e, "locationID") >> 20, (unsigned)num(e, "Device Speed"));
             } else if (hasStr(cls, "HIDDevice") || hasStr(cls, "HIDKeyboard")) {
                 nh++;
             }
         }
         it->release();
-        o += snprintf(b + o, sizeof(b) - o, "usb=%d hid=%d", nu, nh);
+        o += snprintf(b + o, sizeof(digestBuf) - o, "usb=%d hid=%d", nu, nh);
     }
-    panic("%s", b);
+}
+
+static void panicDigest()
+{
+    buildDigest();
+    panic("%s", digestBuf);
+}
+
+// Persist the digest in firmware NVRAM (itl0..itl3, Apple GUID) so it can be read from Windows afterwards
+// (scripts/read-nvram.ps1, elevated). Works even when no USB write path does.
+static void nvramPut(const char *name, const char *s, size_t n)
+{
+    IORegistryEntry *o = IORegistryEntry::fromPath("/options", gIODTPlane);
+    if (!o) return;
+    OSData *d = OSData::withBytes(s, (unsigned)n);
+    if (d) { o->setProperty(name, d); d->release(); }
+    o->setProperty("IONVRAM-FORCESYNCNOW-PROPERTY", name);
+    o->release();
+}
+
+static void nvramDigest(int n)
+{
+    buildDigest();
+    char hdr[32];
+    snprintf(hdr, sizeof(hdr), "n=%d ", n);
+    size_t len = strlen(digestBuf);
+    char chunk[400];
+    for (int i = 0; i < 4; i++) {
+        size_t from = (size_t)i * 330;
+        if (from >= len && i) break;
+        size_t take = len > from ? (len - from > 330 ? 330 : len - from) : 0;
+        snprintf(chunk, sizeof(chunk), "%s%.*s", i ? "" : hdr, (int)take, digestBuf + from);
+        char nm[8];
+        snprintf(nm, sizeof(nm), "itl%d", i);
+        nvramPut(nm, chunk, strlen(chunk));
+    }
 }
 
 // Runs on its own thread so the boot is never held up. Prints a compact summary block to the verbose console every few
@@ -751,6 +788,7 @@ static void worker(void *arg)
         if (panicSec && (absNs() - abs0ns) / 1000000000ull >= panicSec) panicDigest();
         if (!logMedia && !vfsOk) { vfsFlush(); tryAttach(me); }
         screenBlock(n);
+        nvramDigest(n);
         if (n == 2) {
             collect();
             fileLine("===== registry summary, %d lines =====", nl);
@@ -766,6 +804,7 @@ static void worker(void *arg)
         if (panicSec && (absNs() - abs0ns) / 1000000000ull >= panicSec) panicDigest();
         if (!logMedia && !vfsOk) tryAttach(me);
         screenBlock(100 + pass);
+        if (pass % 3 == 0) nvramDigest(100 + pass);
         copyKextLogs();
         flushLog();
     }
