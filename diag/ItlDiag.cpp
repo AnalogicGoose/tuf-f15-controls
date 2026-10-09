@@ -610,11 +610,181 @@ static void xhcInit()
     it->release();
 }
 
+// ---------------------------------------------------------------- xHCI event ring watcher
+// Root-cause test for the key repeat bug ("key-up arrives only with the next key"). The sampler snapshots the event ring of
+// each xHCI (cycle bit flips mark new TRBs) and records when each event was first visible and when the OS moved ERDP past it.
+//   event visible late             -> controller / endpoint side (doorbell, TD not queued, endpoint stopped)
+//   event visible, ERDP moves late -> OS did not service the interrupt (lost / delayed MSI)
+// It also reads the endpoint states from the device contexts and compares MFINDEX (8 kHz hardware clock) with mach time.
+struct XEv { uint32_t tms; uint8_t type, slot, dci, cc; uint32_t lat; };
+struct XPend { uint32_t idx; uint64_t t; int rec; };
+struct XRing {
+    bool ok;
+    uint64_t segPa, ersta;
+    uint32_t n;                       // TRBs in segment 0
+    volatile uint8_t *seg;
+    uint64_t *snap;
+    uint32_t nev, nxfer, late5, maxLat, ipMax, pendMax;
+    uint32_t cnt[16][32];
+    XEv evs[16]; uint32_t evHead;
+    XPend pend[32]; int npend;
+    uint64_t mfAbs0, mfAbsTot, mfTot; uint32_t mfLast; uint64_t ipRise; bool ipUp;
+};
+static XRing xr[8];
+static uint64_t xhcStart;
+
+struct PM { IOMemoryDescriptor *d; IOMemoryMap *m; uint64_t pa; };
+static PM pmc[32];
+static int npm;
+static volatile uint8_t *physMap(uint64_t pa, size_t len)
+{
+    uint64_t base = pa & ~0xfffULL;
+    size_t need = (size_t)(pa - base) + len;
+    need = (need + 0xfff) & ~(size_t)0xfff;
+    for (int i = 0; i < npm; i++)
+        if (pmc[i].pa == base && pmc[i].m && pmc[i].m->getLength() >= need) return (volatile uint8_t *)pmc[i].m->getVirtualAddress() + (pa - base);
+    if (npm >= 32) return nullptr;
+    IOMemoryDescriptor *d = IOMemoryDescriptor::withPhysicalAddress(base, need, kIODirectionInOut);
+    if (!d) return nullptr;
+    IOMemoryMap *m = d->map();
+    if (!m) { d->release(); return nullptr; }
+    pmc[npm].d = d; pmc[npm].m = m; pmc[npm].pa = base; npm++;
+    return (volatile uint8_t *)m->getVirtualAddress() + (pa - base);
+}
+
+static void xrInit(int i)
+{
+    Xhc &x = xh[i];
+    XRing &r = xr[i];
+    if (r.ok || !x.b) return;
+    uint32_t szReg = rd32(x, x.rt + 0x28) & 0xffff;
+    uint64_t erstba = ((uint64_t)rd32(x, x.rt + 0x34) << 32) | (rd32(x, x.rt + 0x30) & ~0x3fu);
+    if (!szReg || !erstba) return;
+    volatile uint8_t *erst = physMap(erstba, 16);
+    if (!erst) return;
+    uint64_t segPa = ((uint64_t)*(volatile uint32_t *)(erst + 4) << 32) | *(volatile uint32_t *)erst;
+    uint32_t n = *(volatile uint32_t *)(erst + 8) & 0xffff;
+    if (!segPa || n < 16 || n > 1024) return;
+    volatile uint8_t *seg = physMap(segPa, (size_t)n * 16);
+    if (!seg) return;
+    r.snap = (uint64_t *)IOMalloc(n * 8);
+    if (!r.snap) return;
+    r.segPa = segPa; r.n = n; r.seg = seg; r.ersta = erstba;
+    for (uint32_t k = 0; k < n; k++)
+        r.snap[k] = *(volatile uint32_t *)(seg + k * 16 + 8) | ((uint64_t)*(volatile uint32_t *)(seg + k * 16 + 12) << 32);
+    r.ok = true;
+}
+
+static void xrRecord(int i, uint32_t idx, uint64_t now, uint64_t start, uint32_t d2, uint32_t d3)
+{
+    XRing &r = xr[i];
+    uint8_t type = (d3 >> 10) & 0x3f, slot = d3 >> 24, dci = (d3 >> 16) & 0x1f, cc = d2 >> 24;
+    r.nev++;
+    XEv &e = r.evs[r.evHead++ & 15];
+    e.tms = (uint32_t)((now - start) / 1000000ull); e.type = type; e.slot = slot; e.dci = dci; e.cc = cc; e.lat = 0xffffffffu;
+    if (type == 32) { r.nxfer++; if (slot < 16 && dci < 32) r.cnt[slot][dci]++; }
+    if (r.npend < 32) {
+        r.pend[r.npend].idx = idx; r.pend[r.npend].t = now; r.pend[r.npend].rec = (int)((r.evHead - 1) & 15);
+        r.npend++;
+    }
+}
+
+static void xrPoll(int i, uint64_t now, uint64_t start)
+{
+    Xhc &x = xh[i];
+    XRing &r = xr[i];
+    if (!r.ok) { xrInit(i); return; }
+    for (uint32_t k = 0; k < r.n; k++) {
+        uint32_t d3 = *(volatile uint32_t *)(r.seg + k * 16 + 12);
+        uint32_t s3 = (uint32_t)(r.snap[k] >> 32);
+        if (!((d3 ^ s3) & 1)) continue;
+        uint32_t d2 = *(volatile uint32_t *)(r.seg + k * 16 + 8);
+        r.snap[k] = d2 | ((uint64_t)d3 << 32);
+        xrRecord(i, k, now, start, d2, d3);
+    }
+    // which TRB will the OS handle next?
+    uint64_t erdp = ((uint64_t)rd32(x, x.rt + 0x3c) << 32) | (rd32(x, x.rt + 0x38) & ~0xfu);
+    if (erdp >= r.segPa && erdp < r.segPa + (uint64_t)r.n * 16) {
+        uint32_t cur = (uint32_t)((erdp - r.segPa) / 16);
+        for (int p = 0; p < r.npend; ) {
+            uint32_t ahead = (cur + r.n - r.pend[p].idx) % r.n;     // > 0: the OS has moved past this event
+            if (ahead > 0 && ahead < r.n / 2) {
+                uint32_t lat = (uint32_t)((now - r.pend[p].t) / 1000000ull);
+                r.evs[r.pend[p].rec].lat = lat;
+                if (lat > r.maxLat) r.maxLat = lat;
+                if (lat >= 5) r.late5++;
+                r.pend[p] = r.pend[--r.npend];
+            } else {
+                uint32_t age = (uint32_t)((now - r.pend[p].t) / 1000000ull);
+                if (age > r.pendMax) r.pendMax = age;
+                p++;
+            }
+        }
+    }
+    // IMAN.IP pending time
+    bool ip = rd32(x, x.rt + 0x20) & 1;
+    if (ip && !r.ipUp) { r.ipUp = true; r.ipRise = now; }
+    else if (!ip && r.ipUp) {
+        r.ipUp = false;
+        uint32_t ms = (uint32_t)((now - r.ipRise) / 1000000ull);
+        if (ms > r.ipMax) r.ipMax = ms;
+    }
+    // MFINDEX vs mach time, sampled every ~250 ms
+    if (!r.mfAbs0) { r.mfAbs0 = now; r.mfLast = rd32(x, x.rt) & 0x3fff; }
+    else if (now - r.mfAbs0 >= 250000000ull) {
+        uint32_t mf = rd32(x, x.rt) & 0x3fff;
+        r.mfTot += (mf - r.mfLast) & 0x3fff;
+        r.mfAbsTot += now - r.mfAbs0;
+        r.mfLast = mf; r.mfAbs0 = now;
+    }
+}
+
+// one text line per xHCI, written to NVRAM as itlx<i>
+static void xrReport(int i, char *out, size_t cap, uint64_t start)
+{
+    Xhc &x = xh[i];
+    XRing &r = xr[i];
+    size_t o = 0;
+    uint32_t nowMs = (uint32_t)((absNs() - start) / 1000000ull);
+    uint32_t mfRatio = r.mfAbsTot ? (uint32_t)((r.mfTot * 125000ull * 1000ull) / r.mfAbsTot) : 0;
+    o += snprintf(out + o, cap - o, "x%d T=%u ring=%d ev=%u tx=%u late5=%u maxlat=%ums pend=%u ipmax=%ums mf=%u/1000 |", i, nowMs,
+                  r.ok ? 1 : 0, r.nev, r.nxfer, r.late5, r.maxLat, r.pendMax, r.ipMax, mfRatio);
+    if (x.b) {
+        uint32_t hcc = rd32(x, 0x10);
+        uint32_t csz = (hcc & 4) ? 64 : 32;
+        uint64_t dcbaa = ((uint64_t)rd32(x, x.op + 0x34) << 32) | (rd32(x, x.op + 0x30) & ~0x3fu);
+        volatile uint8_t *dc = dcbaa ? physMap(dcbaa, 16 * 8) : nullptr;
+        if (dc) {
+            for (int s = 1; s < 16 && o + 24 < cap; s++) {
+                uint64_t dp = *(volatile uint64_t *)(dc + s * 8) & ~0x3fULL;
+                if (!dp) continue;
+                volatile uint8_t *ctx = physMap(dp, csz * 10);
+                if (!ctx) continue;
+                o += snprintf(out + o, cap - o, " s%d:", s);
+                for (int d = 1; d <= 9; d++)
+                    o += snprintf(out + o, cap - o, "%u", *(volatile uint32_t *)(ctx + d * csz) & 7);
+            }
+        }
+    }
+    o += snprintf(out + o, cap - o, " | cnt:");
+    for (int s = 0; s < 16; s++)
+        for (int d = 0; d < 32 && o + 14 < cap; d++)
+            if (r.cnt[s][d]) o += snprintf(out + o, cap - o, " %d.%d=%u", s, d, r.cnt[s][d]);
+    o += snprintf(out + o, cap - o, " | last:");
+    uint32_t cntEv = r.nev < 16 ? r.nev : 16;
+    for (uint32_t k = 0; k < cntEv && o + 30 < cap; k++) {
+        XEv &e = r.evs[(r.evHead - cntEv + k) & 15];
+        if (e.lat == 0xffffffffu) o += snprintf(out + o, cap - o, " %u:t%u/%u.%u/c%u/L-", e.tms, e.type, e.slot, e.dci, e.cc);
+        else o += snprintf(out + o, cap - o, " %u:t%u/%u.%u/c%u/L%u", e.tms, e.type, e.slot, e.dci, e.cc, e.lat);
+    }
+}
+
 static void sampler(void *)
 {
     uint64_t start = absNs();
+    xhcStart = start;
     uint32_t last[8] = { 0 };
-    while (absNs() - start < 240ull * 1000000000ull) {
+    while (absNs() - start < 900ull * 1000000000ull) {
         uint64_t now = absNs();
         for (int i = 0; i < nxh; i++) {
             Xhc &x = xh[i];
@@ -623,7 +793,7 @@ static void sampler(void *)
             x.samples++;
             x.lastSts = sts; x.lastIman = iman; x.lastCmd = rd32(x, x.op); x.lastErdp = erdp;
             if (sts == 0xffffffffu) { x.dead++; continue; }
-            bool eint = (sts & 8) || (iman & 1);
+            bool eint = (iman & 1);          // USBSTS.EINT is never cleared by AppleUSBXHCI, so only IMAN.IP says anything
             if (eint && !x.up) { x.up = true; x.riseNs = now; x.rises++; }
             else if (!eint && x.up) {
                 x.up = false;
@@ -634,8 +804,9 @@ static void sampler(void *)
             x.curMs = x.up ? (uint32_t)((now - x.riseNs) / 1000000ull) : 0;
             if (x.samples > 1 && erdp != last[i]) x.erdpCh++;
             last[i] = erdp;
+            xrPoll(i, now, start);
         }
-        IOSleep(2);
+        IOSleep(1);
     }
 }
 
@@ -843,9 +1014,22 @@ static void nvramKextLogs()
     it->release();
 }
 
+// itlx0..itlx3: xHCI event ring report per controller (see xrReport)
+static void nvramXrep()
+{
+    for (int i = 0; i < nxh && i < 4; i++) {
+        static char buf[400];
+        xrReport(i, buf, 380, xhcStart);
+        char nm[8];
+        snprintf(nm, sizeof(nm), "itlx%d", i);
+        nvramPut(nm, buf, strlen(buf));
+    }
+}
+
 static void nvramDigest(int n)
 {
     nvramKextLogs();
+    nvramXrep();
     buildDigest();
     char hdr[32];
     snprintf(hdr, sizeof(hdr), "n=%d ", n);
