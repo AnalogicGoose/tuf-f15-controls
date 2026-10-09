@@ -1,0 +1,61 @@
+diff --git a/OcCpuLib.c b/OcCpuLib.c
+index d373a57..829d444 100644
+--- a/OcCpuLib.c
++++ b/OcCpuLib.c
+@@ -638,8 +638,11 @@ ScanAmdProcessor (
+   UINT8    CoreDivisorID;
+   UINT8    Divisor;
+   UINT8    MaxBusRatio;
++  UINT32   Fid12;
+   BOOLEAN  Recalculate;
+ 
++  Fid12 = 0;
++
+   //
+   // For logging purposes (the first call to these functions might happen
+   // before logging is fully initialised), do not use the cached results in
+@@ -692,19 +695,24 @@ ScanAmdProcessor (
+     switch (Cpu->ExtFamily) {
+       case AMD_CPU_EXT_FAMILY_1AH:
+         if (Cpu->CPUFrequencyFromVMT == 0) {
++          //
++          // PStateDef0 holds a 12-bit FID. On Family 1Ah the core frequency is FID * 5 MHz
++          // (Linux cpupower / Xen use the same formula). The FID must not be narrowed to
++          // UINT8 before the scaling: a Ryzen AI 9 HX 370 has FID 400 (2000 MHz), which
++          // wrapped to 208 and made FSBFrequency 9.6 MHz instead of the 100 MHz reference
++          // clock every other Zen part reports. XNU derives all its LAPIC timer
++          // conversions from that value, so timers fired ~10x too early.
++          //
+           CofVid          = AsmReadMsr64 (K10_PSTATE_STATUS);
+-          CoreFrequencyID = (UINT8)BitFieldRead64 (CofVid, 0, 11); // 12-bit field for FID
+-
+-          // On AMD Family 1Ah and later, if the Frequency ID (FID) exceeds 0x0f,
+-          // the core frequency is scaled by a factor of 5. This scaling behavior
+-          // is based on Linux kernel logic for handling higher frequency multipliers
+-          // in newer AMD CPUs, where the FID no longer directly correlates to the
+-          // bus ratio.
+-          if (CoreFrequencyID > 0x0f) {
+-            CoreFrequencyID *= 5;
+-          }
++          Fid12           = (UINT32)BitFieldRead64 (CofVid, 0, 11);
++          CoreFrequencyID = (UINT8)(Fid12 > 0xFF ? 0xFF : Fid12);   // for logging only
+ 
+-          MaxBusRatio = (UINT8)(CoreFrequencyID);
++          //
++          // The reference clock is 100 MHz, so the bus ratio is the TSC frequency in units of
++          // 100 MHz. The TSC runs at the P0 frequency, so derive it from the measured TSC;
++          // this is identical to what the 17h/19h path computes (FSB = TSC / ratio).
++          //
++          MaxBusRatio = (UINT8)DivU64x32 (Cpu->CPUFrequency + 50000000ULL, 100000000);
+         }
+ 
+         //
+@@ -814,8 +822,6 @@ ScanAmdProcessor (
+       //
+       if (MaxBusRatio == 0) {
+         Cpu->FSBFrequency = 100000000; // 100 MHz like Intel part.
+-      } else if (Cpu->ExtFamily == AMD_CPU_EXT_FAMILY_1AH) {
+-        Cpu->FSBFrequency = DivU64x32 (Cpu->CPUFrequency, CoreFrequencyID);  // No divisor for Family 1Ah
+       } else {
+         Cpu->FSBFrequency = DivU64x32 (Cpu->CPUFrequency, MaxBusRatio);
+       }

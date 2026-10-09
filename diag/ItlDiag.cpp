@@ -191,13 +191,20 @@ static void tryAttach(IOService *me)
         // found our file: reopen read/write
         bool rw = m->open(me, 0, kIOStorageAccessReaderWriter);
         if (!rw) rw = m->open(me, 0, kIOStorageAccessReaderWriter | kIOStorageAccessSharedLock);
-        if (!rw) { snprintf(last, sizeof(last), "%s: %s but open(rw) fail", e->getName(), why); continue; }
+        const char *how = "rw";
+        if (!rw) {
+            // A mounted read/write volume already holds the media open for writing; IOMedia::write only needs *some*
+            // opener with write access, so keep a reader open and try the write anyway.
+            rw = m->open(me, 0, kIOStorageAccessReader);
+            how = "ro+try";
+        }
+        if (!rw) { snprintf(last, sizeof(last), "%s: %s but open fail", e->getName(), why); continue; }
         m->retain();
         logMedia = m;
         logClient = me;
         logStart = off + 512;
         logCap = size - 1024;
-        snprintf(attachMsg, sizeof(attachMsg), "ATTACHED %s: %s", e->getName(), why);
+        snprintf(attachMsg, sizeof(attachMsg), "ATTACHED(%s) %s: %s", how, e->getName(), why);
         it->release();
         return;
     }
@@ -402,6 +409,78 @@ static void dumpTree()
     fileLine("---- end tree ----");
 }
 
+// ---------------------------------------------------------------- timer probe + optional key-repeat fallback
+//
+// Root cause of the "ddddmmmm" key repeat is not here: OpenCore (ScanAmdProcessor, family 1Ah) hands the kernel an FSB of
+// 9.6 MHz instead of ~100 MHz, so every timer fires ~10x early (see oc/fix-zen5-fsb.diff). The probe below logs whether
+// timers behave, so the fix can be verified with `dmesg | grep ItlDiag` or `sysctl hw.busfrequency`.
+//
+// The key-repeat override is only a fallback, off by default: boot-arg itlkbd=<ms> pushes the initial repeat delay to that
+// many milliseconds (WindowServer/hidd set their own values, so it is re-applied every 2 s).
+
+static int applyRepeat(uint64_t initNs, uint64_t repNs, bool verbose)
+{
+    OSNumber *ni = OSNumber::withNumber(initNs, 64);
+    OSNumber *nr = OSNumber::withNumber(repNs, 64);
+    OSDictionary *d = OSDictionary::withCapacity(2);
+    if (!ni || !nr || !d) { if (ni) ni->release(); if (nr) nr->release(); if (d) d->release(); return 0; }
+    d->setObject("HIDInitialKeyRepeat", ni);
+    d->setObject("HIDKeyRepeat", nr);
+
+    static const char *classes[3] = { "IOHIDSystem", "IOHIKeyboard", "IOHIDEventService" };
+    int counts[3] = { 0, 0, 0 };
+    for (int i = 0; i < 3; i++) {
+        OSDictionary *m = IOService::serviceMatching(classes[i]);
+        if (!m) continue;
+        OSIterator *it = IOService::getMatchingServices(m);
+        m->release();
+        if (!it) continue;
+        OSObject *o;
+        while ((o = it->getNextObject())) {
+            IOService *svc = OSDynamicCast(IOService, o);
+            if (!svc) continue;
+            counts[i]++;
+            if (i < 2) {
+                IOReturn r = svc->setProperties(d);
+                if (verbose) IOLog("ItlDiag: kbd setProperties(%s %s) -> 0x%x\n", classes[i], svc->getName(), r);
+            }
+            if (i > 0) {
+                svc->setProperty("HIDInitialKeyRepeat", ni);
+                svc->setProperty("HIDKeyRepeat", nr);
+            }
+        }
+        it->release();
+    }
+    if (verbose)
+        IOLog("ItlDiag: kbd hidsystem=%d ihikeyboard=%d hideventservice=%d (initial repeat %llu ms)\n", counts[0], counts[1],
+              counts[2], initNs / 1000000ull);
+    d->release(); ni->release(); nr->release();
+    return counts[0] + counts[1] + counts[2];
+}
+
+// Timer sanity, printed to the kernel log so `dmesg | grep ItlDiag` shows it: does IOSleep(100) take 100 ms of wall clock?
+static void timerProbe(void)
+{
+    uint64_t a0 = absNs(), c0 = calUs(), t0 = rdtsc_();
+    IOSleep(100);
+    uint64_t a1 = absNs(), c1 = calUs(), t1 = rdtsc_();
+    uint64_t dc = (c1 - c0) / 1000;
+    IOLog("ItlDiag: probe sleep100: mach=%llums cal=%llums tsc=%lluMHz\n", (a1 - a0) / 1000000ull, dc, dc ? (t1 - t0) / (dc * 1000ull) : 0ull);
+}
+
+static void kbWorker(void *)
+{
+    uint32_t initMs = 0;
+    PE_parse_boot_argn("itlkbd", &initMs, sizeof(initMs));        // fallback only: initial repeat delay in ms, 0 = off
+    uint64_t initNs = (uint64_t)initMs * 1000000ull, repNs = 120ull * 1000000ull;
+    IOLog("ItlDiag: timers: kbd fallback %s (itlkbd=%u)\n", initMs ? "ON" : "off", initMs);
+    for (int pass = 0; pass < 600; pass++) {                       // ~20 minutes
+        if (initMs) applyRepeat(initNs, repNs, pass < 3 || (pass % 30) == 0);
+        if (pass < 5 || pass % 15 == 0) timerProbe();
+        IOSleep(2000);
+    }
+}
+
 // Runs on its own thread so the boot is never held up. Polls (1 s steps) until the USB log file is found, then writes
 // a snapshot immediately and two more a few seconds apart (the last one includes the registry tree).
 static void worker(void *arg)
@@ -431,6 +510,8 @@ static void worker(void *arg)
 bool ItlDiag::start(IOService *provider)
 {
     if (!super::start(provider)) return false;
+
+    IOCreateThread(kbWorker, this);
 
     uint32_t hold = 0;
     if (!PE_parse_boot_argn("itldiag", &hold, sizeof(hold)) || !hold) return true;

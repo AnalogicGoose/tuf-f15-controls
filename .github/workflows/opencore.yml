@@ -1,0 +1,69 @@
+name: opencore
+
+# Rebuilds OpenCore from the exact upstream commit the USB stick was built from (1.0.9, 2026-09-30) with
+# oc/fix-zen5-fsb.diff applied. The only change is the Family 1Ah (Zen 5) FSB calculation in OcCpuLib.
+on:
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: OpenCorePkg commit to build
+        default: 963025f1382eca619412d527ad82b6d19bee70d9
+
+env:
+  PROJECT_TYPE: UEFI
+  FORCE_INSTALL: 1
+  HAS_OPENSSL_BUILD: 1
+  HAS_OPENSSL_W32BUILD: 0
+  JOB_TYPE: BUILD
+  HOMEBREW_NO_INSTALL_CLEANUP: 1
+  HOMEBREW_NO_AUTO_UPDATE: 1
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch OpenCorePkg and apply the patch
+        run: |
+          git clone https://github.com/acidanthera/OpenCorePkg oc-src
+          cd oc-src
+          git checkout "${{ github.event.inputs.commit }}"
+          git apply --directory=Library/OcCpuLib --check ../oc/fix-zen5-fsb.diff
+          git apply --directory=Library/OcCpuLib ../oc/fix-zen5-fsb.diff
+          git diff --stat
+
+      - name: Toolchain (same steps as upstream build.yml)
+        run: |
+          brew tap FiloSottile/homebrew-musl-cross
+          brew install FiloSottile/musl-cross/musl-cross
+          brew install mingw-w64
+
+      - name: CI bootstrap
+        working-directory: oc-src
+        run: |
+          src=$(/usr/bin/curl -LfsS https://raw.githubusercontent.com/acidanthera/ocbuild/master/ci-bootstrap.sh) && eval "$src" || exit 1
+
+      - name: Build
+        working-directory: oc-src
+        run: ./build_oc.tool
+
+      - name: Collect OpenCore.efi and OpenRuntime.efi
+        run: |
+          mkdir -p dist
+          cd oc-src/Binaries
+          ls -la
+          for kind in DEBUG RELEASE; do
+            z=$(ls OpenCore-*-$kind.zip | head -1)
+            mkdir -p "../../dist/$kind" "x-$kind"
+            unzip -q -o "$z" -d "x-$kind"
+            cp "x-$kind/X64/EFI/OC/OpenCore.efi" "../../dist/$kind/"
+            cp "x-$kind/X64/EFI/OC/Drivers/OpenRuntime.efi" "../../dist/$kind/"
+            cp "x-$kind/X64/EFI/BOOT/BOOTx64.efi" "../../dist/$kind/"
+          done
+          ls -laR ../../dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: opencore-zen5-fsb
+          path: dist
