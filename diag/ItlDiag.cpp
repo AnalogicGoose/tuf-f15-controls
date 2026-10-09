@@ -503,6 +503,7 @@ static int applyRepeat(uint64_t initNs, uint64_t repNs, bool verbose)
 }
 
 // Timer sanity, printed to the kernel log so `dmesg | grep ItlDiag` shows it: does IOSleep(100) take 100 ms of wall clock?
+static char lastProbe[100] = "probe: -";
 static void timerProbe(void)
 {
     uint64_t a0 = absNs(), c0 = calUs(), t0 = rdtsc_();
@@ -510,6 +511,7 @@ static void timerProbe(void)
     uint64_t a1 = absNs(), c1 = calUs(), t1 = rdtsc_();
     uint64_t dc = (c1 - c0) / 1000;
     outLine("ItlDiag: probe sleep100: mach=%llums cal=%llums tsc=%lluMHz", (a1 - a0) / 1000000ull, dc, dc ? (t1 - t0) / (dc * 1000ull) : 0ull);
+    snprintf(lastProbe, sizeof(lastProbe), "probe sleep100: mach=%llums cal=%llums tsc=%lluMHz", (a1 - a0) / 1000000ull, dc, dc ? (t1 - t0) / (dc * 1000ull) : 0ull);
 }
 
 static void kbWorker(void *)
@@ -554,29 +556,154 @@ static void copyKextLogs()
     it->release();
 }
 
-// Runs on its own thread so the boot is never held up. Polls (1 s steps) until some write path works (filesystem write
-// to the mounted stick, or the raw FAT file), then writes a snapshot immediately and two more a few seconds apart (the
-// last one includes the registry tree), then keeps appending (timer probes, M1 log) for ~20 minutes.
+// ---------------------------------------------------------------- xHCI interrupt health
+// Hypothesis under test: macOS never services some xHCI events (the key-up report sits in the event ring until the next
+// interrupt), so keys repeat until the next key. A sampler reads USBSTS.EINT / IMAN.IP of every xHCI every few ms: with
+// healthy interrupts those bits pulse for microseconds; if interrupts are lost they stay set for a long time.
+
+struct Xhc {
+    IOPCIDevice *p;
+    IOMemoryMap *map;
+    volatile uint8_t *b;
+    uint32_t op, rt;
+    unsigned vid, did;
+    uint32_t samples, rises, maxMs, slow, curMs, erdpCh, dead, lastSts, lastIman, lastErdp;
+    uint64_t riseNs;
+    bool up;
+};
+static Xhc xh[8];
+static int nxh;
+static inline uint32_t rd32(const Xhc &x, uint32_t o) { return *(volatile uint32_t *)(x.b + o); }
+
+static void xhcInit()
+{
+    if (nxh) return;
+    IORegistryIterator *it = IORegistryIterator::iterateOver(gIOServicePlane, kIORegistryIterateRecursively);
+    if (!it) return;
+    IORegistryEntry *e;
+    while ((e = it->getNextObject()) && nxh < 8) {
+        IOPCIDevice *p = OSDynamicCast(IOPCIDevice, e);
+        if (!p || (p->configRead32(kIOPCIConfigRevisionID) >> 8) != 0x0c0330) continue;
+        Xhc &x = xh[nxh];
+        bzero(&x, sizeof(x));
+        x.p = p;
+        p->retain();
+        x.vid = p->configRead16(kIOPCIConfigVendorID);
+        x.did = p->configRead16(kIOPCIConfigDeviceID);
+        x.map = p->mapDeviceMemoryWithRegister(kIOPCIConfigBaseAddress0);
+        if (x.map) {
+            x.b = (volatile uint8_t *)x.map->getVirtualAddress();
+            if (x.b) {
+                x.op = *(volatile uint32_t *)x.b & 0xff;
+                x.rt = *(volatile uint32_t *)(x.b + 0x18) & ~0x1fu;
+                if (x.op < 0x10 || x.op > 0x100 || !x.rt || x.rt > 0x10000) x.b = nullptr;
+            }
+        }
+        nxh++;
+    }
+    it->release();
+}
+
+static void sampler(void *)
+{
+    uint64_t start = absNs();
+    uint32_t last[8] = { 0 };
+    while (absNs() - start < 240ull * 1000000000ull) {
+        uint64_t now = absNs();
+        for (int i = 0; i < nxh; i++) {
+            Xhc &x = xh[i];
+            if (!x.b) continue;
+            uint32_t sts = rd32(x, x.op + 4), iman = rd32(x, x.rt + 0x20), erdp = rd32(x, x.rt + 0x38) & ~0xfu;
+            x.samples++;
+            x.lastSts = sts; x.lastIman = iman; x.lastErdp = erdp;
+            if (sts == 0xffffffffu) { x.dead++; continue; }
+            bool eint = (sts & 8) || (iman & 1);
+            if (eint && !x.up) { x.up = true; x.riseNs = now; x.rises++; }
+            else if (!eint && x.up) {
+                x.up = false;
+                uint32_t ms = (uint32_t)((now - x.riseNs) / 1000000ull);
+                if (ms > x.maxMs) x.maxMs = ms;
+                if (ms >= 20) x.slow++;
+            }
+            x.curMs = x.up ? (uint32_t)((now - x.riseNs) / 1000000ull) : 0;
+            if (x.samples > 1 && erdp != last[i]) x.erdpCh++;
+            last[i] = erdp;
+        }
+        IOSleep(2);
+    }
+}
+
+static void screenBlock(int n)
+{
+    uint64_t dCal = (calUs() - cal0us) / 1000;
+    uint64_t dAbs = (absNs() - abs0ns) / 1000000ull;
+    uint64_t dTsc = rdtsc_() - tsc0;
+    outLine("ItlDiag: ===== block %d =====", n);
+    outLine("clk cal=%llums mach=%llums tsc=%lluMHz", dCal, dAbs, dCal ? dTsc / (dCal * 1000ull) : 0ull);
+    outLine("%.98s", lastProbe);
+    outLine("usblog: %.40s | vfs: %.40s", attachMsg, vfsMsg);
+    for (int i = 0; i < nxh; i++) {
+        Xhc &x = xh[i];
+        IOPCIDevice *p = x.p;
+        unsigned msi = 0xffff, msix = 0xffff;
+        uint8_t ptr = p->configRead8(0x34) & ~3;
+        for (int g = 0; ptr >= 0x40 && g < 32; g++) {
+            uint8_t id = p->configRead8(ptr);
+            if (id == 5) msi = p->configRead16(ptr + 2);
+            if (id == 0x11) msix = p->configRead16(ptr + 2);
+            ptr = p->configRead8(ptr + 1) & ~3;
+        }
+        const char *ic = "-";
+        unsigned nspec = 0;
+        OSArray *ca = OSDynamicCast(OSArray, p->getProperty("IOInterruptControllers"));
+        if (ca && ca->getCount()) { OSString *os = OSDynamicCast(OSString, ca->getObject(0)); if (os) ic = os->getCStringNoCopy(); }
+        OSArray *sa = OSDynamicCast(OSArray, p->getProperty("IOInterruptSpecifiers"));
+        if (sa) nspec = sa->getCount();
+        outLine("x%d %04x:%04x cmd=%04x sts=%04x il=%02x msi=%04x msix=%04x", i, x.vid, x.did, p->configRead16(kIOPCIConfigCommand),
+                p->configRead16(kIOPCIConfigStatus), p->configRead8(0x3c), msi, msix);
+        outLine("   drv=%.24s irq=%.36s nspec=%u", firstChildClass(p), ic, nspec);
+        if (!x.b) { outLine("   mmio: not mapped"); continue; }
+        outLine("   usbsts=%08x iman=%08x imod=%08x erdp=%08x", x.lastSts, x.lastIman, rd32(x, x.rt + 0x24), x.lastErdp);
+        outLine("   sam=%u eintRises=%u maxEint=%ums slow=%u cur=%ums erdpChg=%u dead=%u", x.samples, x.rises, x.maxMs, x.slow,
+                x.curMs, x.erdpCh, x.dead);
+    }
+    IORegistryIterator *it = IORegistryIterator::iterateOver(gIOServicePlane, kIORegistryIterateRecursively);
+    if (it) {
+        IORegistryEntry *e;
+        int nu = 0, nh = 0;
+        while ((e = it->getNextObject())) {
+            const char *cls = e->getMetaClass()->getClassName();
+            if (!strcmp(cls, "IOUSBHostDevice")) {
+                if (nu++ < 8) outLine("usb %04x:%04x %.30s loc=%08x spd=%u", num(e, "idVendor") & 0xffff, num(e, "idProduct") & 0xffff,
+                                      e->getName(), num(e, "locationID"), num(e, "Device Speed"));
+            } else if (hasStr(cls, "HIDDevice") || hasStr(cls, "HIDKeyboard")) {
+                nh++;
+            }
+        }
+        it->release();
+        outLine("usb devices=%d hid=%d", nu, nh);
+    }
+    outLine("ItlDiag: ===== end block %d =====", n);
+}
+
+// Runs on its own thread so the boot is never held up. Prints a compact summary block to the verbose console every few
+// seconds (photograph the last one before the GUI covers it), mirrors everything to the stick when a write path works,
+// and keeps appending (timer probes, M1 log) for ~20 minutes.
 static void worker(void *arg)
 {
     IOService *me = (IOService *)arg;
-    uint32_t maxWait = 0;
-    PE_parse_boot_argn("itldiag", &maxWait, sizeof(maxWait));    // seconds to keep looking for a place to write
-
-    for (uint32_t i = 0; i < maxWait && !logMedia && !vfsOk; i++) {
-        vfsFlush();
-        if (vfsOk) break;
-        tryAttach(me);
-        if (!logMedia) IOSleep(1000);
-    }
-    static const uint32_t gap[3] = { 0, 5000, 5000 };
-    for (int n = 0; n < 3; n++) {
-        if (gap[n]) IOSleep(gap[n]);
-        collect();
-        outLine("ItlDiag: ===== dump %d, %d lines =====", n, nl);
-        for (int i = 0; i < nl; i++) outLine("%s", lines[i]);
-        outLine("ItlDiag: ===== end =====");
-        if (n == 2) dumpTree();
+    xhcInit();
+    IOCreateThread(sampler, nullptr);
+    for (int n = 0; n < 12; n++) {
+        IOSleep(n ? 5000 : 8000);
+        if (!logMedia && !vfsOk) { vfsFlush(); tryAttach(me); }
+        screenBlock(n);
+        if (n == 2) {
+            collect();
+            fileLine("===== registry summary, %d lines =====", nl);
+            for (int i = 0; i < nl; i++) fileLine("%s", lines[i]);
+            dumpTree();
+        }
         flushLog();
     }
     outLine("ItlDiag: done (usblog: %s | vfs: %s)", attachMsg, vfsMsg);
@@ -584,6 +711,7 @@ static void worker(void *arg)
     for (int pass = 0; pass < 120; pass++) {
         IOSleep(10000);
         if (!logMedia && !vfsOk) tryAttach(me);
+        screenBlock(100 + pass);
         copyKextLogs();
         flushLog();
     }
