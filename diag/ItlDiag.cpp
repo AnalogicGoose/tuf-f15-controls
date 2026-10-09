@@ -629,9 +629,13 @@ struct XRing {
     XEv evs[16]; uint32_t evHead;
     XPend pend[32]; int npend;
     uint64_t mfAbs0, mfAbsTot, mfTot; uint32_t mfLast; uint64_t ipRise; bool ipUp;
+    uint64_t ehbRise; bool ehbUp; uint32_t ehbMax, ehbCur, erdpAdv, ehbN, ipN; uint64_t lastErdp;
 };
 static XRing xr[8];
 static uint64_t xhcStart;
+// Mapping xHCI-owned RAM (event ring, device contexts) is only done with boot-arg itlxr=1: the first boot that did it
+// panicked in AppleUSBXHCIDevice::free during a port terminate. Default is registers only.
+static bool physOk;
 
 struct PM { IOMemoryDescriptor *d; IOMemoryMap *m; uint64_t pa; };
 static PM pmc[32];
@@ -656,7 +660,7 @@ static void xrInit(int i)
 {
     Xhc &x = xh[i];
     XRing &r = xr[i];
-    if (r.ok || !x.b) return;
+    if (r.ok || !x.b || !physOk) return;
     uint32_t szReg = rd32(x, x.rt + 0x28) & 0xffff;
     uint64_t erstba = ((uint64_t)rd32(x, x.rt + 0x34) << 32) | (rd32(x, x.rt + 0x30) & ~0x3fu);
     if (!szReg || !erstba) return;
@@ -693,8 +697,8 @@ static void xrPoll(int i, uint64_t now, uint64_t start)
 {
     Xhc &x = xh[i];
     XRing &r = xr[i];
-    if (!r.ok) { xrInit(i); return; }
-    for (uint32_t k = 0; k < r.n; k++) {
+    if (!r.ok) xrInit(i);
+    for (uint32_t k = 0; r.ok && k < r.n; k++) {
         uint32_t d3 = *(volatile uint32_t *)(r.seg + k * 16 + 12);
         uint32_t s3 = (uint32_t)(r.snap[k] >> 32);
         if (!((d3 ^ s3) & 1)) continue;
@@ -703,8 +707,20 @@ static void xrPoll(int i, uint64_t now, uint64_t start)
         xrRecord(i, k, now, start, d2, d3);
     }
     // which TRB will the OS handle next?
-    uint64_t erdp = ((uint64_t)rd32(x, x.rt + 0x3c) << 32) | (rd32(x, x.rt + 0x38) & ~0xfu);
-    if (erdp >= r.segPa && erdp < r.segPa + (uint64_t)r.n * 16) {
+    uint32_t erdpLo = rd32(x, x.rt + 0x38);
+    uint64_t erdp = ((uint64_t)rd32(x, x.rt + 0x3c) << 32) | (erdpLo & ~0xfu);
+    if (erdp != r.lastErdp) { r.erdpAdv++; r.lastErdp = erdp; }
+    // ERDP.EHB (bit 3): set by the controller when it raised the interrupt, cleared only when the OS acknowledged it
+    bool ehb = erdpLo & 8;
+    if (ehb && !r.ehbUp) { r.ehbUp = true; r.ehbRise = now; r.ehbN++; }
+    else if (!ehb && r.ehbUp) {
+        r.ehbUp = false;
+        uint32_t ms = (uint32_t)((now - r.ehbRise) / 1000000ull);
+        if (ms > r.ehbMax) r.ehbMax = ms;
+    }
+    r.ehbCur = r.ehbUp ? (uint32_t)((now - r.ehbRise) / 1000000ull) : 0;
+    if (r.ehbCur > r.ehbMax) r.ehbMax = r.ehbCur;
+    if (r.ok && erdp >= r.segPa && erdp < r.segPa + (uint64_t)r.n * 16) {
         uint32_t cur = (uint32_t)((erdp - r.segPa) / 16);
         for (int p = 0; p < r.npend; ) {
             uint32_t ahead = (cur + r.n - r.pend[p].idx) % r.n;     // > 0: the OS has moved past this event
@@ -723,12 +739,13 @@ static void xrPoll(int i, uint64_t now, uint64_t start)
     }
     // IMAN.IP pending time
     bool ip = rd32(x, x.rt + 0x20) & 1;
-    if (ip && !r.ipUp) { r.ipUp = true; r.ipRise = now; }
+    if (ip && !r.ipUp) { r.ipUp = true; r.ipRise = now; r.ipN++; }
     else if (!ip && r.ipUp) {
         r.ipUp = false;
         uint32_t ms = (uint32_t)((now - r.ipRise) / 1000000ull);
         if (ms > r.ipMax) r.ipMax = ms;
     }
+    if (r.ipUp) { uint32_t ms = (uint32_t)((now - r.ipRise) / 1000000ull); if (ms > r.ipMax) r.ipMax = ms; }
     // MFINDEX vs mach time, sampled every ~250 ms
     if (!r.mfAbs0) { r.mfAbs0 = now; r.mfLast = rd32(x, x.rt) & 0x3fff; }
     else if (now - r.mfAbs0 >= 250000000ull) {
@@ -740,6 +757,7 @@ static void xrPoll(int i, uint64_t now, uint64_t start)
 }
 
 // one text line per xHCI, written to NVRAM as itlx<i>
+#define ADV(...) do { o += snprintf(out + o, cap - o, __VA_ARGS__); if (o >= cap) o = cap - 1; } while (0)
 static void xrReport(int i, char *out, size_t cap, uint64_t start)
 {
     Xhc &x = xh[i];
@@ -747,9 +765,10 @@ static void xrReport(int i, char *out, size_t cap, uint64_t start)
     size_t o = 0;
     uint32_t nowMs = (uint32_t)((absNs() - start) / 1000000ull);
     uint32_t mfRatio = r.mfAbsTot ? (uint32_t)((r.mfTot * 125000ull * 1000ull) / r.mfAbsTot) : 0;
-    o += snprintf(out + o, cap - o, "x%d T=%u ring=%d ev=%u tx=%u late5=%u maxlat=%ums pend=%u ipmax=%ums mf=%u/1000 |", i, nowMs,
-                  r.ok ? 1 : 0, r.nev, r.nxfer, r.late5, r.maxLat, r.pendMax, r.ipMax, mfRatio);
-    if (x.b) {
+    ADV("x%d T=%u ring=%d ev=%u tx=%u late5=%u maxlat=%ums pend=%u ip=%u/%ums ehb=%u/%ums(cur%u) adv=%u mf=%u/1000 |", i, nowMs,
+                  r.ok ? 1 : 0, r.nev, r.nxfer, r.late5, r.maxLat, r.pendMax, r.ipN, r.ipMax, r.ehbN, r.ehbMax, r.ehbCur,
+                  r.erdpAdv, mfRatio);
+    if (x.b && physOk) {
         uint32_t hcc = rd32(x, 0x10);
         uint32_t csz = (hcc & 4) ? 64 : 32;
         uint64_t dcbaa = ((uint64_t)rd32(x, x.op + 0x34) << 32) | (rd32(x, x.op + 0x30) & ~0x3fu);
@@ -760,24 +779,25 @@ static void xrReport(int i, char *out, size_t cap, uint64_t start)
                 if (!dp) continue;
                 volatile uint8_t *ctx = physMap(dp, csz * 10);
                 if (!ctx) continue;
-                o += snprintf(out + o, cap - o, " s%d:", s);
+                ADV(" s%d:", s);
                 for (int d = 1; d <= 9; d++)
-                    o += snprintf(out + o, cap - o, "%u", *(volatile uint32_t *)(ctx + d * csz) & 7);
+                    ADV("%u", *(volatile uint32_t *)(ctx + d * csz) & 7);
             }
         }
     }
-    o += snprintf(out + o, cap - o, " | cnt:");
+    ADV(" | cnt:");
     for (int s = 0; s < 16; s++)
         for (int d = 0; d < 32 && o + 14 < cap; d++)
-            if (r.cnt[s][d]) o += snprintf(out + o, cap - o, " %d.%d=%u", s, d, r.cnt[s][d]);
-    o += snprintf(out + o, cap - o, " | last:");
+            if (r.cnt[s][d]) ADV(" %d.%d=%u", s, d, r.cnt[s][d]);
+    ADV(" | last:");
     uint32_t cntEv = r.nev < 16 ? r.nev : 16;
     for (uint32_t k = 0; k < cntEv && o + 30 < cap; k++) {
         XEv &e = r.evs[(r.evHead - cntEv + k) & 15];
-        if (e.lat == 0xffffffffu) o += snprintf(out + o, cap - o, " %u:t%u/%u.%u/c%u/L-", e.tms, e.type, e.slot, e.dci, e.cc);
-        else o += snprintf(out + o, cap - o, " %u:t%u/%u.%u/c%u/L%u", e.tms, e.type, e.slot, e.dci, e.cc, e.lat);
+        if (e.lat == 0xffffffffu) ADV(" %u:t%u/%u.%u/c%u/L-", e.tms, e.type, e.slot, e.dci, e.cc);
+        else ADV(" %u:t%u/%u.%u/c%u/L%u", e.tms, e.type, e.slot, e.dci, e.cc, e.lat);
     }
 }
+#undef ADV
 
 static void sampler(void *)
 {
@@ -1052,7 +1072,12 @@ static void nvramDigest(int n)
 static void worker(void *arg)
 {
     IOService *me = (IOService *)arg;
+    uint32_t xr1 = 0;
+    PE_parse_boot_argn("itlxr", &xr1, sizeof(xr1));
+    physOk = xr1 != 0;
+    nvramPut("itlx0", "worker up", 9);
     xhcInit();
+    { char hb[64]; snprintf(hb, sizeof(hb), "xhcInit nxh=%d physOk=%d", nxh, physOk ? 1 : 0); nvramPut("itlx0", hb, strlen(hb)); }
     IOCreateThread(sampler, nullptr);
     uint32_t panicSec = 0;
     PE_parse_boot_argn("itlpanic", &panicSec, sizeof(panicSec));
