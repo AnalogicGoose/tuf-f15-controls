@@ -105,7 +105,7 @@ int itlmt7925::uniSend(uint8_t cid, const void *payload, size_t plen, bool query
     bzero(p, 48);
     uint32_t total = (uint32_t)(48 + plen);
     put32(p + 0, (total & 0xffff) | (2u << 23) | (0x20u << 25));    // TX_BYTES | PKT_FMT=CMD | Q_IDX=RX_Q0
-    put32(p + 4, 1u << 16);                                          // HDR_FORMAT = CMD
+    put32(p + 4, 1u << 14);                                          // HDR_FORMAT = CMD (connac3 layout: bits 15:14, mt76_connac3_mac.h)
     put16(p + 32, (uint16_t)(total - 32));                           // uni_txd->len
     put16(p + 34, cid);                                              // uni_txd->cid
     p[37] = MCU_PKT_ID;
