@@ -165,6 +165,7 @@ void itlmt7925::m3ParseAp()
         ie += 2 + l;
     }
     m3log("ap rates supp=%02x basic=%02x rsn=%u", apSupp, apBasic, apRsnLen);
+    m3FastPlan();
     if (apRsnLen >= 14) {
         // version(2) group(4) pairwise count(2) ...
         const uint8_t *r = apRsn + 2;
@@ -172,6 +173,25 @@ void itlmt7925::m3ParseAp()
         m3log("rsn group=%02x pairwise n=%u first=%02x akm1=%02x", r[5], pc, pc ? r[11] : 0,
               (apRsnLen >= 12 + 4 * pc + 6) ? r[8 + 4 * pc + 2 + 3] : 0);
     }
+}
+
+// HT/VHT plan (boot-arg itlmt_fast=1): what the AP offers, the channel width to run at and the rate to report to macOS.
+// Stays off (legacy 6 Mb/s path, exactly as before) unless the AP is on 5 GHz and advertises HT.
+void itlmt7925::m3FastPlan()
+{
+    fastActive = false;
+    if (!m3fast) return;
+    itl_caps_parse(tgtIe, tgtIeLen, &apCaps);
+    if (tgtCh <= 14 || !apCaps.ht) {
+        m3log("fast: off (ch=%u ht=%d)", tgtCh, apCaps.ht ? 1 : 0);
+        return;
+    }
+    itl_caps_channel(&apCaps, tgtCh, &fastBw, &fastCenter);
+    fastNss = itl_caps_nss(&apCaps);
+    fastRate = itl_caps_max_rate(&apCaps, fastBw);
+    fastActive = true;
+    m3log("fast: on ht=%d vht=%d bw=%u center=%u nss=%u rate~%u htcap=%04x vhtcap=%08x", apCaps.ht ? 1 : 0, apCaps.vht ? 1 : 0,
+          fastBw, fastCenter, fastNss, fastRate, apCaps.htCap, apCaps.vhtCap);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -261,6 +281,7 @@ int itlmt7925::m3Bss(bool enable)
     put16(b + 22, tgtBcnInt ? tgtBcnInt : 100);
     b[24] = 1;                                               // dtim_period
     b[25] = 0x01;                                            // phymode: 5 GHz legacy (PHY_MODE_A)
+    if (fastActive) b[25] |= 0x10 | (apCaps.vht ? 0x20 : 0); // | PHY_MODE_AN | PHY_MODE_AC
     put16(b + 26, M3_AP_WCID);
     put16(b + 28, 3);                                        // nonht_basic_phy = PHY_TYPE_OFDM_INDEX
     b[30] = 0;                                               // phymode_ext
@@ -298,6 +319,12 @@ int itlmt7925::m3Bss(bool enable)
         rl[7] = 0;                                           // CMD_CBW_20MHZ
         rl[8] = 1; rl[9] = 1;                                // tx / rx streams
         rl[10] = 0;                                          // ht_op_info
+        if (fastActive) {                                    // mt7925_mcu_bss_rlm_tlv: AP's width, both streams, "HT 40 allowed"
+            rl[5] = fastCenter;
+            rl[7] = fastBw;
+            rl[8] = rl[9] = 2;
+            rl[10] = 4;
+        }
         rl[11] = 0;                                          // sco
         rl[12] = tgtCh > 14 ? 2 : 1;                         // band
     }
@@ -326,15 +353,39 @@ int itlmt7925::m3Sta(uint8_t state, bool newly, uint16_t aid)
     memcpy(b + 12, tgtBssid, 6);
     put16(b + 18, newly ? 3 : 1);                            // EXTRA_INFO_VER | NEW
 
+    bool ht = fastActive && state == 2;                      // capabilities go in with the association, not the early "none" record
+    if (ht) {                                                // mt7925_mcu_sta_ht_tlv / vht_tlv: the peer's (the AP's) capabilities
+        uint8_t *h = m.tlv(9, 8);                            // STA_REC_HT
+        put16(h + 4, apCaps.htCap);
+        if (apCaps.vht) {
+            uint8_t *v = m.tlv(10, 16);                      // STA_REC_VHT
+            put32(v + 4, apCaps.vhtCap);
+            put16(v + 8, apCaps.vhtRxMcs);
+            put16(v + 10, apCaps.vhtTxMcs);
+        }
+    }
+
     uint8_t *p = m.tlv(0x15, 12);                            // STA_REC_PHY
     put16(p + 4, apBasic);                                   // basic_rate
     p[6] = 1u << 3;                                          // PHY_TYPE_BIT_OFDM
+    if (ht) {
+        uint8_t af = apCaps.ampduParm & 3, mm = (apCaps.ampduParm >> 2) & 7;
+        p[6] |= (1u << 4) | (apCaps.vht ? (1u << 5) : 0);    // PHY_TYPE_BIT_HT | PHY_TYPE_BIT_VHT
+        if (apCaps.vht) {
+            uint8_t vaf = (uint8_t)((apCaps.vhtCap >> 23) & 7);
+            if (vaf > af) af = vaf;
+        }
+        p[7] = (uint8_t)((af & 3) | (mm << 2));              // ampdu: factor | density << 2
+        p[10] = af;                                          // max_ampdu_len (connac3)
+    }
 
     uint8_t *ra = m.tlv(1, 16);                              // STA_REC_RA
     put16(ra + 4, (uint16_t)apSupp << 6);                    // legacy: RA_LEGACY_OFDM GENMASK(13, 6)
+    if (ht) memcpy(ra + 6, apCaps.mcsRx, sizeof(apCaps.mcsRx));    // rx_mcs_bitmask: HT MCS the AP receives
 
     uint8_t *st = m.tlv(7, 16);                              // STA_REC_STATE
     st[4] = state;
+    if (ht && apCaps.vht) st[12] = (uint8_t)(fastBw | (fastNss << 4));   // vht_opmode: bandwidth | rx_nss << 4
 
     if (state != 0) {
         uint8_t *ml = m.tlv(0x20, 28);                       // STA_REC_MLD
@@ -403,7 +454,7 @@ struct M3Lock {
     ~M3Lock() { if (l) IOLockUnlock(l); }
 };
 
-bool itlmt7925::m3Tx(const uint8_t *frame, uint32_t len, uint8_t type, uint8_t subtype, bool protect)
+bool itlmt7925::m3Tx(const uint8_t *frame, uint32_t len, uint8_t type, uint8_t subtype, bool protect, bool rateAdapt)
 {
     if (!txData.n || len > 1900 || len < 24) return false;
     M3Lock lk(txLock);                                           // management frames from the m3 thread, data from the network stack
@@ -414,11 +465,13 @@ bool itlmt7925::m3Tx(const uint8_t *frame, uint32_t len, uint8_t type, uint8_t s
     memcpy(w + 128, frame, len);
 
     put32(w + 0, (len + 32) | (0u << 23) | (0x10u << 25));       // TX_BYTES | PKT_FMT=CT | Q_IDX=ALTX0
-    put32(w + 4, M3_AP_WCID | (2u << 14) | ((24u / 2) << 16) | (1u << 31));   // wlan idx, HDR_FORMAT=802.11, HDR_INFO, FIXED_RATE
+    uint32_t hdrLen = (type == 2 && (frame[0] & 0x80)) ? 26 : 24;               // QoS data frames carry the 2-byte QoS control field
+    // wlan idx, HDR_FORMAT=802.11, HDR_INFO; FIXED_RATE unless the firmware's rate control (STA_REC_RA) picks the rate
+    put32(w + 4, M3_AP_WCID | (2u << 14) | ((hdrLen / 2) << 16) | (rateAdapt ? 0u : (1u << 31)));
     put32(w + 8, ((uint32_t)type << 4) | subtype);
     put32(w + 12, (15u << 11) | (1u << 28) | (protect ? 2u : 0));   // REM_TX_COUNT=15, BA_DISABLE (fixed rate), PROTECT_FRAME
-    put32(w + 20, 3 | (1u << 10));                               // PID = MT_PACKET_ID_FIRST, TX_STATUS_HOST: report completion
-    put32(w + 24, (1u << 2) | (1u << 4) | (1u << 3) | ((uint32_t)M3_RATE_IDX << 16));   // DAS, MSDU_CNT=1, DIS_MAT, TX_RATE
+    put32(w + 20, rateAdapt ? 0u : (3 | (1u << 10)));            // PID = MT_PACKET_ID_FIRST, TX_STATUS_HOST: report completion (none for rate-adapted data)
+    put32(w + 24, (1u << 2) | (1u << 4) | (1u << 3) | (rateAdapt ? 0u : ((uint32_t)M3_RATE_IDX << 16)));   // DAS, MSDU_CNT=1, DIS_MAT, TX_RATE
 
     m3tok = (m3tok + 1) & 0x1fff;
     put16(w + 32, (uint16_t)(m3tok | 0x8000));                   // txp.msdu_id[0] | VALID
@@ -515,7 +568,7 @@ int itlmt7925::m3Auth()
 
 int itlmt7925::m3Assoc()
 {
-    uint8_t f[160];
+    uint8_t f[224];
     m3Hdr(f, 0x00, tgtBssid, mac);
     uint8_t *p = f + 24;
     put16(p, 0x0411); p += 2;                                    // ESS | PRIVACY | short slot
@@ -527,6 +580,12 @@ int itlmt7925::m3Assoc()
     static const uint8_t rsn[22] = {0x30, 0x14, 0x01, 0x00, 0x00, 0x0f, 0xac, 0x04, 0x01, 0x00, 0x00, 0x0f, 0xac, 0x04,
                                     0x01, 0x00, 0x00, 0x0f, 0xac, 0x02, 0x00, 0x00};
     memcpy(p, rsn, sizeof(rsn)); p += sizeof(rsn);
+    if (fastActive) {
+        p += itl_caps_build_ht(p);
+        if (apCaps.vht) p += itl_caps_build_vht(p);
+        static const uint8_t wmm[9] = {0xdd, 0x07, 0x00, 0x50, 0xf2, 0x02, 0x00, 0x01, 0x00};   // WMM information element: we are QoS-capable
+        memcpy(p, wmm, sizeof(wmm)); p += sizeof(wmm);
+    }
     if (!m3Xchg(f, (uint32_t)(p - f), 0, 0x10, 150)) return ITL_TIMEOUT;
     uint16_t st = (uint16_t)(m3rx[26] | (m3rx[27] << 8)), aid = (uint16_t)((m3rx[28] | (m3rx[29] << 8)) & 0x3fff);
     m3log("assoc resp status=%u aid=%u", st, aid);
@@ -713,19 +772,23 @@ bool itlmt7925::m3RxData(const uint8_t *p, uint32_t len)
 
 bool itlmt7925::m3TxData(const uint8_t *da, uint16_t ethertype, const uint8_t *payload, uint32_t plen, bool protect)
 {
-    uint8_t f[32 + 1560];
+    uint8_t f[34 + 1560];
     if (plen > 1560) return false;
-    bzero(f, 24);
-    f[0] = 0x08;                                             // data
+    // With HT/VHT negotiated, unicast data (not the EAPOL handshake) goes out as QoS data (TID 0) at the rate the firmware
+    // chooses; group-addressed frames and everything else keep the fixed basic rate.
+    bool ra = fastActive && m3linkUp && ethertype != 0x888e && !(da[0] & 1);
+    uint32_t hl = ra ? 26 : 24;
+    bzero(f, hl);
+    f[0] = ra ? 0x88 : 0x08;                                 // data / QoS data
     f[1] = protect ? 0x41 : 0x01;                            // To DS (+ Protected: the hardware adds the CCMP header)
     memcpy(f + 4, tgtBssid, 6);
     memcpy(f + 10, mac, 6);
-    memcpy(f + 16, da, 6);
+    memcpy(f + 16, da, 6);                                   // QoS control (bytes 24-25) stays 0: TID 0, normal ack
     static const uint8_t llc[6] = {0xaa, 0xaa, 0x03, 0x00, 0x00, 0x00};
-    memcpy(f + 24, llc, 6);
-    f[30] = (uint8_t)(ethertype >> 8); f[31] = (uint8_t)ethertype;
-    memcpy(f + 32, payload, plen);
-    return m3Tx(f, 32 + plen, 2, 0, protect);
+    memcpy(f + hl, llc, 6);
+    f[hl + 6] = (uint8_t)(ethertype >> 8); f[hl + 7] = (uint8_t)ethertype;
+    memcpy(f + hl + 8, payload, plen);
+    return m3Tx(f, hl + 8 + plen, 2, ra ? 8 : 0, protect, ra);
 }
 
 // Ethernet frame from the network stack
