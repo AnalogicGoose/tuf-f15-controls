@@ -24,13 +24,13 @@ Speed targets (estimates, see [WIFI.md](WIFI.md#speed-what-to-expect-and-the-cei
 download takes about 9 h); with HT/VHT on 5 GHz 80 MHz a few hundred Mb/s; the chip itself is a 2x2 Wi-Fi 7 part with a PHY
 ceiling of about 2.4 Gb/s at 160 MHz. No throughput benchmark exists yet.
 
-- [ ] **Benchmark first**: `iperf3` TX/RX on the current driver, recorded in `docs/WIFI.md`, so every change below has a baseline.
-- [ ] Rate control, step 1 (`itlmt_fast=1`): HT/VHT capabilities in the association and the STA record, firmware rate control for unicast
-      data, 20/40/80 MHz BSS. **Implemented, compiles, host-tested parsing; not yet run on hardware**: test it and record the result.
-- [ ] Rate control, step 2: BlockAck (ADDBA/DELBA) with `STA_REC_BA` for RX and TX A-MPDU, then A-MSDU. This is where most of the speed beyond
-      "low hundreds of Mb/s" comes from, and RX aggregation matters most for downloads.
+- [ ] **Benchmark first**: a `curl` download of a big file from a LAN machine on the legacy driver (see WIFI.md), recorded there, so every change below has a baseline.
+- [ ] **Test `itlmt_fast=3` on the GA403WM** (levels: 1 HT/VHT rates, 2 receive Block Ack, 3 transmit Block Ack; automatic step-down).
+      Implemented and syntax-checked, parsing and reorder logic host-tested; never run on hardware. Record the level reached, the counters
+      (`itls0`) and the measured speed in `docs/WIFI.md`.
+- [ ] Rate control, step 2b: A-MSDU (both directions), more than one TID on transmit, a smarter ADDBA policy (start on traffic volume, DELBA on idle).
 - [ ] Rate control, step 3: HE (`STA_REC_HE_V2`), 2.4 GHz HT, 160 MHz.
-- [ ] TX path: do not wait for the descriptor to be consumed per packet (`m3Tx`), track TX-free events before reusing a staging slot.
+- [ ] TX path at levels 1-2 (and legacy): still waits per packet for the descriptor and reuses 64 staging slots blindly; level 3 tracks `TXFREE`. Move the lower levels over once TXFREE is confirmed on hardware.
 - [ ] Reconnect when the AP drops the link; group key re-key; periodic scan for a better configured network.
 - [ ] Power save (no power-save negotiation is implemented).
 - [ ] WPA3-SAE, open networks, 6 GHz scan, and a regulatory domain chosen from configuration (it is a fixed world domain `00` now).

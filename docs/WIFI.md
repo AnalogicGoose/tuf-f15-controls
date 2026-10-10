@@ -51,33 +51,66 @@ measurements from this driver.
 3. QoS data frames and WMM queues, then 40/80 MHz channel width negotiation.
 4. Interrupt-driven DMA instead of the polling thread, so the CPU is not the limit at hundreds of Mb/s.
 
-**How to measure** once a link is up (none of this has been done): run `iperf3 -s` on another machine on the same LAN and
-`iperf3 -c <ip> -t 30` (and `-R` for the reverse direction) from the Hackintosh; compare against the counters in the `itls0`
-line (`rxd`, `tx`, `fail`). Record results in this file with the AP model, band, channel and distance.
+**How to measure** once a link is up (none of this has been done): in a full macOS install run `iperf3 -s` on another machine on the
+same LAN and `iperf3 -c <ip> -t 30` (and `-R`) from the Hackintosh. Recovery has no `iperf3`: use the `curl` recipe in
+[Measuring the speed in Recovery](#measuring-the-speed-in-recovery). Compare against the counters in the `itls0` line (`rxd`, `tx`, `fail`).
+Record results in this file with the AP model, band, channel and distance.
 
-## HT/VHT mode (`itlmt_fast=1`)
+## HT/VHT mode and Block Ack (`itlmt_fast=1..3`)
 
-Off by default, so the verified legacy path is untouched. With `itlmt_m3=1 itlmt_fast=1`, and only when the chosen AP is on
-5 GHz and advertises HT, the driver:
+Off by default, so the verified legacy path is untouched. It is selected with the boot-arg `itlmt_fast=<level>` next to
+`itlmt_m3=1`, and only used when the chosen AP is on 5 GHz and advertises HT; otherwise the driver stays on the legacy path.
 
-1. parses the AP's HT / VHT Capabilities and Operation elements from its beacon (`itl_caps.cpp`, covered by `test/caps_test.cpp`);
-2. adds HT Capabilities (2 streams, 20/40 MHz, short GI, LDPC), VHT Capabilities (2 streams, 80 MHz, MCS 0-9) and a WMM element to the association request;
-3. tells the firmware the AP's capabilities: `STA_REC_HT`, `STA_REC_VHT`, HT/VHT bits and A-MPDU parameters in `STA_REC_PHY`, the HT MCS bitmask in `STA_REC_RA`, bandwidth and streams in `STA_REC_STATE`;
-4. runs the BSS at the AP's width (20/40/80 MHz, never wider) with `PHY_MODE_A|AN|AC` and 2 streams;
-5. sends unicast data as QoS data **without** the fixed-rate flag, so the firmware's rate control picks the MCS. Handshake (EAPOL),
-   management and group-addressed frames still use the fixed 6 Mb/s basic rate;
-6. reports the estimated best PHY rate as the Ethernet link speed instead of 54 Mb/s.
+| Level | What it adds | New risk compared with the level below |
+|---|---|---|
+| 1 | HT/VHT capabilities in the association, the AP's capabilities and the 20/40/80 MHz width to the firmware, unicast data as QoS data with the firmware's rate control (instead of fixed 6 Mb/s) | association rejected, firmware dislikes a TLV |
+| 2 | **Receive Block Ack**: the AP's ADDBA request is accepted (`STA_REC_BA` recipient + ADDBA response, no A-MSDU, window 64), frames are put back in order in a reorder buffer (100 ms hole timeout, BlockAckReq honoured), deeper RX ring, closer polling while traffic flows | reorder bug; firmware refuses the BA record |
+| 3 | **Transmit Block Ack**: after 10 unicast frames an ADDBA request for TID 0 (window 64); on success `STA_REC_BA` originator and the firmware aggregates our QoS data. Also: AC queue instead of the management queue, sequence numbers assigned by the driver, TX staging buffers released on `TXFREE` events instead of reused blindly | wrong queue or sequence handling; TXFREE layout |
 
-All the firmware message layouts come from the Linux `mt7925` driver (`mcu.c`, `mac.c`, `mt76_connac_mcu.h`). The log line
-`fast: on ht=1 vht=1 bw=2 center=155 nss=2 rate~866 ...` in `m3-log` shows what was negotiated; `fast: off ...` means the legacy path was used.
+Recommended for the first test, boot-args `itlmt_m1=75 itlmt_m2=1 itlmt_m3=1 itlmt_fast=3` (build the kext from this branch with
+`scripts/build.sh itlmt7925` or the `build-kexts` workflow, inject the credentials as usual). The driver tries level 3 and **steps down by itself**: if the association or the
+4-way handshake fails, or if 25 s after link-up it has transmitted but never received a unicast frame from the AP, it
+sends a deauthentication, connects again one level lower and finally falls back to the legacy 6 Mb/s path. The result is the
+highest level that works, in one boot. (Failures that do not break connectivity, such as a stalled upload, are not
+detected: check the counters below.)
 
-Status: it compiles (syntax-checked against MacKernelSDK) and the capability parsing is unit-tested, but **it has not been run on the
-GA403WM**. If the association or the handshake fails with `itlmt_fast=1`, remove the boot-arg to get back the known-good behaviour and
-read the log (`docs/DEBUGGING.md`).
+What the driver tells the firmware at every level (from the Linux `mt7925` driver: `mcu.c`, `mac.c`, `main.c`, `mt76_connac_mcu.h`):
+`STA_REC_HT`, `STA_REC_VHT`, HT/VHT bits and A-MPDU parameters in `STA_REC_PHY`, the HT MCS bitmask in `STA_REC_RA`, bandwidth and
+streams in `STA_REC_STATE`, the BSS at the AP's width with `PHY_MODE_A|AN|AC` and 2 streams. Handshake (EAPOL), management and
+group-addressed frames always use the fixed 6 Mb/s basic rate.
 
-What this mode does not do yet, and what to expect: no BlockAck (ADDBA) and therefore no A-MPDU in either direction, no A-MSDU, no
-HE/EHT, no 2.4 GHz, widths above 80 MHz fall back to the 80 MHz block holding the primary channel. Without aggregation every frame pays its
-own channel access and ACK, so expect a fraction of the PHY rate (my estimate: low hundreds of Mb/s on a good 5 GHz link, still far above 6 Mb/s).
+### Reading the result of a test
+
+After the boot, read the NVRAM from Windows (`scripts/read-nvram.ps1`, see `docs/DEBUGGING.md`):
+
+| Variable | Content |
+|---|---|
+| `itlb0`..`itlb2` | the fast-mode log: `fast on lvl=3 bw=2 c=155 nss=2 ...` negotiated; `rx addba tid=0 ssn=.. -> accept win=64`; `sta_rec_ba rx on ... rc=0 st=0`; `tx addba req`; `tx ba on`; `delba`; `lvl 3 given up, connecting again at 2` |
+| `itls0` | counters every 5 s: `up=..s L3 ... uni=<rx>/<tx> ba=<rx sessions>/<tx sessions> reo=<in>/<direct>/<buffered>/<dup>/<old>/<flushed>/<timeouts> txf=<freed>/<reclaimed>/<no slot>/<fw failed>/<fw retries>` |
+| `itlk0`..`itlk7` | the usual connect log (`fast: on ...` or `fast: off ...`) |
+
+How to tell what worked: `L3` in `itls0` means level 3 stayed; `ba=N/1` means N receive sessions and the transmit session are up;
+`reo` has `buffered` > 0 and `timeouts` small relative to `in` when aggregation is really happening; `txf` should have the first
+number growing with `tx` (if it stays 0 and the second number grows, TXFREE parsing is wrong and buffers are reclaimed by
+timeout, which caps TX at a low rate, so tell me).
+
+### Measuring the speed in Recovery
+
+Recovery has `curl`. Without a second machine:
+
+```bash
+curl -o /dev/null -w '%{speed_download} bytes/s\n' http://speedtest.tele2.net/1GB.zip     # internet; use a nearby server if you have one
+```
+
+With a PC on the same LAN (Windows, in a folder holding a big file): `python -m http.server 8000`, then on the Hackintosh
+`curl -o /dev/null -w '%{speed_download}\n' http://<pc-ip>:8000/big.bin`. For upload: `curl -T big.bin -o /dev/null http://<pc-ip>:8001/`
+needs an upload-capable server; an `iperf3` binary is not in Recovery. Write the numbers, the level in `itls0`, the AP model, band and
+channel into this file.
+
+### What is still missing
+
+No A-MSDU (refused in both directions), no HE/EHT, no 2.4 GHz, no widths above 80 MHz (a 160 MHz BSS is used at the 80 MHz block with the
+primary channel), only TID 0 is aggregated on transmit, CPU-polled rings. Not verified on the GA403WM: everything in this section.
 
 ## How it works
 
@@ -113,7 +146,7 @@ BSS enable and STA state 2, 4-way handshake, PTK/GTK install, interface creation
 | `itlmt_m1=<seconds>` | **required** to do anything beyond probing: wait that long, then download firmware. The reference machine uses `75` |
 | `itlmt_m2=1` | after the firmware is running: bring up the interface and scan |
 | `itlmt_m3=1` | also connect (implies `itlmt_m2=1`) |
-| `itlmt_fast=1` | **experimental, untested on hardware**: use 802.11n/ac when the AP is on 5 GHz (see [HT/VHT mode](#htvht-mode-itlmt_fast1)) |
+| `itlmt_fast=<1..3>` | **experimental, untested on hardware**: HT/VHT rates (1), + receive Block Ack (2), + transmit Block Ack (3). Falls back one level at a time if a level does not work. See [HT/VHT mode](#htvht-mode-and-block-ack-itlmt_fast13) |
 | `itlmt_hold=<seconds>` | repeat the probe log on the verbose console for that long (to photograph it) |
 
 Without any of them the kext only maps the card, takes ownership and logs the chip id (`CHIPID=...7925`).

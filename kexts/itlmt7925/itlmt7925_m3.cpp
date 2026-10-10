@@ -108,19 +108,26 @@ int itlmt7925::m3Cmd(uint8_t cid, const void *payload, size_t plen, const char *
 }
 
 // Everything that arrives on the MCU event ring: frames go to the beacon parser, events to m3Event.
+int itlmt7925::m3PumpOnce()
+{
+    uint32_t before = rxPkts + evCount;
+    rxDataPoll();
+    const uint8_t *e; uint32_t l; int bi;
+    while (ringPeek(rxEvt, &e, &l, &bi)) {
+        if (l >= 16) {
+            uint32_t d0 = le32(e), type = d0 >> 27, flag = (d0 >> 16) & 0xf;
+            if (type == 2 || type == 8 || (type == 7 && flag == 1)) { rxPkts++; rxParseFrame(e, l); }
+            else { evCount++; m3Event(e, l); }
+        }
+        ringRelease(rxEvt, bi);
+    }
+    return (rxPkts + evCount) != before;
+}
+
 void itlmt7925::m3Pump(uint32_t ms)
 {
     for (uint32_t i = 0; i < ms; i++) {
-        rxDataPoll();
-        const uint8_t *e; uint32_t l; int bi;
-        while (ringPeek(rxEvt, &e, &l, &bi)) {
-            if (l >= 16) {
-                uint32_t d0 = le32(e), type = d0 >> 27, flag = (d0 >> 16) & 0xf;
-                if (type == 2 || type == 8 || (type == 7 && flag == 1)) { rxPkts++; rxParseFrame(e, l); }
-                else m3Event(e, l);
-            }
-            ringRelease(rxEvt, bi);
-        }
+        m3PumpOnce();
         if (m3sleepy) IOSleep(1); else IODelay(1000);
     }
 }
@@ -128,6 +135,7 @@ void itlmt7925::m3Pump(uint32_t ms)
 // Unsolicited firmware events we care about.
 void itlmt7925::m3Event(const uint8_t *ev, uint32_t len)
 {
+    if (txPool && len >= 8 && (le32(ev) >> 27) == 6) { m3TxFree(ev, len); return; }
     if (m3On && len > 48 && ev[36] == 0x04 && m3fwLogged < 24 && (m3wantFc || m3fwLogged < 6)) {   // firmware log text
         m3fwLogged++;
         char t[96];
@@ -180,18 +188,24 @@ void itlmt7925::m3ParseAp()
 void itlmt7925::m3FastPlan()
 {
     fastActive = false;
-    if (!m3fast) return;
+    txPool = false;
+    if (!m3fast || lvl < 1) return;
     itl_caps_parse(tgtIe, tgtIeLen, &apCaps);
     if (tgtCh <= 14 || !apCaps.ht) {
         m3log("fast: off (ch=%u ht=%d)", tgtCh, apCaps.ht ? 1 : 0);
+        baLog("fast off ch=%u ht=%d", tgtCh, apCaps.ht ? 1 : 0);
         return;
     }
     itl_caps_channel(&apCaps, tgtCh, &fastBw, &fastCenter);
     fastNss = itl_caps_nss(&apCaps);
     fastRate = itl_caps_max_rate(&apCaps, fastBw);
     fastActive = true;
-    m3log("fast: on ht=%d vht=%d bw=%u center=%u nss=%u rate~%u htcap=%04x vhtcap=%08x", apCaps.ht ? 1 : 0, apCaps.vht ? 1 : 0,
-          fastBw, fastCenter, fastNss, fastRate, apCaps.htCap, apCaps.vhtCap);
+    txPool = lvl >= 3;
+    txBusy = 0;
+    m3log("fast: on lvl=%u ht=%d vht=%d bw=%u center=%u nss=%u rate~%u htcap=%04x vhtcap=%08x", lvl, apCaps.ht ? 1 : 0,
+          apCaps.vht ? 1 : 0, fastBw, fastCenter, fastNss, fastRate, apCaps.htCap, apCaps.vhtCap);
+    baLog("fast on lvl=%u bw=%u c=%u nss=%u ht=%04x vht=%08x ampdu=%02x", lvl, fastBw, fastCenter, fastNss, apCaps.htCap,
+          apCaps.vhtCap, apCaps.ampduParm);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -454,27 +468,43 @@ struct M3Lock {
     ~M3Lock() { if (l) IOLockUnlock(l); }
 };
 
-bool itlmt7925::m3Tx(const uint8_t *frame, uint32_t len, uint8_t type, uint8_t subtype, bool protect, bool rateAdapt)
+bool itlmt7925::m3Tx(const uint8_t *frame, uint32_t len, uint8_t type, uint8_t subtype, const M3TxOpt &o)
 {
     if (!txData.n || len > 1900 || len < 24) return false;
     M3Lock lk(txLock);                                           // management frames from the m3 thread, data from the network stack
-    size_t base = (size_t)(m3txSlot++ & 63) * 2048;
+    uint32_t slot;
+    uint16_t tok;
+    if (txPool) {
+        // staging buffer owned until the firmware reports it free (TXFREE); no slot or no descriptor: drop, TCP will resend
+        if (!txSlotAlloc(&slot, &tok)) { stTxNoSlot++; return false; }
+        if ((txData.head + 1) % txData.n == (int)(rd(txData.regs + Q_DMA_IDX) & 0xffff)) {
+            txBusy &= ~(1ull << slot);
+            stTxNoSlot++;
+            return false;
+        }
+    } else {
+        slot = (uint32_t)(m3txSlot++ & 63);
+        m3tok = (m3tok + 1) & 0x1fff;
+        tok = m3tok;
+    }
+    size_t base = (size_t)slot * 2048;
     uint8_t *w = txData.buf.va + base;
     uint64_t pa = txData.buf.pa + base;
     bzero(w, 128);
     memcpy(w + 128, frame, len);
 
-    put32(w + 0, (len + 32) | (0u << 23) | (0x10u << 25));       // TX_BYTES | PKT_FMT=CT | Q_IDX=ALTX0
+    put32(w + 0, (len + 32) | (0u << 23) | ((uint32_t)o.qidx << 25));         // TX_BYTES | PKT_FMT=CT | Q_IDX
     uint32_t hdrLen = (type == 2 && (frame[0] & 0x80)) ? 26 : 24;               // QoS data frames carry the 2-byte QoS control field
-    // wlan idx, HDR_FORMAT=802.11, HDR_INFO; FIXED_RATE unless the firmware's rate control (STA_REC_RA) picks the rate
-    put32(w + 4, M3_AP_WCID | (2u << 14) | ((hdrLen / 2) << 16) | (rateAdapt ? 0u : (1u << 31)));
+    // wlan idx, HDR_FORMAT=802.11, HDR_INFO, TID; FIXED_RATE unless the firmware's rate control (STA_REC_RA) picks the rate
+    put32(w + 4, M3_AP_WCID | (2u << 14) | ((hdrLen / 2) << 16) | ((uint32_t)(o.tid & 0xf) << 21) | (o.rateAdapt ? 0u : (1u << 31)));
     put32(w + 8, ((uint32_t)type << 4) | subtype);
-    put32(w + 12, (15u << 11) | (1u << 28) | (protect ? 2u : 0));   // REM_TX_COUNT=15, BA_DISABLE (fixed rate), PROTECT_FRAME
-    put32(w + 20, rateAdapt ? 0u : (3 | (1u << 10)));            // PID = MT_PACKET_ID_FIRST, TX_STATUS_HOST: report completion (none for rate-adapted data)
-    put32(w + 24, (1u << 2) | (1u << 4) | (1u << 3) | (rateAdapt ? 0u : ((uint32_t)M3_RATE_IDX << 16)));   // DAS, MSDU_CNT=1, DIS_MAT, TX_RATE
+    // REM_TX_COUNT=15, BA_DISABLE unless this frame may be aggregated, PROTECT_FRAME, SN_VALID + SEQ for a host-chosen sequence number
+    put32(w + 12, (15u << 11) | (o.aggr ? 0u : (1u << 28)) | (o.protect ? 2u : 0) |
+                      (o.sn >= 0 ? ((1u << 31) | ((uint32_t)(o.sn & 0xfff) << 16)) : 0u));
+    put32(w + 20, o.rateAdapt ? 0u : (3 | (1u << 10)));          // PID = MT_PACKET_ID_FIRST, TX_STATUS_HOST: report completion (none for rate-adapted data)
+    put32(w + 24, (1u << 2) | (1u << 4) | (1u << 3) | (o.rateAdapt ? 0u : ((uint32_t)M3_RATE_IDX << 16)));   // DAS, MSDU_CNT=1, DIS_MAT, TX_RATE
 
-    m3tok = (m3tok + 1) & 0x1fff;
-    put16(w + 32, (uint16_t)(m3tok | 0x8000));                   // txp.msdu_id[0] | VALID
+    put16(w + 32, (uint16_t)(tok | 0x8000));                     // txp.msdu_id[0] | VALID
     put32(w + 40, (uint32_t)(pa + 128));                         // txp.ptr[0].buf0
     put16(w + 44, (uint16_t)(len | 0x8000));                     // len0 | LAST
     membar();
@@ -487,6 +517,7 @@ bool itlmt7925::m3Tx(const uint8_t *frame, uint32_t len, uint8_t type, uint8_t s
     txData.head = (txData.head + 1) % txData.n;
     membar();
     wr(txData.regs + Q_CPU_IDX, txData.head);
+    if (txPool) return true;
     for (int us = 0; us < 200000; us += 20) {
         if ((int)(rd(txData.regs + Q_DMA_IDX) & 0xffff) == txData.head) return true;
         IODelay(20);
@@ -597,9 +628,19 @@ int itlmt7925::m3Assoc()
 // ---------------------------------------------------------------------------------------------
 // M3 sequence. Each step is added behind its own log line so a partial run is still informative.
 // ---------------------------------------------------------------------------------------------
-int itlmt7925::m3Run()
+int itlmt7925::m3Run1()
 {
     m3log("armed");
+    m3stepDown = false;                                      // per-attempt state (an earlier attempt may have failed half way)
+    m3reachedAssoc = false;
+    m3cipher = 0;
+    m3dataOn = false;
+    m3linkUp = false;
+    m3wantEapol = false;
+    m3eapolLen = 0;
+    m3rxLen = 0;
+    fastActive = false;
+    txPool = false;
 
     // 0. credentials: itl_ssid / itl_psk, then itl_ssid2 / itl_psk2 ... itl_ssid4 / itl_psk4 (the list order is the priority)
     struct Net { char ssid[33]; char psk[72]; } nets[4];
@@ -677,6 +718,7 @@ int itlmt7925::m3Run()
     int rc = m3Auth();
     m3Publish(rc ? "auth-fail" : "auth-ok");
     if (!rc) {
+        m3reachedAssoc = true;
         rc = m3Assoc();
         m3Publish(rc ? "assoc-fail" : "assoc-ok");
     }
@@ -693,9 +735,44 @@ int itlmt7925::m3Run()
     bzero(m3pmk, sizeof(m3pmk));
     if (!rc) {
         m3log("RESULT rc=0 link up");
-        m3Link();                                            // never returns
+        m3Link();                                            // returns only when this level has to be given up (m3stepDown)
+        return ITL_EIO;
+    }
+    if (fastActive && lvl >= 1 && m3reachedAssoc) {         // association / handshake failed with HT/VHT: try one level lower
+        m3stepDown = true;
+        baLog("lvl %u: assoc/handshake rc=%d", lvl, rc);
     }
     return rc;
+}
+
+// The connection sequence with a fallback ladder: itlmt_fast=<level> is tried first; when it does not work (association or
+// handshake rejected, or the link comes up but nothing unicast ever comes back) the driver leaves the AP and connects again
+// one level lower, down to the legacy 6 Mb/s path that was verified on the reference machine.
+int itlmt7925::m3Run()
+{
+    lvl = m3fast ? fastLevel : 0;
+    for (;;) {
+        int rc = m3Run1();
+        if (!m3stepDown || lvl == 0) return rc;
+        baLog("level %u given up, connecting again at %u", lvl, lvl - 1);
+        m3Teardown();
+        lvl--;
+    }
+}
+
+void itlmt7925::m3Teardown()
+{
+    m3linkUp = false;
+    baReset();
+    uint8_t f[26];
+    m3Hdr(f, 0xc0, tgtBssid, mac);                           // deauthentication, reason 3: station is leaving
+    put16(f + 24, 3);
+    m3Tx(f, sizeof(f), 0, 12);
+    IOSleep(100);
+    m3Bss(false);                                            // BSS back to "not connected"
+    m3dataOn = false;
+    m3cipher = 0;
+    IOSleep(100);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -734,8 +811,17 @@ bool itlmt7925::m3RxData(const uint8_t *p, uint32_t len)
         if (memcmp(p + off + 10, tgtBssid, 6) != 0) continue;
         bool group = p[off + 4] & 1;
         if (!group && memcmp(p + off + 4, mac, 6) != 0) continue;
-        if (fc0 & 0x40) return true;                                         // null / QoS null: no payload
-        uint32_t hl = (fc0 & 0x80) ? 26 : 24;
+        bool qos = fc0 & 0x80;
+        uint8_t qc = qos ? p[off + 24] : 0;                                  // QoS control: TID 0-3, ack policy 5-6, A-MSDU 7
+        uint8_t tid = qc & 7;
+        uint16_t sn = (uint16_t)((p[off + 22] | (p[off + 23] << 8)) >> 4);
+        bool reorder = qos && !group && rxBa[tid].r.active && (((qc >> 5) & 3) == 0 || ((qc >> 5) & 3) == 3);
+        if (fc0 & 0x40) {                                                    // null / QoS null: no payload, but it owns a sequence number
+            if (reorder) itl_reorder_rx(&rxBa[tid].r, sn, nullptr, 0, nowMs(), baDeliverCb, this);
+            return true;
+        }
+        uint32_t hl = qos ? 26 : 24;
+        if (qos && (fc1 & 0x80)) hl += 4;                                    // +HTC
         static const uint8_t llc[6] = {0xaa, 0xaa, 0x03, 0x00, 0x00, 0x00};
         for (uint32_t g = 0; g <= 12 && off + hl + g + 8 <= len; g++) {
             const uint8_t *l = p + off + hl + g;
@@ -755,14 +841,15 @@ bool itlmt7925::m3RxData(const uint8_t *p, uint32_t len)
             }
             if (!m3linkUp || pn > 1600) { stRxDrop++; return true; }
             if (memcmp(p + off + 16, mac, 6) == 0) return true;             // our own broadcast echoed back
+            if (qos && (qc & 0x80)) { stRxAmsdu++; return true; }           // A-MSDU: refused in the ADDBA response, so not expected
             static uint8_t eb[14 + 1600];
             memcpy(eb, p + off + 4, 6);                                      // DA
             memcpy(eb + 6, p + off + 16, 6);                                 // SA = addr3
             eb[12] = (uint8_t)(et >> 8); eb[13] = (uint8_t)et;
             memcpy(eb + 14, pl, pn);
-            stRxEth++;
-            m3Note("rx", eb, 14 + pn);
-            ethRx(eb, 14 + pn);
+            if (!group) stRxUni++;
+            if (reorder) itl_reorder_rx(&rxBa[tid].r, sn, eb, 14 + pn, nowMs(), baDeliverCb, this);
+            else ethDeliver(eb, 14 + pn);
             return true;
         }
         return false;
@@ -784,11 +871,29 @@ bool itlmt7925::m3TxData(const uint8_t *da, uint16_t ethertype, const uint8_t *p
     memcpy(f + 4, tgtBssid, 6);
     memcpy(f + 10, mac, 6);
     memcpy(f + 16, da, 6);                                   // QoS control (bytes 24-25) stays 0: TID 0, normal ack
+    M3TxOpt o;
+    o.protect = protect;
+    o.rateAdapt = ra;
+    uint16_t sn = txSn;
+    if (ra && lvl >= 3) {
+        // Level 3: access-category queue (AC_BE -> LMAC queue 1, mt76_connac_lmac_mapping), sequence numbers chosen here so that the
+        // starting sequence number of the ADDBA request is known, and A-MPDU once the agreement is up.
+        o.qidx = 1;
+        o.sn = sn;
+        o.aggr = txBaState == TXBA_ON;
+        f[22] = (uint8_t)((sn & 0xf) << 4);                  // sequence control: SN << 4, fragment 0
+        f[23] = (uint8_t)(sn >> 4);
+    }
     static const uint8_t llc[6] = {0xaa, 0xaa, 0x03, 0x00, 0x00, 0x00};
     memcpy(f + hl, llc, 6);
     f[hl + 6] = (uint8_t)(ethertype >> 8); f[hl + 7] = (uint8_t)ethertype;
     memcpy(f + hl + 8, payload, plen);
-    return m3Tx(f, hl + 8 + plen, 2, ra ? 8 : 0, protect, ra);
+    bool ok = m3Tx(f, hl + 8 + plen, 2, ra ? 8 : 0, o);
+    if (ok && ra) {
+        stTxUni++;
+        if (lvl >= 3) txSn = itl_sn_inc(sn);                 // only a frame that really went out uses up a sequence number
+    }
+    return ok;
 }
 
 // Ethernet frame from the network stack
@@ -912,28 +1017,56 @@ int itlmt7925::m3Handshake()
     return (r1 || r2) ? ITL_EIO : 0;
 }
 
-// Link is up: expose the Ethernet interface and keep servicing the receive rings forever (this thread never returns).
+// Link is up: expose the Ethernet interface and keep servicing the receive rings. Returns only to give up the current fast level.
 void itlmt7925::m3Link()
 {
-    bool eok = ethCreate();
+    bool eok = eth ? true : ethCreate();                     // the interface survives a fall-back to a lower level
     m3log("ethernet interface %s", eok ? "created" : "FAILED");
+    baReset();
+    txSn = 0;
+    stRxUni = stTxUni = 0;
     m3linkUp = true;
     m3sleepy = true;
-    uint64_t t0 = 0;
-    absolutetime_to_nanoseconds(mach_absolute_time(), &t0);
-    uint64_t lastStat = 0;
+    uint32_t t0 = nowMs(), lastStat = 0, lastActive = t0;
+    linkUpMs = t0;
+    lastReorderMs = t0;
+    bool watchdogDone = false;
     for (;;) {
-        m3Pump(1);
-        uint64_t now = 0;
-        absolutetime_to_nanoseconds(mach_absolute_time(), &now);
-        uint64_t up = (now - t0) / 1000000000ull;
+        int act = m3PumpOnce();
+        uint32_t now = nowMs();
+        baService();
+        if (now - lastReorderMs >= 10) {                     // frames waiting behind a hole in a Block Ack window for too long
+            lastReorderMs = now;
+            for (int t = 0; t < 8; t++)
+                if (rxBa[t].r.active) itl_reorder_tick(&rxBa[t].r, now, 100, baDeliverCb, this);
+        }
+        uint32_t up = (now - t0) / 1000;
+        if (fastActive && !watchdogDone && up >= 25) {
+            watchdogDone = true;
+            if (!stRxUni && stTx >= 2) {                     // we transmitted, and no unicast frame ever came back: HT/VHT is not working
+                baLog("lvl %u: no unicast rx in %us (tx=%u rxd=%u eth=%u)", lvl, up, stTx, stRxData, stRxEth);
+                m3stepDown = true;
+            }
+        }
         if (up >= lastStat + (up < 300 ? 5 : 60)) {
             lastStat = up;
-            char st[200];
-            snprintf(st, sizeof(st), "up=%llus rxd=%u eapol=%u eth=%u drop=%u tx=%u fail=%u rxpk=%u", up, stRxData, stRxEapol,
-                     stRxEth, stRxDrop, stTx, stTxFail, rxPkts);
+            uint32_t ri = 0, rd_ = 0, rb = 0, rdup = 0, rold = 0, rfl = 0, rto = 0;
+            for (int t = 0; t < 8; t++) {
+                ri += rxBa[t].r.nIn; rd_ += rxBa[t].r.nDirect; rb += rxBa[t].r.nBuffered; rdup += rxBa[t].r.nDup;
+                rold += rxBa[t].r.nOld; rfl += rxBa[t].r.nFlushed; rto += rxBa[t].r.nTimeout;
+            }
+            char st[320];
+            snprintf(st, sizeof(st),
+                     "up=%us L%u rxd=%u eapol=%u eth=%u drop=%u tx=%u fail=%u rxpk=%u uni=%u/%u ba=%u/%u reo=%u/%u/%u/%u/%u/%u/%u txf=%u/%u/%u/%u/%u",
+                     up, lvl, stRxData, stRxEapol, stRxEth, stRxDrop, stTx, stTxFail, rxPkts, stRxUni, stTxUni, stBaRxOn, stBaTxOn, ri, rd_,
+                     rb, rdup, rold, rfl, rto, stTxFree, stTxReclaim, stTxNoSlot, stTxFwFail, stTxFwRetry);
             nvramStat(st);
             nvramChunks(m3buf);
         }
+        if (m3stepDown) return;
+        if (!fastActive) { IOSleep(1); continue; }           // legacy path: exactly as verified (1 ms poll)
+        if (act) { lastActive = now; IODelay(20); }
+        else if (now - lastActive < 50) IODelay(200);       // traffic is bursty (A-MPDUs): keep polling closely for a while
+        else IOSleep(1);
     }
 }
