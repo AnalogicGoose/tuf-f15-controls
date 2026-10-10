@@ -67,8 +67,9 @@ bool itlmt7925Eth::start(IOService *provider)
 {
     if (!super::start(provider)) return false;
 
+    UInt64 speed = drv ? drv->linkSpeedBps() : 54ULL * 1000000ULL;      // estimated PHY rate (54 Mb/s unless HT/VHT is in use)
     OSDictionary *media = OSDictionary::withCapacity(1);
-    IONetworkMedium *med = IONetworkMedium::medium(kIOMediumEthernetAuto, 54ULL * 1000000ULL);
+    IONetworkMedium *med = IONetworkMedium::medium(kIOMediumEthernetAuto, speed);
     if (!media || !med) {
         if (med) med->release();
         if (media) media->release();
@@ -76,7 +77,7 @@ bool itlmt7925Eth::start(IOService *provider)
     }
     IONetworkMedium::addMedium(media, med);
     bool ok = publishMediumDictionary(media) && setCurrentMedium(med) && setSelectedMedium(med);
-    if (ok) setLinkStatus(kIONetworkLinkValid | kIONetworkLinkActive, med, 54ULL * 1000000ULL);
+    if (ok) setLinkStatus(kIONetworkLinkValid | kIONetworkLinkActive, med, speed);
     med->release();
     media->release();
     if (!ok) return false;

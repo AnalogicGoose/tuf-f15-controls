@@ -11,7 +11,20 @@
 #include <IOKit/IOBufferMemoryDescriptor.h>
 #include <IOKit/IOLocks.h>
 
+#include "itl_caps.h"
+#include "itl_ba.h"
+
 class itlmt7925Eth;
+
+// Per-frame options for m3Tx (everything defaults to the verified legacy behaviour: fixed 6 Mb/s, management queue)
+struct M3TxOpt {
+    bool protect = false;     // encrypt (Protected Frame bit; the hardware adds the CCMP header)
+    bool rateAdapt = false;   // no FIXED_RATE: the firmware's rate control chooses the MCS
+    uint8_t tid = 0;          // TXD1.TID: 0 normal, 2 = MT_TX_ADDBA for an ADDBA request
+    uint8_t qidx = 0x10;      // TXD0.Q_IDX: 0x10 = MT_LMAC_ALTX0 (management / non-QoS), 0..3 = access categories
+    int sn = -1;              // >= 0: sequence number chosen by the host (TXD3.SN_VALID)
+    bool aggr = false;        // leave BA_DISABLE clear: the frame may be sent in an A-MPDU
+};
 
 struct itl_dma_buf {
     IOBufferMemoryDescriptor *md = nullptr;
@@ -41,6 +54,9 @@ public:
     bool ethTx(const uint8_t *frame, uint32_t len);
     bool ethCreate();
     void ethRx(const uint8_t *frame, uint32_t len);
+    // Speed shown by macOS for the interface: the estimated best PHY rate when HT/VHT is in use, else the 54 Mb/s legacy value
+    static void baDeliverCb(void *ctx, const uint8_t *frame, uint32_t len);
+    uint64_t linkSpeedBps() const { return fastActive ? (uint64_t)fastRate * 1000000ull : 54000000ull; }
 
 private:
     IOPCIDevice *pci = nullptr;
@@ -121,7 +137,8 @@ private:
     volatile bool rocGrant = false;
     uint8_t rocTok = 0, rocStatus = 0xff;
     uint8_t m3cipher = 0;                    // 0 = open, 4 = CCMP (BSS_INFO sec TLV)
-    uint8_t apSupp = 0, apBasic = 0;         // 5 GHz legacy rate bitmaps (6,9,12,18,24,36,48,54 -> bit 0..7)
+    uint8_t apSupp = 0, apBasic = 0;         // OFDM rate bitmaps (6,9,12,18,24,36,48,54 -> bit 0..7)
+    uint8_t apCck = 0, apBasicCck = 0;       // 2.4 GHz CCK rate bitmaps (1,2,5.5,11 -> bit 0..3)
     uint8_t apRsn[64] = {0};
     uint8_t apRsnLen = 0;
     char m3buf[3000] = {0};
@@ -157,17 +174,106 @@ private:
     void m3Note(const char *dir, const uint8_t *eth, uint32_t len);
     void m3Link();
     void nvramStat(const char *msg);
-    bool m3Tx(const uint8_t *frame, uint32_t len, uint8_t type, uint8_t subtype, bool protect = false);
+    bool m3Tx(const uint8_t *frame, uint32_t len, uint8_t type, uint8_t subtype, bool protect = false)
+    {
+        M3TxOpt o;
+        o.protect = protect;
+        return m3Tx(frame, len, type, subtype, o);
+    }
+    bool m3Tx(const uint8_t *frame, uint32_t len, uint8_t type, uint8_t subtype, const M3TxOpt &o);
+    int  m3Run1();                           // one connection attempt (scan .. handshake .. link); m3Run() adds the fallback ladder
+    int  m3PumpOnce();                       // service the rx rings once; non-zero if anything arrived
+    void m3Teardown();                       // leave the AP (deauthentication, STA / BSS records) before connecting again
+    bool m3RxCtl(const uint8_t *p, uint32_t len);   // Block Ack action frames and BlockAckReq from the AP
     bool m3RxMgmt(const uint8_t *p, uint32_t len);
     bool m3Xchg(const uint8_t *frame, uint32_t len, uint8_t subtype, uint8_t wantFc, uint32_t waitMs);
     int  m3Auth();
     int  m3Assoc();
+    // HT/VHT (boot-arg itlmt_fast=1): advertise 11n/11ac in the association, give the firmware the AP's capabilities and let
+    // its rate control choose MCS for unicast data instead of the fixed 6 Mb/s. Only used when the AP is on 5 GHz and has HT.
+    bool m3fast = false;                     // requested by the boot-arg
+    bool fastActive = false;                 // requested and the target AP supports it
+    itl_ap_caps apCaps = {};
+    uint8_t fastBw = 0, fastCenter = 0, fastNss = 1;   // operating width (CMD_CBW_*), center channel, usable streams
+    uint32_t fastRate = 54;                  // estimated best PHY rate, Mb/s
+    bool fastHe = false;                     // level 6 and the AP has HE: advertise and use 802.11ax
+    bool fastAmsdu = false;                  // level 4: accept A-MSDU in the Block Ack agreement and unpack it
+    bool fastAllow160 = false;               // level 5 and the BSS is 160 MHz wide: advertise 160 MHz
+    void m3FastPlan();
+    uint8_t fastSig(uint8_t level);          // features at `level` for the current AP, to skip levels that change nothing
+    void m3Hex(char *out, size_t outLen, const uint8_t *p, uint32_t n);
+
+    // ---- Block Ack, TX buffer tracking and the fallback ladder (itlmt7925_ba.cpp) ----
+    // itlmt_fast=<level>: 1 HT/VHT rates, 2 + receive Block Ack (reorder buffer), 3 + transmit Block Ack, QoS access-category
+    // queue, host-assigned sequence numbers and TXFREE-tracked buffers, 4 + A-MSDU receive, 5 + 160 MHz channels, 6 + HE (802.11ax).
+    // If a level does not work (association or handshake fails, or no unicast frame comes back from the AP after the link is
+    // up, or A-MSDUs cannot be unpacked, or the firmware reports nearly every transmission failed) the driver connects again
+    // one level lower, skipping levels that would change nothing for this AP.
+    uint8_t fastLevel = 0;                   // requested by the boot-arg
+    uint8_t lvl = 0;                         // level of the current attempt, 0 = legacy 6 Mb/s
+    bool m3stepDown = false;                 // set when the attempt at `lvl` failed; m3Run() then retries one level lower
+    bool m3reachedAssoc = false;
+    struct RxBaSess { itl_reorder r; itl_ba_slot *mem; uint32_t memBytes; };
+    RxBaSess rxBa[8] = {};                      // receive sessions by TID (the AP is the originator)
+    itl_ba_action baQ[6];                    // Block Ack action frames received, handled by baService() outside the rx path
+    uint8_t baQn = 0;
+    enum { TXBA_IDLE, TXBA_REQ, TXBA_ON, TXBA_GAVEUP };
+    uint8_t txBaState = TXBA_IDLE, txBaToken = 0, txBaTries = 0;
+    uint16_t txBaWin = 0;
+    uint32_t txBaSentMs = 0, txBaNextMs = 0;
+    volatile uint16_t txSn = 0;              // next sequence number of TID 0 (level 3)
+    bool txPool = false;                     // level 3: TX staging buffers are released by TXFREE, not reused blindly
+    bool txFreeSeen = false;
+    // Staging slots of txData. One slot per ring descriptor, and well above the 64-frame Block Ack window: with 64 slots
+    // every aggregate in flight held the whole pool and any retransmission produced "no slot" drops (13k of 316k frames
+    // measured). The token is generation(5) | slot(8) = 13 bits, the same range the Linux driver uses for msdu ids.
+    static const uint32_t kTxSlots = 256;
+    uint64_t txBusy[kTxSlots / 64] = {0};    // staging slots in flight
+    uint32_t txSlotT[kTxSlots] = {0};
+    uint8_t txGen[kTxSlots] = {0};
+    uint8_t txNext = 0;
+    bool txIsBusy(uint32_t s) const { return (txBusy[s >> 6] >> (s & 63)) & 1; }
+    void txSetBusy(uint32_t s) { txBusy[s >> 6] |= 1ull << (s & 63); }
+    void txClrBusy(uint32_t s) { txBusy[s >> 6] &= ~(1ull << (s & 63)); }
+    void txClrAll() { for (uint32_t i = 0; i < kTxSlots / 64; i++) txBusy[i] = 0; }
+    uint32_t stTxUni = 0, stRxUni = 0, stRxAmsdu = 0, stTxFree = 0, stTxReclaim = 0, stTxNoSlot = 0, stTxFwFail = 0, stTxFwRetry = 0;
+    uint32_t stBaReqRx = 0, stBaDecl = 0, stBaRxOn = 0, stBaTxOn = 0, stBaDel = 0, stBaBar = 0;
+    uint32_t linkUpMs = 0, lastReorderMs = 0;
+    // A-MSDU receive (level 4): the hardware splits an A-MSDU into one RX packet per subframe (first / middle / last in RXD4),
+    // each with the 802.11 header. The subframes of one MPDU are collected in a bundle and handed to the reorder buffer together.
+    struct AmsduAsm { bool active; uint8_t tid; bool reorder; uint16_t sn; uint32_t used, t; uint8_t buf[ITL_BA_SLOT_BYTES]; };
+    AmsduAsm amsduAsm = {};
+    uint32_t stAmsduPkt = 0, stAmsduSub = 0, stAmsduBad = 0, stRxBigDrop = 0;
+    uint32_t amsduLogged = 0, amsduBadLogged = 0, rxdLogged = 0;
+    uint32_t txfWinFree = 0, txfWinFail = 0, txfBad = 0;   // TX failure watchdog (level >= 3), 5 s windows
+    uint32_t m3RxAmsdu(const uint8_t *body, uint32_t blen, uint8_t ai, bool reorder, uint8_t tid, uint16_t sn);
+    void amsduFlush();                       // hand the collected subframes to the reorder buffer
+    void rxStore(const uint8_t *eb, uint32_t n, bool reorder, uint8_t tid, uint16_t sn, bool last);   // Ethernet frame -> stack / reorder buffer
+    static void ethDeliverCb(void *ctx, const uint8_t *frame, uint32_t len);
+    static void amsduFrameCb(void *ctx, const uint8_t *da, const uint8_t *sa, uint16_t et, const uint8_t *pl, uint32_t pn);
+    char balog[1100] = {0};
+    size_t balen = 0;
+    void baLog(const char *fmt, ...);
+    void nvramBa(const char *buf);           // itlb0..itlb2
+    uint32_t nowMs();
+    void baReset();                          // forget every session (state is lost on re-association)
+    void baService();                        // called from the link loop
+    void baRxRequest(const itl_ba_action &a);
+    void baRxStop(uint8_t tid, bool sendDelba);
+    void baTxStart();
+    void baTxResponse(const itl_ba_action &a);
+    void baTxStop(bool sendDelba);
+    int  baStaCmd(uint8_t tid, bool recipient, bool enable, uint16_t ssn, uint16_t win, bool amsdu = false);
+    bool baSendAction(const uint8_t *body, size_t blen, uint8_t tid);
+    bool txSlotAlloc(uint32_t *slot, uint16_t *tok);
+    void m3TxFree(const uint8_t *p, uint32_t len);
+    void ethDeliver(const uint8_t *frame, uint32_t len);
     // target AP, captured from a beacon / probe response during the scan
     bool tgtFound = false;
     uint8_t tgtBssid[6] = {0};
     uint8_t tgtCh = 0;
     uint16_t tgtCap = 0, tgtBcnInt = 0;
-    uint8_t tgtIe[512] = {0};
+    uint8_t tgtIe[1024] = {0};
     uint32_t tgtIeLen = 0;
     char m1buf[3072] = {0};
     size_t m1len = 0;

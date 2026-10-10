@@ -147,8 +147,8 @@ bool itlmt7925::ringInit(itl_ring &r, int qid, uint32_t base, int n, bool rx)
     r.regs = base + qid * 0x10;
     r.head = r.tail = 0;
     if (!dmaAlloc(r.desc, (size_t)n * 16)) return false;
-    // txData stages TXD + txp + the whole 802.11 frame in 2 KiB slots (64 of them); the other tx rings need one 4 KiB buffer
-    if (!dmaAlloc(r.buf, rx ? (size_t)n * MT_RX_BUF_SIZE : (&r == &txData ? (size_t)64 * 2048 : 4096))) return false;
+    // txData stages TXD + txp + the whole 802.11 frame in 2 KiB slots (kTxSlots of them); the other tx rings need one 4 KiB buffer
+    if (!dmaAlloc(r.buf, rx ? (size_t)n * MT_RX_BUF_SIZE : (&r == &txData ? (size_t)kTxSlots * 2048 : 4096))) return false;
 
     // mt76_dma_queue_reset(): every descriptor starts out DMA_DONE, indices zero, then ring base/size
     for (int i = 0; i < n; i++) put32(r.desc.va + i * 16 + 4, MT_DMA_CTL_DMA_DONE);
@@ -469,7 +469,8 @@ int itlmt7925::m1Run()
     if (!ringInit(txWm, MT7925_TXQ_MCU_WM, MT_TX_RING_BASE, 256, false) ||
         !ringInit(txFwdl, MT7925_TXQ_FWDL, MT_TX_RING_BASE, 128, false) ||
         !ringInit(rxEvt, MT7925_RXQ_MCU_WM, MT_RX_EVENT_RING_BASE, 128, true) ||
-        (m2On && !ringInit(rxData, MT7925_RXQ_BAND0, MT_RX_DATA_RING_BASE, 128, true)) ||
+        // A-MPDU bursts arrive back to back: a deeper data ring when Block Ack is on
+        (m2On && !ringInit(rxData, MT7925_RXQ_BAND0, MT_RX_DATA_RING_BASE, fastLevel >= 2 ? 256 : 128, true)) ||
         (m3On && !ringInit(txData, MT7925_TXQ_BAND0, MT_TX_RING_BASE, 256, false))) {
         m1log("ring alloc failed");
         return ITL_EIO;
@@ -518,6 +519,11 @@ void itlmt7925::m1Main()
     PE_parse_boot_argn("itlmt_m1", &delay, sizeof(delay));
     if (PE_parse_boot_argn("itlmt_m2", &m2, sizeof(m2)) && m2) m2On = true;
     if (PE_parse_boot_argn("itlmt_m3", &m3, sizeof(m3)) && m3) m3On = m2On = true;
+    uint32_t fast = 0;
+    if (PE_parse_boot_argn("itlmt_fast", &fast, sizeof(fast)) && fast) {
+        m3fast = true;
+        fastLevel = fast > 6 ? 6 : (uint8_t)fast;
+    }
     m1log("armed, starting in %us", delay);
     IOSleep(delay * 1000);
     int rc = m1Run();
