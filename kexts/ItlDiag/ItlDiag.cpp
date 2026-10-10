@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: BSD-3-Clause-Clear
 // Copyright (c) 2026 thanhnndev and contributors
 // ItlDiag - boot-time diagnostics. Collects what macOS sees (Wi-Fi card, USB controllers/devices, HID, clocks, the whole
-// registry tree) and persists it to a pre-allocated file on the boot USB stick (see scripts/usblog.ps1), so no screenshots
-// or working keyboard are needed. The same lines also go to the verbose console.
+// registry tree) and persists it to a pre-allocated file in the root of any FAT32 volume that carries one - the boot EFI
+// partition (ESP) and/or the boot USB stick (see scripts/usblog.ps1), so no screenshots or working keyboard are needed.
+// The same lines also go to the verbose console.
 //
-// How the file is found: the stick is FAT32; ItlDiag reads each partition's BPB, looks up the root-directory entry
-// ITLLOG.BIN, takes its first cluster and writes straight through the partition's IOMedia into the file's clusters.
-// Windows created the file contiguous and put "ITLLOG01" in the first sector and "ITLEND01" in the last; both are
-// verified before anything is written.
+// How the file is found: ItlDiag reads each FAT32 partition's BPB, looks up the root-directory entry ITLLOG.BIN, takes its
+// first cluster and writes straight through the partition's IOMedia into the file's clusters (every volume that has one
+// gets the log, so it lands next to whatever OpenCore was booted from). Windows created the file contiguous and put
+// "ITLLOG01" in the first sector and "ITLEND01" in the last; both are verified before anything is written.
 #include <IOKit/IOService.h>
 #include <IOKit/IOLib.h>
 #include <IOKit/IODeviceTreeSupport.h>
@@ -124,11 +125,18 @@ static IOReturn mediaIO(IOMedia *m, IOService *client, bool wr, UInt64 off, void
 
 // ---------------------------------------------------------------- locating ITLLOG.BIN on a FAT32 partition
 
-static IOMedia *logMedia;            // opened read/write once found
-static IOService *logClient;         // the client that opened it
-static UInt64 logStart;              // byte offset (within logMedia) of the first log byte (after the header sector)
-static UInt64 logCap;                // usable bytes
-static size_t flushedSec;            // sectors of txt already written
+#define MAX_LOGS 4
+struct LogTarget {
+    IOMedia *media;                  // opened once found
+    UInt64 start;                    // byte offset (within media) of the first log byte (after the header sector)
+    UInt64 cap;                      // usable bytes
+    size_t flushedSec;               // sectors of txt already written
+    bool failed;                     // a write failed: stop hitting this volume
+    char name[24];
+};
+static LogTarget logs[MAX_LOGS];
+static int nLogs;
+static IOService *logClient;         // the client that opened them
 static char attachMsg[120] = "not tried";
 
 static unsigned le16(const uint8_t *p) { return p[0] | (p[1] << 8); }
@@ -181,20 +189,23 @@ static bool probeMedia(IOMedia *m, IOService *me, UInt64 *fileOff, UInt64 *fileS
     return true;
 }
 
-static bool fileOut;                 // boot-arg itlfile=1: also try the (never working so far, possibly blocking) USB write paths
+static bool fileOut = true;          // boot-arg itlfile=0 switches the file write paths (raw ITLLOG.BIN, /Volumes/1401) off
 static void tryAttach(IOService *me)
 {
     if (!fileOut) return;
-    if (logMedia) return;
+    if (nLogs >= MAX_LOGS) return;
     IORegistryIterator *it = IORegistryIterator::iterateOver(gIOServicePlane, kIORegistryIterateRecursively);
     if (!it) return;
     int seen = 0;
     char last[100] = "no candidate media";
     IORegistryEntry *e;
-    while ((e = it->getNextObject())) {
+    while (nLogs < MAX_LOGS && (e = it->getNextObject())) {
         IOMedia *m = OSDynamicCast(IOMedia, e);
         if (!m || m->isWhole()) continue;
         if (m->getSize() < (64ull << 20)) continue;       // skip tiny stuff
+        bool have = false;
+        for (int i = 0; i < nLogs; i++) if (logs[i].media == m) have = true;
+        if (have) continue;
         seen++;
         char why[100];
         UInt64 off = 0, size = 0;
@@ -214,16 +225,18 @@ static void tryAttach(IOService *me)
         }
         if (!rw) { snprintf(last, sizeof(last), "%s: %s but open fail", e->getName(), why); continue; }
         m->retain();
-        logMedia = m;
+        LogTarget &t = logs[nLogs++];
+        t.media = m;
+        t.start = off + 512;
+        t.cap = size - 1024;
+        t.flushedSec = 0;
+        t.failed = false;
+        snprintf(t.name, sizeof(t.name), "%s", e->getName());
         logClient = me;
-        logStart = off + 512;
-        logCap = size - 1024;
-        snprintf(attachMsg, sizeof(attachMsg), "ATTACHED(%s) %s: %s", how, e->getName(), why);
-        it->release();
-        return;
+        snprintf(attachMsg, sizeof(attachMsg), "ATTACHED %d(%s) %s: %s", nLogs, how, e->getName(), why);
     }
     it->release();
-    snprintf(attachMsg, sizeof(attachMsg), "media seen=%d, last: %s", seen, last);
+    if (!nLogs) snprintf(attachMsg, sizeof(attachMsg), "media seen=%d, last: %s", seen, last);
 }
 
 // ---------------------------------------------------------------- plain file write through the mounted volume
@@ -265,27 +278,37 @@ static void flushLog()
 {
     if (!fileOut) return;
     vfsFlush();
-    if (!logMedia || !txt) return;
-    size_t secs = (tlen + 511) / 512;
-    if (secs * 512 > logCap) secs = (size_t)(logCap / 512);
-    if (secs <= flushedSec) return;
-    size_t from = flushedSec;
-    while (from < secs) {
-        size_t n = secs - from;
-        if (n > 64) n = 64;
-        uint8_t *buf = (uint8_t *)IOMalloc(n * 512);
-        if (!buf) return;
-        bzero(buf, n * 512);
-        size_t src = from * 512;
-        size_t avail = tlen > src ? tlen - src : 0;
-        memcpy(buf, txt + src, avail < n * 512 ? avail : n * 512);
-        IOReturn r = mediaIO(logMedia, logClient, true, logStart + from * 512, buf, n * 512);
-        IOFree(buf, n * 512);
-        if (r != kIOReturnSuccess) { IOLog("ItlDiag: usb log write failed 0x%x\n", r); return; }
-        from += n;
+    if (!nLogs || !txt) return;
+    for (int i = 0; i < nLogs; i++) {
+        LogTarget &t = logs[i];
+        if (t.failed) continue;
+        size_t secs = (tlen + 511) / 512;
+        if (secs * 512 > t.cap) secs = (size_t)(t.cap / 512);
+        if (secs <= t.flushedSec) continue;
+        size_t from = t.flushedSec;
+        bool ok = true;
+        while (from < secs) {
+            size_t n = secs - from;
+            if (n > 64) n = 64;
+            uint8_t *buf = (uint8_t *)IOMalloc(n * 512);
+            if (!buf) return;
+            bzero(buf, n * 512);
+            size_t src = from * 512;
+            size_t avail = tlen > src ? tlen - src : 0;
+            memcpy(buf, txt + src, avail < n * 512 ? avail : n * 512);
+            IOReturn r = mediaIO(t.media, logClient, true, t.start + from * 512, buf, n * 512);
+            IOFree(buf, n * 512);
+            if (r != kIOReturnSuccess) {
+                IOLog("ItlDiag: log write to %s failed 0x%x\n", t.name, r);
+                t.failed = true;
+                ok = false;
+                break;
+            }
+            from += n;
+        }
+        // the last sector may still grow: rewrite it next time
+        if (ok) t.flushedSec = secs > 0 ? secs - 1 : 0;
     }
-    // the last sector may still grow: rewrite it next time
-    flushedSec = secs > 0 ? secs - 1 : 0;
 }
 
 // ---------------------------------------------------------------- clock + registry collection
@@ -1241,7 +1264,7 @@ static void worker(void *arg)
     for (int n = 0; n < 12; n++) {
         IOSleep(n ? 5000 : 8000);
         if (panicSec && (absNs() - abs0ns) / 1000000000ull >= panicSec) panicDigest();
-        if (!logMedia && !vfsOk) { vfsFlush(); tryAttach(me); }
+        if ((!nLogs && !vfsOk) || n == 5 || n == 11) { vfsFlush(); tryAttach(me); }
         if (!nxh) xhcInit();
         if (n == 1 || n == 7) skewTest(24, 2500);
         screenBlock(n);
@@ -1259,7 +1282,7 @@ static void worker(void *arg)
     for (int pass = 0; pass < 120; pass++) {
         IOSleep(10000);
         if (panicSec && (absNs() - abs0ns) / 1000000000ull >= panicSec) panicDigest();
-        if (!logMedia && !vfsOk) tryAttach(me);
+        if ((!nLogs && !vfsOk) || pass % 6 == 5) tryAttach(me);
         if (!nxh) xhcInit();
         screenBlock(100 + pass);
         nvramDigest(100 + pass);
@@ -1281,8 +1304,8 @@ bool ItlDiag::start(IOService *provider)
     }
 
     uint32_t hold = 0, fo = 0;
-    PE_parse_boot_argn("itlfile", &fo, sizeof(fo));
-    fileOut = fo != 0;
+    fileOut = true;
+    if (PE_parse_boot_argn("itlfile", &fo, sizeof(fo)) && !fo) fileOut = false;
     if (PE_parse_boot_argn("itldiag", &hold, sizeof(hold)) && hold) {
         txtLock = IOLockAlloc();
         txt = (char *)IOMalloc(TXT_MAX);
