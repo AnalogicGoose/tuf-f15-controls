@@ -142,6 +142,7 @@ void itlmt7925::nvramBa(const char *buf)
 // Rolling one-line status of the data path (itls0), overwritten each time.
 void itlmt7925::nvramStat(const char *msg)
 {
+    setProperty("stat-log", msg);    // ItlDiag mirrors it into ITLLOG.BIN; the NVRAM variable below does not always land
     IORegistryEntry *opt = IORegistryEntry::fromPath("/options", gIODTPlane);
     if (!opt) return;
     nvramSet(opt, "itls0", msg, strlen(msg));
