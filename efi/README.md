@@ -78,6 +78,15 @@ amfi_get_out_of_my_way=0x1 amfi=0x80 itldiag=90 itlxr=2 itlmt_m1=75 itlmt_m2=1 i
 * `ItlDiag.kext` and the `itldiag` / `itlxr` boot-args are debugging tools.
 * The `nv*` boot-args and the NVIDIA-related entries of the base configuration are unused here.
 
+## The OpenCore patch (`patches/opencore/fix-zen5-fsb.diff`)
+
+Stock OpenCore 1.0.9 computes the wrong `FSBFrequency` on Zen 5 (family 1Ah): the 12-bit FID from `PStateDef0` (400 =
+2000 MHz on the HX 370) was narrowed to `UINT8` before being scaled, wrapped to 208 and gave an FSB of 9.6 MHz instead of
+100 MHz. XNU derives its LAPIC timer conversions from that value, so timers fired about ten times too early. The patch keeps
+the FID at 12 bits and derives the bus ratio from the measured TSC, as the 17h/19h path does. The `opencore` workflow
+builds OpenCore from the exact upstream commit with the patch applied (manual trigger, artifact `opencore-zen5-fsb`).
+`ItlDiag`'s `itlt1` variable shows the effect: `ratio=995/1000` between mach time and wall clock (see `docs/DEBUGGING.md`).
+
 ## Open items
 
 * **USB port mapping is not done.** `USBToolBox.kext` + `UTBDefault.kext` are present but there is no per-port map for this
