@@ -13,6 +13,8 @@ other MT7925 machines (the Wi-Fi driver), and the open items in [docs/ROADMAP.md
 
 Start new work from `main`: `git switch main && git pull && git switch -c <topic>`.
 
+Current state, open issues and how to collect data: [docs/HANDOFF.md](docs/HANDOFF.md).
+
 * **macOS:** `bash scripts/build.sh` builds `build/*.kext` locally (needs Xcode command line tools).
 * **Linux / Windows:** the kexts cannot be built there (they need the macOS SDK). Push the branch and let CI build it:
   `gh workflow run build.yml --ref <branch>`, then `gh run download <run-id> -n kexts` (artifacts carry empty Wi-Fi
