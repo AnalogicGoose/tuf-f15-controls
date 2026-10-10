@@ -45,6 +45,12 @@ public:
     static IOEventSource *chain(IOWorkLoop *wl) { return static_cast<WLPeek *>(wl)->eventChain; }
 };
 
+// IOEventSource::getNext is protected as well.
+class ESPeek : public IOEventSource {
+public:
+    static IOEventSource *next(IOEventSource *s) { return static_cast<ESPeek *>(s)->getNext(); }
+};
+
 struct Target {
     IOService *ctrl;          // retained
     IOService *prov;          // the IOPCIDevice, not retained (parent of ctrl)
@@ -79,7 +85,7 @@ struct KickCtx { IOWorkLoop *wl; IOService *prov; uint32_t hit; };
 static IOReturn kickAction(OSObject *, void *a0, void *, void *, void *)
 {
     KickCtx *c = (KickCtx *)a0;
-    for (IOEventSource *s = WLPeek::chain(c->wl); s; s = s->getNext()) {
+    for (IOEventSource *s = WLPeek::chain(c->wl); s; s = ESPeek::next(s)) {
         IOFilterInterruptEventSource *f = OSDynamicCast(IOFilterInterruptEventSource, s);
         if (f && f->getProvider() == c->prov) { f->signalInterrupt(); c->hit++; }
     }
