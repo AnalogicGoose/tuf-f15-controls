@@ -9,7 +9,7 @@
 #   - /Library/Preferences/com.apple.windowserver.plist and every user's ByHost/com.apple.windowserver.*.plist
 #     (they pin mode 0x10000 = 60 Hz, which forces a 120 -> 60 Hz modeset at login; WindowServer rebuilds them)
 # The removed prefs are copied to ~/ga403-macos-backup-<time>/ first. Nothing else is touched.
-# Write support comes from linux-apfs-rw (experimental): the script refuses to continue if the volume does not
+# Write support comes from linux-apfs-rw (experimental, needs the "readwrite" mount option): the script refuses to continue if the volume does not
 # mount read-write, and runs a read-only apfsck afterwards.
 set -u
 UNDO=0; [ "${1:-}" = "--undo" ] && UNDO=1
@@ -32,7 +32,7 @@ mountpoint -q /mnt/macos-vol0 && { echo "could not unmount $MP"; exit 1; }
 
 echo "== 2. mount the Data volume read-write =="
 mkdir -p "$MP"
-if ! mount -t apfs -o rw,vol=0 "$APFS_DEV" "$MP"; then
+if ! mount -t apfs -o rw,readwrite,vol=0 "$APFS_DEV" "$MP"; then
   echo "rw mount failed (volume not cleanly unmounted, or no write support). dmesg:"; dmesg | tail -5
   mount -t apfs -o ro,vol=0,uid="${SUDO_UID:-1000}",gid="${SUDO_GID:-1000}" "$APFS_DEV" "$MP"
   echo "NOTHING was changed. Boot macOS once (or in recovery) and shut it down cleanly, then retry."
