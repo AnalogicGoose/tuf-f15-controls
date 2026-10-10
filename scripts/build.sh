@@ -46,3 +46,13 @@ clang++ -arch x86_64 -mmacosx-version-min=12.0 -nostdlib -Xlinker -kext -Xlinker
   -L"$SDK_DIR/Library/x86_64" -lkmodc++ -lkmod -lcc_kext \
   build/obj/diag_kmod_info.o build/obj/ItlDiag.o -o "$D/Contents/MacOS/ItlDiag"
 file "$D/Contents/MacOS/ItlDiag"
+
+# ---- ItlXhciKick (services the secondary xHCI event rings of single-vector AMD controllers) ----
+K=build/ItlXhciKick.kext
+rm -rf "$K"; mkdir -p "$K/Contents/MacOS"
+cp kick/Info.plist "$K/Contents/Info.plist"
+clang $COMMON -c kick/kmod_info.c -o build/obj/kick_kmod_info.o
+clang++ $COMMON -std=c++17 -fno-exceptions -fno-rtti -c kick/ItlXhciKick.cpp -o build/obj/ItlXhciKick.o
+clang++ -arch x86_64 -mmacosx-version-min=12.0 -nostdlib -Xlinker -kext -Xlinker -no_data_const   -L"$SDK_DIR/Library/x86_64" -lkmodc++ -lkmod -lcc_kext   build/obj/kick_kmod_info.o build/obj/ItlXhciKick.o -o "$K/Contents/MacOS/ItlXhciKick"
+file "$K/Contents/MacOS/ItlXhciKick"
+nm -um "$K/Contents/MacOS/ItlXhciKick" || true

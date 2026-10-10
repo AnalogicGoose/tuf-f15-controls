@@ -21,6 +21,12 @@
 			<key>IOProviderClass</key><string>IOPCIDevice</string>
 			<key>itl_ssid</key><string></string>
 			<key>itl_psk</key><string></string>
+			<key>itl_ssid2</key><string></string>
+			<key>itl_psk2</key><string></string>
+			<key>itl_ssid3</key><string></string>
+			<key>itl_psk3</key><string></string>
+			<key>itl_ssid4</key><string></string>
+			<key>itl_psk4</key><string></string>
 		</dict>
 	</dict>
 	<key>OSBundleLibraries</key>
