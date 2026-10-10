@@ -50,7 +50,7 @@ want() { local n="$1"; shift; [ $# -eq 0 ] && return 0; for a in "$@"; do [ "$a"
 TARGETS=("$@")
 
 want itlmt7925 "${TARGETS[@]+"${TARGETS[@]}"}" && build_kext itlmt7925 kexts/itlmt7925 \
-  kmod_info.c itlmt7925.cpp itlmt7925_m1.cpp itlmt7925_m2.cpp itlmt7925_m3.cpp itlmt7925_eth.cpp itl_wpa.cpp fw_blob.c
+  kmod_info.c itlmt7925.cpp itlmt7925_m1.cpp itlmt7925_m2.cpp itlmt7925_m3.cpp itlmt7925_eth.cpp itlmt7925_ba.cpp itl_wpa.cpp itl_caps.cpp itl_ba.cpp fw_blob.c
 want ItlXhciKick "${TARGETS[@]+"${TARGETS[@]}"}" && build_kext ItlXhciKick kexts/ItlXhciKick kmod_info.c ItlXhciKick.cpp
 want ItlDiag "${TARGETS[@]+"${TARGETS[@]}"}" && build_kext ItlDiag kexts/ItlDiag kmod_info.c ItlDiag.cpp
 exit 0

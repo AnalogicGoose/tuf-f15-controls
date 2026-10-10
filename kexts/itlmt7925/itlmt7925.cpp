@@ -119,6 +119,26 @@ void itlmt7925::nvramChunks(const char *buf)
     opt->release();
 }
 
+// Block Ack / fast-mode log (itlb0..itlb2), 380 characters per variable. Separate from itlk* because that log is full by link-up.
+void itlmt7925::nvramBa(const char *buf)
+{
+    static char last[3][384];
+    IORegistryEntry *opt = IORegistryEntry::fromPath("/options", gIODTPlane);
+    if (!opt) return;
+    size_t len = strlen(buf);
+    for (int c = 0; c < 3 && (size_t)c * 380 < len; c++) {
+        char piece[384], name[8];
+        size_t from = (size_t)c * 380, n = len - from > 380 ? 380 : len - from;
+        memcpy(piece, buf + from, n);
+        piece[n] = 0;
+        if (strcmp(piece, last[c]) == 0) continue;
+        strlcpy(last[c], piece, sizeof(last[c]));
+        snprintf(name, sizeof(name), "itlb%d", c);
+        nvramSet(opt, name, piece, n);
+    }
+    opt->release();
+}
+
 // Rolling one-line status of the data path (itls0), overwritten each time.
 void itlmt7925::nvramStat(const char *msg)
 {

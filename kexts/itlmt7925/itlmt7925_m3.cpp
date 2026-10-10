@@ -108,19 +108,26 @@ int itlmt7925::m3Cmd(uint8_t cid, const void *payload, size_t plen, const char *
 }
 
 // Everything that arrives on the MCU event ring: frames go to the beacon parser, events to m3Event.
+int itlmt7925::m3PumpOnce()
+{
+    uint32_t before = rxPkts + evCount;
+    rxDataPoll();
+    const uint8_t *e; uint32_t l; int bi;
+    while (ringPeek(rxEvt, &e, &l, &bi)) {
+        if (l >= 16) {
+            uint32_t d0 = le32(e), type = d0 >> 27, flag = (d0 >> 16) & 0xf;
+            if (type == 2 || type == 8 || (type == 7 && flag == 1)) { rxPkts++; rxParseFrame(e, l); }
+            else { evCount++; m3Event(e, l); }
+        }
+        ringRelease(rxEvt, bi);
+    }
+    return (rxPkts + evCount) != before;
+}
+
 void itlmt7925::m3Pump(uint32_t ms)
 {
     for (uint32_t i = 0; i < ms; i++) {
-        rxDataPoll();
-        const uint8_t *e; uint32_t l; int bi;
-        while (ringPeek(rxEvt, &e, &l, &bi)) {
-            if (l >= 16) {
-                uint32_t d0 = le32(e), type = d0 >> 27, flag = (d0 >> 16) & 0xf;
-                if (type == 2 || type == 8 || (type == 7 && flag == 1)) { rxPkts++; rxParseFrame(e, l); }
-                else m3Event(e, l);
-            }
-            ringRelease(rxEvt, bi);
-        }
+        m3PumpOnce();
         if (m3sleepy) IOSleep(1); else IODelay(1000);
     }
 }
@@ -128,6 +135,7 @@ void itlmt7925::m3Pump(uint32_t ms)
 // Unsolicited firmware events we care about.
 void itlmt7925::m3Event(const uint8_t *ev, uint32_t len)
 {
+    if (txPool && len >= 8 && (le32(ev) >> 27) == 6) { m3TxFree(ev, len); return; }
     if (m3On && len > 48 && ev[36] == 0x04 && m3fwLogged < 24 && (m3wantFc || m3fwLogged < 6)) {   // firmware log text
         m3fwLogged++;
         char t[96];
@@ -149,8 +157,9 @@ void itlmt7925::m3Event(const uint8_t *ev, uint32_t len)
 void itlmt7925::m3ParseAp()
 {
     static const uint8_t r5g[8] = {12, 18, 24, 36, 48, 72, 96, 108};    // 500 kb/s units
+    static const uint8_t rcck[4] = {2, 4, 11, 22};
     const uint8_t *ie = tgtIe, *end = tgtIe + tgtIeLen;
-    apSupp = apBasic = 0;
+    apSupp = apBasic = apCck = apBasicCck = 0;
     apRsnLen = 0;
     while (ie + 2 <= end && ie + 2 + ie[1] <= end) {
         uint8_t id = ie[0], l = ie[1];
@@ -158,13 +167,17 @@ void itlmt7925::m3ParseAp()
             for (int i = 0; i < l; i++)
                 for (int k = 0; k < 8; k++)
                     if ((ie[2 + i] & 0x7f) == r5g[k]) { apSupp |= 1u << k; if (ie[2 + i] & 0x80) apBasic |= 1u << k; }
+            for (int i = 0; i < l; i++)
+                for (int k = 0; k < 4; k++)
+                    if ((ie[2 + i] & 0x7f) == rcck[k]) { apCck |= 1u << k; if (ie[2 + i] & 0x80) apBasicCck |= 1u << k; }
         } else if (id == 48 && l <= sizeof(apRsn) - 2) {
             apRsnLen = (uint8_t)(l + 2);
             memcpy(apRsn, ie, apRsnLen);
         }
         ie += 2 + l;
     }
-    m3log("ap rates supp=%02x basic=%02x rsn=%u", apSupp, apBasic, apRsnLen);
+    m3log("ap rates supp=%02x basic=%02x cck=%x/%x rsn=%u", apSupp, apBasic, apCck, apBasicCck, apRsnLen);
+    m3FastPlan();
     if (apRsnLen >= 14) {
         // version(2) group(4) pairwise count(2) ...
         const uint8_t *r = apRsn + 2;
@@ -172,6 +185,49 @@ void itlmt7925::m3ParseAp()
         m3log("rsn group=%02x pairwise n=%u first=%02x akm1=%02x", r[5], pc, pc ? r[11] : 0,
               (apRsnLen >= 12 + 4 * pc + 6) ? r[8 + 4 * pc + 2 + 3] : 0);
     }
+}
+
+// Features at `level` for the current AP: bit 0 A-MSDU, bit 1 HE, bit 2 160 MHz channel. Used to skip levels that change nothing.
+uint8_t itlmt7925::fastSig(uint8_t level)
+{
+    bool g2 = tgtCh <= 14;
+    uint8_t bw, center;
+    itl_caps_channel(&apCaps, tgtCh, level >= 5 && !g2, &bw, &center);
+    return (level >= 4 ? 1 : 0) | ((level >= 6 && apCaps.he) ? 2 : 0) | (bw == 3 ? 4 : 0);
+}
+
+// HT/VHT/HE plan (boot-arg itlmt_fast=<level>): what the AP offers, the channel width to run at and the rate to report to macOS.
+// Stays off (legacy 6 Mb/s path, exactly as before) unless the AP advertises HT. 2.4 GHz is HT / HE only (no VHT).
+void itlmt7925::m3FastPlan()
+{
+    fastActive = false;
+    txPool = false;
+    fastHe = fastAmsdu = fastAllow160 = false;
+    if (!m3fast || lvl < 1) return;
+    itl_caps_parse(tgtIe, tgtIeLen, &apCaps);
+    bool g2 = tgtCh <= 14;
+    if (g2) { apCaps.vht = false; apCaps.vhtOp = false; }
+    if (!apCaps.ht) {
+        m3log("fast: off (ch=%u ht=%d)", tgtCh, apCaps.ht ? 1 : 0);
+        baLog("fast off ch=%u ht=%d", tgtCh, apCaps.ht ? 1 : 0);
+        return;
+    }
+    itl_caps_channel(&apCaps, tgtCh, lvl >= 5 && !g2, &fastBw, &fastCenter);
+    fastAllow160 = fastBw == 3;
+    fastAmsdu = lvl >= 4;
+    fastHe = lvl >= 6 && apCaps.he;
+    fastNss = itl_caps_nss(&apCaps);
+    fastRate = itl_caps_max_rate(&apCaps, fastBw, fastHe);
+    fastActive = true;
+    txPool = lvl >= 3;
+    txClrAll();
+    m3log("fast: on lvl=%u ht=%d vht=%d he=%d/%d bw=%u center=%u nss=%u rate~%u htcap=%04x vhtcap=%08x", lvl, apCaps.ht ? 1 : 0,
+          apCaps.vht ? 1 : 0, apCaps.he ? 1 : 0, fastHe ? 1 : 0, fastBw, fastCenter, fastNss, fastRate, apCaps.htCap, apCaps.vhtCap);
+    baLog("fast on lvl=%u ch=%u bw=%u c=%u nss=%u ht=%04x vht=%08x ampdu=%02x vhtop=%u/%u/%u", lvl, tgtCh, fastBw, fastCenter, fastNss,
+          apCaps.htCap, apCaps.vhtCap, apCaps.ampduParm, apCaps.vhtOpWidth, apCaps.vhtSeg0, apCaps.vhtSeg1);
+    baLog("fast feat amsdu=%d he=%d(ap %d) 160=%d heph=%02x%02x%02x%02x hemac=%02x%02x%02x%02x map=%04x/%04x", fastAmsdu ? 1 : 0,
+          fastHe ? 1 : 0, apCaps.he ? 1 : 0, fastAllow160 ? 1 : 0, apCaps.hePhy[0], apCaps.hePhy[1], apCaps.hePhy[2], apCaps.hePhy[3],
+          apCaps.heMac[0], apCaps.heMac[1], apCaps.heMac[2], apCaps.heMac[3], apCaps.heRx80, apCaps.heRx160);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -260,9 +316,12 @@ int itlmt7925::m3Bss(bool enable)
     put16(b + 20, M3_BMC_WCID);
     put16(b + 22, tgtBcnInt ? tgtBcnInt : 100);
     b[24] = 1;                                               // dtim_period
+    bool g2 = tgtCh <= 14;
     b[25] = 0x01;                                            // phymode: 5 GHz legacy (PHY_MODE_A)
+    if (fastActive && !g2) b[25] |= 0x10 | (apCaps.vht ? 0x20 : 0) | (fastHe ? 0x80 : 0);   // | PHY_MODE_AN | PHY_MODE_AC | PHY_MODE_AX_5G
+    if (fastActive && g2) b[25] = 0x02 | 0x04 | 0x08 | (fastHe ? 0x40 : 0);                  // 2.4 GHz: B | G | GN | AX_24G
     put16(b + 26, M3_AP_WCID);
-    put16(b + 28, 3);                                        // nonht_basic_phy = PHY_TYPE_OFDM_INDEX
+    put16(b + 28, (fastActive && g2) ? 1 : 3);               // nonht_basic_phy = PHY_TYPE_ERP_INDEX (2.4 GHz) / OFDM_INDEX
     b[30] = 0;                                               // phymode_ext
     b[31] = 0;                                               // link_idx
 
@@ -298,8 +357,27 @@ int itlmt7925::m3Bss(bool enable)
         rl[7] = 0;                                           // CMD_CBW_20MHZ
         rl[8] = 1; rl[9] = 1;                                // tx / rx streams
         rl[10] = 0;                                          // ht_op_info
-        rl[11] = 0;                                          // sco
+        if (fastActive) {                                    // mt7925_mcu_bss_rlm_tlv: AP's width, both streams, "HT 40 allowed", sco from control vs center
+            rl[5] = fastCenter;
+            rl[7] = fastBw;
+            rl[8] = rl[9] = 2;
+            rl[10] = fastBw ? 4 : 0;
+            rl[11] = tgtCh < fastCenter ? 1 : tgtCh > fastCenter ? 3 : 0;   // sco: secondary above / below
+        } else {
+            rl[11] = 0;                                      // sco
+        }
         rl[12] = tgtCh > 14 ? 2 : 1;                         // band
+    }
+    if (enable && fastHe) {
+        uint8_t *he = m.tlv(5, 16);                          // UNI_BSS_INFO_HE_BASIC: default PE duration, RTS threshold, our MCS maps
+        put16(he + 4, 1023);                                 // he_rts_thres
+        he[6] = 4;                                           // he_pe_duration
+        put16(he + 8, ITL_HE_MCS_MAP);                       // max_nss_mcs[BW80]
+        put16(he + 10, fastBw == 3 ? ITL_HE_MCS_MAP : 0xffff);   // [BW160]
+        put16(he + 12, 0xffff);                              // [BW8080]
+        uint8_t *col = m.tlv(4, 8);                          // UNI_BSS_INFO_BSS_COLOR
+        col[4] = apCaps.heColorOn ? 1 : 0;
+        col[5] = apCaps.heColor;
     }
     return m3Cmd(UNI_BSS_INFO_UPDATE, m.b, m.n, enable ? "bss_info(enable)" : "bss_info(add)");
 }
@@ -326,15 +404,49 @@ int itlmt7925::m3Sta(uint8_t state, bool newly, uint16_t aid)
     memcpy(b + 12, tgtBssid, 6);
     put16(b + 18, newly ? 3 : 1);                            // EXTRA_INFO_VER | NEW
 
+    bool ht = fastActive && state == 2;                      // capabilities go in with the association, not the early "none" record
+    if (ht) {                                                // mt7925_mcu_sta_ht_tlv / vht_tlv: the peer's (the AP's) capabilities
+        uint8_t *h = m.tlv(9, 8);                            // STA_REC_HT
+        put16(h + 4, apCaps.htCap);
+        if (apCaps.vht) {
+            uint8_t *v = m.tlv(10, 16);                      // STA_REC_VHT
+            put32(v + 4, apCaps.vhtCap);
+            put16(v + 8, apCaps.vhtRxMcs);
+            put16(v + 10, apCaps.vhtTxMcs);
+        }
+    }
+
+    bool g2 = fastActive && tgtCh <= 14;                     // 2.4 GHz in fast mode: CCK / ERP rates as well
+    if (ht && fastHe) {
+        uint8_t *he = m.tlv(0x19, 28);                       // STA_REC_HE_V2 (mt76_connac_mcu_sta_he_tlv_v2): the AP's HE capabilities
+        memcpy(he + 4, apCaps.heMac, 6);
+        memcpy(he + 10, apCaps.hePhy, 11);
+        he[21] = ITL_HE_PKT_EXT;                             // pkt_ext: nominal packet padding 16 us
+        put16(he + 22, apCaps.heRx80);                       // max_nss_mcs[BW80]
+        put16(he + 24, fastBw == 3 ? apCaps.heRx160 : 0);    // [BW160]
+    }
+
     uint8_t *p = m.tlv(0x15, 12);                            // STA_REC_PHY
-    put16(p + 4, apBasic);                                   // basic_rate
-    p[6] = 1u << 3;                                          // PHY_TYPE_BIT_OFDM
+    put16(p + 4, g2 ? (uint16_t)(apBasicCck | (apBasic << 4)) : (uint16_t)apBasic);   // basic_rate (mac80211 band rate indices)
+    p[6] = g2 ? 0x03 : (1u << 3);                            // PHY_TYPE_BIT_HR_DSSS | ERP (2.4 GHz) / PHY_TYPE_BIT_OFDM
+    if (ht) {
+        uint8_t af = apCaps.ampduParm & 3, mm = (apCaps.ampduParm >> 2) & 7;
+        p[6] |= (1u << 4) | (apCaps.vht ? (1u << 5) : 0) | (fastHe ? (1u << 6) : 0);    // PHY_TYPE_BIT_HT | VHT | HE
+        if (apCaps.vht) {
+            uint8_t vaf = (uint8_t)((apCaps.vhtCap >> 23) & 7);
+            if (vaf > af) af = vaf;
+        }
+        p[7] = (uint8_t)((af & 3) | (mm << 2));              // ampdu: factor | density << 2
+        p[10] = af;                                          // max_ampdu_len (connac3)
+    }
 
     uint8_t *ra = m.tlv(1, 16);                              // STA_REC_RA
-    put16(ra + 4, (uint16_t)apSupp << 6);                    // legacy: RA_LEGACY_OFDM GENMASK(13, 6)
+    put16(ra + 4, (uint16_t)((uint16_t)apSupp << 6) | (g2 ? apCck : 0));   // legacy: RA_LEGACY_OFDM GENMASK(13, 6), RA_LEGACY_CCK GENMASK(3, 0)
+    if (ht) memcpy(ra + 6, apCaps.mcsRx, sizeof(apCaps.mcsRx));    // rx_mcs_bitmask: HT MCS the AP receives
 
     uint8_t *st = m.tlv(7, 16);                              // STA_REC_STATE
     st[4] = state;
+    if (ht && apCaps.vht) st[12] = (uint8_t)(fastBw | (fastNss << 4));   // vht_opmode: bandwidth | rx_nss << 4
 
     if (state != 0) {
         uint8_t *ml = m.tlv(0x20, 28);                       // STA_REC_MLD
@@ -403,25 +515,43 @@ struct M3Lock {
     ~M3Lock() { if (l) IOLockUnlock(l); }
 };
 
-bool itlmt7925::m3Tx(const uint8_t *frame, uint32_t len, uint8_t type, uint8_t subtype, bool protect)
+bool itlmt7925::m3Tx(const uint8_t *frame, uint32_t len, uint8_t type, uint8_t subtype, const M3TxOpt &o)
 {
     if (!txData.n || len > 1900 || len < 24) return false;
     M3Lock lk(txLock);                                           // management frames from the m3 thread, data from the network stack
-    size_t base = (size_t)(m3txSlot++ & 63) * 2048;
+    uint32_t slot;
+    uint16_t tok;
+    if (txPool) {
+        // staging buffer owned until the firmware reports it free (TXFREE); no slot or no descriptor: drop, TCP will resend
+        if (!txSlotAlloc(&slot, &tok)) { stTxNoSlot++; return false; }
+        if ((txData.head + 1) % txData.n == (int)(rd(txData.regs + Q_DMA_IDX) & 0xffff)) {
+            txClrBusy(slot);
+            stTxNoSlot++;
+            return false;
+        }
+    } else {
+        slot = (uint32_t)(m3txSlot++ & 63);
+        m3tok = (m3tok + 1) & 0x1fff;
+        tok = m3tok;
+    }
+    size_t base = (size_t)slot * 2048;
     uint8_t *w = txData.buf.va + base;
     uint64_t pa = txData.buf.pa + base;
     bzero(w, 128);
     memcpy(w + 128, frame, len);
 
-    put32(w + 0, (len + 32) | (0u << 23) | (0x10u << 25));       // TX_BYTES | PKT_FMT=CT | Q_IDX=ALTX0
-    put32(w + 4, M3_AP_WCID | (2u << 14) | ((24u / 2) << 16) | (1u << 31));   // wlan idx, HDR_FORMAT=802.11, HDR_INFO, FIXED_RATE
+    put32(w + 0, (len + 32) | (0u << 23) | ((uint32_t)o.qidx << 25));         // TX_BYTES | PKT_FMT=CT | Q_IDX
+    uint32_t hdrLen = (type == 2 && (frame[0] & 0x80)) ? 26 : 24;               // QoS data frames carry the 2-byte QoS control field
+    // wlan idx, HDR_FORMAT=802.11, HDR_INFO, TID; FIXED_RATE unless the firmware's rate control (STA_REC_RA) picks the rate
+    put32(w + 4, M3_AP_WCID | (2u << 14) | ((hdrLen / 2) << 16) | ((uint32_t)(o.tid & 0xf) << 21) | (o.rateAdapt ? 0u : (1u << 31)));
     put32(w + 8, ((uint32_t)type << 4) | subtype);
-    put32(w + 12, (15u << 11) | (1u << 28) | (protect ? 2u : 0));   // REM_TX_COUNT=15, BA_DISABLE (fixed rate), PROTECT_FRAME
-    put32(w + 20, 3 | (1u << 10));                               // PID = MT_PACKET_ID_FIRST, TX_STATUS_HOST: report completion
-    put32(w + 24, (1u << 2) | (1u << 4) | (1u << 3) | ((uint32_t)M3_RATE_IDX << 16));   // DAS, MSDU_CNT=1, DIS_MAT, TX_RATE
+    // REM_TX_COUNT=15, BA_DISABLE unless this frame may be aggregated, PROTECT_FRAME, SN_VALID + SEQ for a host-chosen sequence number
+    put32(w + 12, (15u << 11) | (o.aggr ? 0u : (1u << 28)) | (o.protect ? 2u : 0) |
+                      (o.sn >= 0 ? ((1u << 31) | ((uint32_t)(o.sn & 0xfff) << 16)) : 0u));
+    put32(w + 20, o.rateAdapt ? 0u : (3 | (1u << 10)));          // PID = MT_PACKET_ID_FIRST, TX_STATUS_HOST: report completion (none for rate-adapted data)
+    put32(w + 24, (1u << 2) | (1u << 4) | (1u << 3) | (o.rateAdapt ? 0u : ((uint32_t)M3_RATE_IDX << 16)));   // DAS, MSDU_CNT=1, DIS_MAT, TX_RATE
 
-    m3tok = (m3tok + 1) & 0x1fff;
-    put16(w + 32, (uint16_t)(m3tok | 0x8000));                   // txp.msdu_id[0] | VALID
+    put16(w + 32, (uint16_t)(tok | 0x8000));                     // txp.msdu_id[0] | VALID
     put32(w + 40, (uint32_t)(pa + 128));                         // txp.ptr[0].buf0
     put16(w + 44, (uint16_t)(len | 0x8000));                     // len0 | LAST
     membar();
@@ -434,6 +564,7 @@ bool itlmt7925::m3Tx(const uint8_t *frame, uint32_t len, uint8_t type, uint8_t s
     txData.head = (txData.head + 1) % txData.n;
     membar();
     wr(txData.regs + Q_CPU_IDX, txData.head);
+    if (txPool) return true;
     for (int us = 0; us < 200000; us += 20) {
         if ((int)(rd(txData.regs + Q_DMA_IDX) & 0xffff) == txData.head) return true;
         IODelay(20);
@@ -515,18 +646,29 @@ int itlmt7925::m3Auth()
 
 int itlmt7925::m3Assoc()
 {
-    uint8_t f[160];
+    uint8_t f[320];
     m3Hdr(f, 0x00, tgtBssid, mac);
     uint8_t *p = f + 24;
-    put16(p, 0x0411); p += 2;                                    // ESS | PRIVACY | short slot
+    bool g2 = fastActive && tgtCh <= 14;
+    put16(p, g2 ? 0x0431 : 0x0411); p += 2;                      // ESS | PRIVACY | short slot (| short preamble on 2.4 GHz)
     put16(p, 10); p += 2;                                        // listen interval
     uint8_t sl = (uint8_t)strlen(m3ssid);
     *p++ = 0; *p++ = sl; memcpy(p, m3ssid, sl); p += sl;
     static const uint8_t rates[8] = {0x8c, 0x12, 0x98, 0x24, 0xb0, 0x48, 0x60, 0x6c};
-    *p++ = 1; *p++ = 8; memcpy(p, rates, 8); p += 8;
+    static const uint8_t rates2g[8] = {0x82, 0x84, 0x8b, 0x96, 0x0c, 0x12, 0x18, 0x24};     // 1, 2, 5.5, 11 (CCK), 6, 9, 12, 18
+    static const uint8_t ext2g[4] = {0x30, 0x48, 0x60, 0x6c};                               // 24, 36, 48, 54
+    *p++ = 1; *p++ = 8; memcpy(p, g2 ? rates2g : rates, 8); p += 8;
+    if (g2) { *p++ = 50; *p++ = 4; memcpy(p, ext2g, 4); p += 4; }
     static const uint8_t rsn[22] = {0x30, 0x14, 0x01, 0x00, 0x00, 0x0f, 0xac, 0x04, 0x01, 0x00, 0x00, 0x0f, 0xac, 0x04,
                                     0x01, 0x00, 0x00, 0x0f, 0xac, 0x02, 0x00, 0x00};
     memcpy(p, rsn, sizeof(rsn)); p += sizeof(rsn);
+    if (fastActive) {
+        p += itl_caps_build_ht(p);
+        if (apCaps.vht) p += itl_caps_build_vht(p, fastAllow160);
+        if (fastHe) p += itl_caps_build_he(p, !g2, fastAllow160);
+        static const uint8_t wmm[9] = {0xdd, 0x07, 0x00, 0x50, 0xf2, 0x02, 0x00, 0x01, 0x00};   // WMM information element: we are QoS-capable
+        memcpy(p, wmm, sizeof(wmm)); p += sizeof(wmm);
+    }
     if (!m3Xchg(f, (uint32_t)(p - f), 0, 0x10, 150)) return ITL_TIMEOUT;
     uint16_t st = (uint16_t)(m3rx[26] | (m3rx[27] << 8)), aid = (uint16_t)((m3rx[28] | (m3rx[29] << 8)) & 0x3fff);
     m3log("assoc resp status=%u aid=%u", st, aid);
@@ -538,9 +680,19 @@ int itlmt7925::m3Assoc()
 // ---------------------------------------------------------------------------------------------
 // M3 sequence. Each step is added behind its own log line so a partial run is still informative.
 // ---------------------------------------------------------------------------------------------
-int itlmt7925::m3Run()
+int itlmt7925::m3Run1()
 {
     m3log("armed");
+    m3stepDown = false;                                      // per-attempt state (an earlier attempt may have failed half way)
+    m3reachedAssoc = false;
+    m3cipher = 0;
+    m3dataOn = false;
+    m3linkUp = false;
+    m3wantEapol = false;
+    m3eapolLen = 0;
+    m3rxLen = 0;
+    fastActive = false;
+    txPool = false;
 
     // 0. credentials: itl_ssid / itl_psk, then itl_ssid2 / itl_psk2 ... itl_ssid4 / itl_psk4 (the list order is the priority)
     struct Net { char ssid[33]; char psk[72]; } nets[4];
@@ -618,6 +770,7 @@ int itlmt7925::m3Run()
     int rc = m3Auth();
     m3Publish(rc ? "auth-fail" : "auth-ok");
     if (!rc) {
+        m3reachedAssoc = true;
         rc = m3Assoc();
         m3Publish(rc ? "assoc-fail" : "assoc-ok");
     }
@@ -634,9 +787,47 @@ int itlmt7925::m3Run()
     bzero(m3pmk, sizeof(m3pmk));
     if (!rc) {
         m3log("RESULT rc=0 link up");
-        m3Link();                                            // never returns
+        m3Link();                                            // returns only when this level has to be given up (m3stepDown)
+        return ITL_EIO;
+    }
+    if (fastActive && lvl >= 1 && m3reachedAssoc) {         // association / handshake failed with HT/VHT: try one level lower
+        m3stepDown = true;
+        baLog("lvl %u: assoc/handshake rc=%d", lvl, rc);
     }
     return rc;
+}
+
+// The connection sequence with a fallback ladder: itlmt_fast=<level> is tried first; when it does not work (association or
+// handshake rejected, or the link comes up but nothing unicast ever comes back) the driver leaves the AP and connects again
+// one level lower, down to the legacy 6 Mb/s path that was verified on the reference machine.
+int itlmt7925::m3Run()
+{
+    lvl = m3fast ? fastLevel : 0;
+    for (;;) {
+        int rc = m3Run1();
+        if (!m3stepDown || lvl == 0) return rc;
+        uint8_t next = lvl - 1;
+        // levels 4..6 add features only where the AP offers them: skip the ones that would repeat the configuration that just failed
+        while (next >= 4 && fastSig(next) == fastSig(lvl)) next--;
+        baLog("level %u given up, connecting again at %u", lvl, next);
+        m3Teardown();
+        lvl = next;
+    }
+}
+
+void itlmt7925::m3Teardown()
+{
+    m3linkUp = false;
+    baReset();
+    uint8_t f[26];
+    m3Hdr(f, 0xc0, tgtBssid, mac);                           // deauthentication, reason 3: station is leaving
+    put16(f + 24, 3);
+    m3Tx(f, sizeof(f), 0, 12);
+    IOSleep(100);
+    m3Bss(false);                                            // BSS back to "not connected"
+    m3dataOn = false;
+    m3cipher = 0;
+    IOSleep(100);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -665,18 +856,130 @@ void itlmt7925::m3Note(const char *dir, const uint8_t *e, uint32_t len)
     }
 }
 
+// ---- receive: Ethernet frames to the stack, through the reorder buffer of the TID when there is one ----
+void itlmt7925::m3Hex(char *out, size_t outLen, const uint8_t *p, uint32_t n)
+{
+    static const char hx[] = "0123456789abcdef";
+    size_t k = 0;
+    for (uint32_t i = 0; i < n && k + 3 < outLen; i++) { out[k++] = hx[p[i] >> 4]; out[k++] = hx[p[i] & 15]; }
+    out[k] = 0;
+}
+
+// Hands the frames collected for one MPDU to the reorder buffer (or, if the agreement is gone, to the stack).
+void itlmt7925::amsduFlush()
+{
+    AmsduAsm &a = amsduAsm;
+    if (!a.active) return;
+    a.active = false;
+    uint32_t used = a.used;
+    a.used = 0;
+    if (rxBa[a.tid].r.active) itl_reorder_rx(&rxBa[a.tid].r, a.sn, used ? a.buf : nullptr, used, nowMs(), baDeliverCb, this);   // used == 0 still takes up the sequence number
+    else if (used) itl_bundle_each(a.buf, used, ethDeliverCb, this);
+}
+
+void itlmt7925::rxStore(const uint8_t *eb, uint32_t n, bool reorder, uint8_t tid, uint16_t sn, bool last)
+{
+    AmsduAsm &a = amsduAsm;
+    if (!reorder) {
+        amsduFlush();
+        ethDeliver(eb, n);
+        return;
+    }
+    if (a.active && (a.tid != tid || a.sn != sn)) amsduFlush();
+    if (!a.active) { a.active = true; a.tid = tid; a.sn = sn; a.used = 0; a.t = nowMs(); }
+    uint32_t u = itl_bundle_add(a.buf, sizeof(a.buf), a.used, eb, n);
+    if (u == a.used) stRxDrop++; else a.used = u;
+    if (last) amsduFlush();
+}
+
+// The body of an A-MSDU subframe packet: [2 bytes pad when the hardware split the A-MSDU] then the subframes (itl_amsdu_each); a
+// whole A-MSDU the hardware left alone has no pad. Returns the frames unpacked.
+struct M3AmsduCtx { itlmt7925 *d; bool reorder; uint8_t tid; uint16_t sn; uint32_t good; };
+
+void itlmt7925::amsduFrameCb(void *ctx, const uint8_t *da, const uint8_t *sa, uint16_t et, const uint8_t *pl, uint32_t pn)
+{
+    M3AmsduCtx *x = (M3AmsduCtx *)ctx;
+    itlmt7925 *d = x->d;
+    static uint8_t eb[14 + 1600];
+    if (memcmp(sa, d->mac, 6) == 0) return;                                  // our own broadcast echoed back
+    memcpy(eb, da, 6);
+    memcpy(eb + 6, sa, 6);
+    eb[12] = (uint8_t)(et >> 8); eb[13] = (uint8_t)et;
+    memcpy(eb + 14, pl, pn);
+    if (!(da[0] & 1)) d->stRxUni++;
+    x->good++;
+    d->rxStore(eb, 14 + pn, x->reorder, x->tid, x->sn, false);
+}
+
+uint32_t itlmt7925::m3RxAmsdu(const uint8_t *b, uint32_t n, uint8_t ai, bool reorder, uint8_t tid, uint16_t sn)
+{
+    M3AmsduCtx x = { this, reorder, tid, sn, 0 };
+    if (reorder) {
+        // a new MPDU (first subframe, or another sequence number) closes the previous bundle; an MPDU whose subframes all fail
+        // to parse still has to take up its sequence number, so the bundle is opened before parsing
+        if (amsduAsm.active && (ai == 3 || amsduAsm.tid != tid || amsduAsm.sn != sn)) amsduFlush();
+        if (!amsduAsm.active) { amsduAsm.active = true; amsduAsm.tid = tid; amsduAsm.sn = sn; amsduAsm.used = 0; amsduAsm.t = nowMs(); }
+    }
+    const uint32_t pads[2] = { ai ? 2u : 0u, ai ? 0u : 2u };
+    for (int attempt = 0; attempt < 2 && !x.good; attempt++) {
+        if (pads[attempt] >= n) continue;
+        uint32_t found = itl_amsdu_each(b + pads[attempt], n - pads[attempt], 1600, amsduFrameCb, &x);
+        if (found > x.good) stRxBigDrop += found - x.good;                   // well-formed but too large (or echoed)
+    }
+    // The last subframe closes the bundle. With ai == 0 the packet is either a whole A-MSDU or a split subframe whose position the
+    // hardware did not say: leave the bundle open, so that further subframes of the same MPDU still join it. The next MPDU or the
+    // 4 ms timer in m3Link() flushes it.
+    if (reorder && ai == 1) amsduFlush();
+    return x.good;
+}
+
 // RX data frame from the AP (802.11 header + LLC/SNAP after the RXD groups; header translation is off, decryption is done by
 // the hardware once the keys are installed). EAPOL goes to the handshake, everything else to the Ethernet interface.
+// The header sits after up to 32 + 4 x 16 + 96 bytes of RXD groups (mt7925_mac_fill_rx), so look for it from byte 32 on.
 bool itlmt7925::m3RxData(const uint8_t *p, uint32_t len)
 {
-    for (uint32_t off = 32; off + 24 <= len && off < 120; off++) {
+    for (uint32_t off = 32; off + 24 <= len && off < 240; off++) {
         uint8_t fc0 = p[off], fc1 = p[off + 1];
         if ((fc0 & 0x0c) != 0x08 || (fc1 & 3) != 2) continue;               // data frame, From DS
         if (memcmp(p + off + 10, tgtBssid, 6) != 0) continue;
         bool group = p[off + 4] & 1;
         if (!group && memcmp(p + off + 4, mac, 6) != 0) continue;
-        if (fc0 & 0x40) return true;                                         // null / QoS null: no payload
-        uint32_t hl = (fc0 & 0x80) ? 26 : 24;
+        bool qos = fc0 & 0x80;
+        uint8_t qc = qos ? p[off + 24] : 0;                                  // QoS control: TID 0-3, ack policy 5-6, A-MSDU 7
+        uint8_t tid = qc & 7;
+        uint16_t sn = (uint16_t)((p[off + 22] | (p[off + 23] << 8)) >> 4);
+        bool reorder = qos && !group && rxBa[tid].r.active && (((qc >> 5) & 3) == 0 || ((qc >> 5) & 3) == 3);
+        uint8_t ai = len >= 20 ? (uint8_t)(le32(p + 16) & 3) : 0;           // RXD4 payload format: 3 first, 2 middle, 1 last subframe of an A-MSDU
+        if (rxdLogged < 3 && m3linkUp && fastActive) {
+            rxdLogged++;
+            baLog("rxd len=%u d1=%08x d2=%08x d4=%08x hdr@%u fc=%02x%02x qc=%02x", len, le32(p + 4), le32(p + 8), le32(p + 16), off, fc0, fc1, qc);
+        }
+        if (fc0 & 0x40) {                                                    // null / QoS null: no payload, but it owns a sequence number
+            amsduFlush();
+            if (reorder) itl_reorder_rx(&rxBa[tid].r, sn, nullptr, 0, nowMs(), baDeliverCb, this);
+            return true;
+        }
+        uint32_t hl = qos ? 26 : 24;
+        if (qos && (fc1 & 0x80)) hl += 4;                                    // +HTC
+        if (qos && (qc & 0x80) && m3linkUp) {                                // A-MSDU (a subframe, or a whole one)
+            stAmsduPkt++;
+            uint32_t bo = off + hl;
+            uint32_t n = bo < len ? m3RxAmsdu(p + bo, len - bo, ai, reorder, tid, sn) : 0;
+            stAmsduSub += n;
+            if (!n) {
+                stAmsduBad++;
+                if (amsduBadLogged < 3) {
+                    amsduBadLogged++;
+                    char hx[72];
+                    m3Hex(hx, sizeof(hx), p + bo, bo < len ? (len - bo > 32 ? 32 : len - bo) : 0);
+                    baLog("amsdu BAD ai=%u len=%u hdr@%u hl=%u sn=%u d=%s", ai, len, off, hl, sn, hx);
+                }
+            } else if (amsduLogged < 3) {
+                amsduLogged++;
+                baLog("amsdu ok ai=%u len=%u hdr@%u hl=%u sn=%u sub=%u", ai, len, off, hl, sn, n);
+            }
+            return true;
+        }
         static const uint8_t llc[6] = {0xaa, 0xaa, 0x03, 0x00, 0x00, 0x00};
         for (uint32_t g = 0; g <= 12 && off + hl + g + 8 <= len; g++) {
             const uint8_t *l = p + off + hl + g;
@@ -701,9 +1004,8 @@ bool itlmt7925::m3RxData(const uint8_t *p, uint32_t len)
             memcpy(eb + 6, p + off + 16, 6);                                 // SA = addr3
             eb[12] = (uint8_t)(et >> 8); eb[13] = (uint8_t)et;
             memcpy(eb + 14, pl, pn);
-            stRxEth++;
-            m3Note("rx", eb, 14 + pn);
-            ethRx(eb, 14 + pn);
+            if (!group) stRxUni++;
+            rxStore(eb, 14 + pn, reorder, tid, sn, true);
             return true;
         }
         return false;
@@ -713,19 +1015,41 @@ bool itlmt7925::m3RxData(const uint8_t *p, uint32_t len)
 
 bool itlmt7925::m3TxData(const uint8_t *da, uint16_t ethertype, const uint8_t *payload, uint32_t plen, bool protect)
 {
-    uint8_t f[32 + 1560];
+    uint8_t f[34 + 1560];
     if (plen > 1560) return false;
-    bzero(f, 24);
-    f[0] = 0x08;                                             // data
+    // With HT/VHT negotiated, unicast data (not the EAPOL handshake) goes out as QoS data (TID 0) at the rate the firmware
+    // chooses; group-addressed frames and everything else keep the fixed basic rate.
+    bool ra = fastActive && m3linkUp && ethertype != 0x888e && !(da[0] & 1);
+    uint32_t hl = ra ? 26 : 24;
+    bzero(f, hl);
+    f[0] = ra ? 0x88 : 0x08;                                 // data / QoS data
     f[1] = protect ? 0x41 : 0x01;                            // To DS (+ Protected: the hardware adds the CCMP header)
     memcpy(f + 4, tgtBssid, 6);
     memcpy(f + 10, mac, 6);
-    memcpy(f + 16, da, 6);
+    memcpy(f + 16, da, 6);                                   // QoS control (bytes 24-25) stays 0: TID 0, normal ack
+    M3TxOpt o;
+    o.protect = protect;
+    o.rateAdapt = ra;
+    uint16_t sn = txSn;
+    if (ra && lvl >= 3) {
+        // Level 3: access-category queue (AC_BE -> LMAC queue 1, mt76_connac_lmac_mapping), sequence numbers chosen here so that the
+        // starting sequence number of the ADDBA request is known, and A-MPDU once the agreement is up.
+        o.qidx = 1;
+        o.sn = sn;
+        o.aggr = txBaState == TXBA_ON;
+        f[22] = (uint8_t)((sn & 0xf) << 4);                  // sequence control: SN << 4, fragment 0
+        f[23] = (uint8_t)(sn >> 4);
+    }
     static const uint8_t llc[6] = {0xaa, 0xaa, 0x03, 0x00, 0x00, 0x00};
-    memcpy(f + 24, llc, 6);
-    f[30] = (uint8_t)(ethertype >> 8); f[31] = (uint8_t)ethertype;
-    memcpy(f + 32, payload, plen);
-    return m3Tx(f, 32 + plen, 2, 0, protect);
+    memcpy(f + hl, llc, 6);
+    f[hl + 6] = (uint8_t)(ethertype >> 8); f[hl + 7] = (uint8_t)ethertype;
+    memcpy(f + hl + 8, payload, plen);
+    bool ok = m3Tx(f, hl + 8 + plen, 2, ra ? 8 : 0, o);
+    if (ok && ra) {
+        stTxUni++;
+        if (lvl >= 3) txSn = itl_sn_inc(sn);                 // only a frame that really went out uses up a sequence number
+    }
+    return ok;
 }
 
 // Ethernet frame from the network stack
@@ -849,28 +1173,81 @@ int itlmt7925::m3Handshake()
     return (r1 || r2) ? ITL_EIO : 0;
 }
 
-// Link is up: expose the Ethernet interface and keep servicing the receive rings forever (this thread never returns).
+// Link is up: expose the Ethernet interface and keep servicing the receive rings. Returns only to give up the current fast level.
 void itlmt7925::m3Link()
 {
-    bool eok = ethCreate();
+    bool eok = eth ? true : ethCreate();                     // the interface survives a fall-back to a lower level
     m3log("ethernet interface %s", eok ? "created" : "FAILED");
+    baReset();
+    txSn = 0;
+    stRxUni = stTxUni = 0;
+    stAmsduPkt = stAmsduSub = stAmsduBad = 0;
+    txfWinFree = stTxFree;
+    txfWinFail = stTxFwFail;
+    txfBad = 0;
+    uint32_t lastTxf = nowMs();
     m3linkUp = true;
     m3sleepy = true;
-    uint64_t t0 = 0;
-    absolutetime_to_nanoseconds(mach_absolute_time(), &t0);
-    uint64_t lastStat = 0;
+    uint32_t t0 = nowMs(), lastStat = 0, lastActive = t0;
+    linkUpMs = t0;
+    lastReorderMs = t0;
+    bool watchdogDone = false;
     for (;;) {
-        m3Pump(1);
-        uint64_t now = 0;
-        absolutetime_to_nanoseconds(mach_absolute_time(), &now);
-        uint64_t up = (now - t0) / 1000000000ull;
+        int act = m3PumpOnce();
+        uint32_t now = nowMs();
+        baService();
+        if (amsduAsm.active && now - amsduAsm.t >= 4) amsduFlush();      // the last subframe of an A-MSDU never came
+        if (now - lastReorderMs >= 10) {                     // frames waiting behind a hole in a Block Ack window for too long
+            lastReorderMs = now;
+            for (int t = 0; t < 8; t++)
+                if (rxBa[t].r.active) itl_reorder_tick(&rxBa[t].r, now, 100, baDeliverCb, this);
+        }
+        uint32_t up = (now - t0) / 1000;
+        if (fastActive && !watchdogDone && up >= 25) {
+            watchdogDone = true;
+            if (!stRxUni && stTx >= 2) {                     // we transmitted, and no unicast frame ever came back: HT/VHT is not working
+                baLog("lvl %u: no unicast rx in %us (tx=%u rxd=%u eth=%u)", lvl, up, stTx, stRxData, stRxEth);
+                m3stepDown = true;
+            }
+        }
+        if (fastAmsdu && ((stAmsduPkt >= 8 && !stAmsduSub) || (stAmsduBad >= 32 && stAmsduBad * 4 > stAmsduSub))) {
+            baLog("lvl %u: A-MSDUs cannot be unpacked (pkt=%u sub=%u bad=%u)", lvl, stAmsduPkt, stAmsduSub, stAmsduBad);
+            m3stepDown = true;
+        }
+        if (txPool && now - lastTxf >= 5000) {                           // nearly every transmission reported failed by the firmware, twice in a row
+            lastTxf = now;
+            uint32_t df = stTxFree - txfWinFree, dx = stTxFwFail - txfWinFail;
+            txfWinFree = stTxFree;
+            txfWinFail = stTxFwFail;
+            if (df >= 30 && dx * 10 >= df * 8) {
+                if (++txfBad >= 2) {
+                    baLog("lvl %u: tx failing (freed=%u failed=%u in 5 s)", lvl, df, dx);
+                    m3stepDown = true;
+                }
+            } else {
+                txfBad = 0;
+            }
+        }
         if (up >= lastStat + (up < 300 ? 5 : 60)) {
             lastStat = up;
-            char st[200];
-            snprintf(st, sizeof(st), "up=%llus rxd=%u eapol=%u eth=%u drop=%u tx=%u fail=%u rxpk=%u", up, stRxData, stRxEapol,
-                     stRxEth, stRxDrop, stTx, stTxFail, rxPkts);
+            uint32_t ri = 0, rd_ = 0, rb = 0, rdup = 0, rold = 0, rfl = 0, rto = 0;
+            for (int t = 0; t < 8; t++) {
+                ri += rxBa[t].r.nIn; rd_ += rxBa[t].r.nDirect; rb += rxBa[t].r.nBuffered; rdup += rxBa[t].r.nDup;
+                rold += rxBa[t].r.nOld; rfl += rxBa[t].r.nFlushed; rto += rxBa[t].r.nTimeout;
+            }
+            char st[400];
+            snprintf(st, sizeof(st),
+                     "up=%us L%u rxd=%u eapol=%u eth=%u drop=%u tx=%u fail=%u rxpk=%u uni=%u/%u ba=%u/%u reo=%u/%u/%u/%u/%u/%u/%u txf=%u/%u/%u/%u/%u am=%u/%u/%u/%u",
+                     up, lvl, stRxData, stRxEapol, stRxEth, stRxDrop, stTx, stTxFail, rxPkts, stRxUni, stTxUni, stBaRxOn, stBaTxOn, ri, rd_,
+                     rb, rdup, rold, rfl, rto, stTxFree, stTxReclaim, stTxNoSlot, stTxFwFail, stTxFwRetry, stAmsduPkt, stAmsduSub, stAmsduBad,
+                     stRxBigDrop);
             nvramStat(st);
             nvramChunks(m3buf);
         }
+        if (m3stepDown) return;
+        if (!fastActive) { IOSleep(1); continue; }           // legacy path: exactly as verified (1 ms poll)
+        if (act) { lastActive = now; IODelay(20); }
+        else if (now - lastActive < 50) IODelay(200);       // traffic is bursty (A-MPDUs): keep polling closely for a while
+        else IOSleep(1);
     }
 }

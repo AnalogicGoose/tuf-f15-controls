@@ -60,7 +60,7 @@ driver, which started the project; the repository covers the whole machine.
    **Generate your own SMBIOS** (serial, MLB, UUID, ROM) first.
 3. **Add your Wi-Fi network** to the driver (Windows, elevated shell):
    `.\scripts\inject-creds.ps1 -Kext <EFI>\OC\Kexts\itlmt7925.kext -Ssid 'MyWifi'`
-4. **Boot-args**: `itlmt_m1=75 itlmt_m2=1 itlmt_m3=1` for Wi-Fi. `ItlXhciKick` needs none.
+4. **Boot-args**: `itlmt_m1=75 itlmt_m2=1 itlmt_m3=1` for Wi-Fi, plus the experimental `itlmt_fast=6` for HT/VHT/HE, Block Ack, A-MSDU and 160 MHz with automatic fall-back ([docs/WIFI.md](docs/WIFI.md)). `ItlXhciKick` needs none.
 5. **Boot from the USB stick**, wait two or three minutes, and check the result in NVRAM
    ([docs/DEBUGGING.md](docs/DEBUGGING.md)).
 

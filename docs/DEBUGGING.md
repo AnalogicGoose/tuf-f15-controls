@@ -28,6 +28,7 @@ From macOS: `nvram -p | grep itl`. From Linux: `/sys/firmware/efi/efivars/<name>
 | `itln0`..`itln4` | ItlDiag | copy of the connect (M3) log; `itln4` = one-line result (`hs-ok tgt=1 ch=44 ...`) |
 | `itlk0`..`itlk7` | itlmt7925 | the connect log written by the kext itself, 380 characters per variable, in order |
 | `itls0` | itlmt7925 | data path counters: `up=145s rxd=5905 eapol=2 eth=5903 drop=0 tx=4698 fail=0 rxpk=8552` |
+| `itlb0`..`itlb2` | itlmt7925 | fast-mode / Block Ack log (`itlmt_fast`), see [WIFI.md](WIFI.md#reading-the-result-of-a-test); in `fast` mode `itls0` also carries `L<level> uni=.. ba=.. reo=.. txf=.. am=..`; `itlb*` also holds the `rxd`, `amsdu ok/BAD` and `fast feat` diagnostics |
 | `itlmt7925-log` | itlmt7925 | the last log line, useful for a hang |
 | `itlt0`, `itlt1` | ItlDiag | timer probe: `mach/cal/tsc` per 100 ms sleep, and the mach vs. wall-clock ratio |
 | `itli0` | ItlDiag | xHCI interrupter register state per controller |
@@ -57,7 +58,7 @@ Optional kext, boot-args:
 |---|---|
 | `itldiag=<n>` | enable the diagnostics worker (any non-zero value; it runs for about 20 minutes) |
 | `itlxr=1\|2` | sample xHCI event rings (`itlx*`); `2` is the variant used on the reference machine |
-| `itlfile=1` | experimental: also try to write the text log into `ITLLOG.BIN` on the boot stick (`scripts/usblog.ps1 -Prepare` creates it, `-Read` shows it). Never worked on the reference machine and may block; use NVRAM instead |
+| `itlfile=0` | the raw-file log path is on by default: ItlDiag looks for `ITLLOG.BIN` in the root of every FAT32 partition (the ESP OpenCore booted from, the stick) and writes the text log into its clusters, so no stick is needed. `scripts/usblog.ps1 -Esp -Prepare` creates the file on the ESP (elevated shell), `-Esp -Read` shows it. `itlfile=0` turns it off |
 | `itlpanic=<s>` | after that many seconds call `panic()` with the digest as the message, to get a log out of a machine you cannot otherwise reach |
 | `itloff=1` | stay completely passive (to check whether the diagnostics themselves disturb something) |
 | `itlkbd=<ms>` | fallback: initial key-repeat delay in milliseconds, `0` = off |
