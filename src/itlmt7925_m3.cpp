@@ -133,7 +133,7 @@ void itlmt7925::m3Event(const uint8_t *ev, uint32_t len)
         t[k] = 0;
         m3log("fw: %s", t);
     }
-    if (!m3On || len < 55) return;
+    if (!m3On || m3linkUp || len < 55) return;       // after link up the data path owns the rings; later events are not ROC grants
     if (ev[36] == UNI_ROC) {                  // ROC grant: TLV at 48 {tag, len, bss_idx, tokenid, status}
         rocTok = ev[53];
         rocStatus = ev[54];
@@ -539,27 +539,56 @@ int itlmt7925::m3Run()
 {
     m3log("armed");
 
-    // 0. credentials
-    OSString *s = OSDynamicCast(OSString, getProperty("itl_ssid"));
-    OSString *k = OSDynamicCast(OSString, getProperty("itl_psk"));
-    if (!s || !k || !s->getLength() || s->getLength() > 32 || k->getLength() < 8 || k->getLength() > 63) {
-        m3log("no usable itl_ssid/itl_psk in the personality (ssid len=%u psk len=%u)", s ? s->getLength() : 0,
-              k ? k->getLength() : 0);
+    // 0. credentials: itl_ssid / itl_psk, then itl_ssid2 / itl_psk2 ... itl_ssid4 / itl_psk4 (the list order is the priority)
+    struct Net { char ssid[33]; char psk[72]; } nets[4];
+    int nn = 0;
+    for (int i = 1; i <= 4; i++) {
+        char ks[16], kp[16];
+        snprintf(ks, sizeof(ks), i == 1 ? "itl_ssid" : "itl_ssid%d", i);
+        snprintf(kp, sizeof(kp), i == 1 ? "itl_psk" : "itl_psk%d", i);
+        OSString *s = OSDynamicCast(OSString, getProperty(ks));
+        OSString *k = OSDynamicCast(OSString, getProperty(kp));
+        if (!s || !k || !s->getLength() || s->getLength() > 32 || k->getLength() < 8 || k->getLength() > 63) continue;
+        strlcpy(nets[nn].ssid, s->getCStringNoCopy(), sizeof(nets[nn].ssid));
+        strlcpy(nets[nn].psk, k->getCStringNoCopy(), sizeof(nets[nn].psk));
+        nn++;
+    }
+    if (!nn) {
+        m3log("no usable itl_ssid/itl_psk in the personality");
         m3Publish("nocred");
         return ITL_EINVAL;
     }
-    strlcpy(m3ssid, s->getCStringNoCopy(), sizeof(m3ssid));
-    strlcpy(m3psk, k->getCStringNoCopy(), sizeof(m3psk));
-    m3log("credentials: ssid len=%u psk len=%u", (unsigned)strlen(m3ssid), (unsigned)strlen(m3psk));
+    m3log("credentials: %d network(s)", nn);
+    for (int i = 0; i < nn; i++)
+        m3log("net%d ssid len=%u psk len=%u", i + 1, (unsigned)strlen(nets[i].ssid), (unsigned)strlen(nets[i].psk));
 
-    // The scan already ran (M2). Anything captured so far came from it; if the target is missing there is nothing to join.
-    for (int i = 0; i < 20 && !tgtFound; i++) { rxDataPoll(); IOSleep(100); }
-    for (int attempt = 1; attempt <= 4 && !tgtFound; attempt++) {
-        m3log("rescan #%d (directed) ", attempt);
-        m2Scan(m3ssid);
+    // The scan already ran (M2). m3Capture only keeps beacons of the SSID in m3ssid, so look for each configured network in turn
+    // (directed probe request) until one is seen; a network that the wildcard scan already listed goes first.
+    int order[4], no = 0;
+    for (int pass = 0; pass < 2; pass++)
+        for (int i = 0; i < nn; i++) {
+            bool seen = false;
+            for (int j = 0; j < nAps; j++) if (!strcmp(aps[j].ssid, nets[i].ssid)) seen = true;
+            if (seen == (pass == 0)) order[no++] = i;
+        }
+    int sel = -1;
+    for (int attempt = 1; attempt <= 3 && sel < 0; attempt++) {
+        for (int k = 0; k < no && sel < 0; k++) {
+            int i = order[k];
+            strlcpy(m3ssid, nets[i].ssid, sizeof(m3ssid));
+            tgtFound = false;
+            m3log("scan #%d for net%d (directed)", attempt, i + 1);
+            m2Scan(m3ssid);
+            for (int w = 0; w < 5 && !tgtFound; w++) { rxDataPoll(); IOSleep(100); }
+            if (tgtFound) sel = i;
+        }
     }
     m3Publish("scan");
-    if (!tgtFound) { m3log("target ssid not seen in the scan"); return ITL_EIO; }
+    if (sel < 0) { m3log("no configured network seen in the scan"); return ITL_EIO; }
+    strlcpy(m3ssid, nets[sel].ssid, sizeof(m3ssid));
+    strlcpy(m3psk, nets[sel].psk, sizeof(m3psk));
+    bzero(nets, sizeof(nets));
+    m3log("selected net%d ssid len=%u", sel + 1, (unsigned)strlen(m3ssid));
     m3log("target %02x:%02x:%02x:%02x:%02x:%02x ch=%u cap=%04x bi=%u ies=%u", tgtBssid[0], tgtBssid[1], tgtBssid[2],
           tgtBssid[3], tgtBssid[4], tgtBssid[5], tgtCh, tgtCap, tgtBcnInt, tgtIeLen);
 
