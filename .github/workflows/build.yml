@@ -31,6 +31,12 @@ jobs:
           clang++ -std=c++17 -I../kexts/itlmt7925 wpa_test.cpp ../kexts/itlmt7925/itl_wpa.cpp -o wpa_test
           ./wpa_test
 
+      - name: Host capability test (HT / VHT parsing, channel width, advertised elements)
+        run: |
+          cd test
+          clang++ -std=c++17 -Wall -I../kexts/itlmt7925 caps_test.cpp ../kexts/itlmt7925/itl_caps.cpp -o caps_test
+          ./caps_test
+
       - name: Build kexts
         run: bash scripts/build.sh
 

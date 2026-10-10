@@ -20,7 +20,17 @@ Open items, roughly by value. Nothing here is promised; PRs welcome.
 
 ## `itlmt7925`
 
-- [ ] Rate control: HT/VHT/HE capabilities in the STA record, fixed 6 Mb/s transmit rate removed, A-MPDU.
+Speed targets (estimates, see [WIFI.md](WIFI.md#speed-what-to-expect-and-the-ceiling)): today about 0.5 MB/s (a 16 GB
+download takes about 9 h); with HT/VHT on 5 GHz 80 MHz a few hundred Mb/s; the chip itself is a 2x2 Wi-Fi 7 part with a PHY
+ceiling of about 2.4 Gb/s at 160 MHz. No throughput benchmark exists yet.
+
+- [ ] **Benchmark first**: `iperf3` TX/RX on the current driver, recorded in `docs/WIFI.md`, so every change below has a baseline.
+- [ ] Rate control, step 1 (`itlmt_fast=1`): HT/VHT capabilities in the association and the STA record, firmware rate control for unicast
+      data, 20/40/80 MHz BSS. **Implemented, compiles, host-tested parsing; not yet run on hardware**: test it and record the result.
+- [ ] Rate control, step 2: BlockAck (ADDBA/DELBA) with `STA_REC_BA` for RX and TX A-MPDU, then A-MSDU. This is where most of the speed beyond
+      "low hundreds of Mb/s" comes from, and RX aggregation matters most for downloads.
+- [ ] Rate control, step 3: HE (`STA_REC_HE_V2`), 2.4 GHz HT, 160 MHz.
+- [ ] TX path: do not wait for the descriptor to be consumed per packet (`m3Tx`), track TX-free events before reusing a staging slot.
 - [ ] Reconnect when the AP drops the link; group key re-key; periodic scan for a better configured network.
 - [ ] Power save (no power-save negotiation is implemented).
 - [ ] WPA3-SAE, open networks, 6 GHz scan, and a regulatory domain chosen from configuration (it is a fixed world domain `00` now).

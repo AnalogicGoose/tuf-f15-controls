@@ -11,6 +11,8 @@
 #include <IOKit/IOBufferMemoryDescriptor.h>
 #include <IOKit/IOLocks.h>
 
+#include "itl_caps.h"
+
 class itlmt7925Eth;
 
 struct itl_dma_buf {
@@ -41,6 +43,8 @@ public:
     bool ethTx(const uint8_t *frame, uint32_t len);
     bool ethCreate();
     void ethRx(const uint8_t *frame, uint32_t len);
+    // Speed shown by macOS for the interface: the estimated best PHY rate when HT/VHT is in use, else the 54 Mb/s legacy value
+    uint64_t linkSpeedBps() const { return fastActive ? (uint64_t)fastRate * 1000000ull : 54000000ull; }
 
 private:
     IOPCIDevice *pci = nullptr;
@@ -157,17 +161,25 @@ private:
     void m3Note(const char *dir, const uint8_t *eth, uint32_t len);
     void m3Link();
     void nvramStat(const char *msg);
-    bool m3Tx(const uint8_t *frame, uint32_t len, uint8_t type, uint8_t subtype, bool protect = false);
+    bool m3Tx(const uint8_t *frame, uint32_t len, uint8_t type, uint8_t subtype, bool protect = false, bool rateAdapt = false);
     bool m3RxMgmt(const uint8_t *p, uint32_t len);
     bool m3Xchg(const uint8_t *frame, uint32_t len, uint8_t subtype, uint8_t wantFc, uint32_t waitMs);
     int  m3Auth();
     int  m3Assoc();
+    // HT/VHT (boot-arg itlmt_fast=1): advertise 11n/11ac in the association, give the firmware the AP's capabilities and let
+    // its rate control choose MCS for unicast data instead of the fixed 6 Mb/s. Only used when the AP is on 5 GHz and has HT.
+    bool m3fast = false;                     // requested by the boot-arg
+    bool fastActive = false;                 // requested and the target AP supports it
+    itl_ap_caps apCaps = {};
+    uint8_t fastBw = 0, fastCenter = 0, fastNss = 1;   // operating width (CMD_CBW_*), center channel, usable streams
+    uint32_t fastRate = 54;                  // estimated best PHY rate, Mb/s
+    void m3FastPlan();
     // target AP, captured from a beacon / probe response during the scan
     bool tgtFound = false;
     uint8_t tgtBssid[6] = {0};
     uint8_t tgtCh = 0;
     uint16_t tgtCap = 0, tgtBcnInt = 0;
-    uint8_t tgtIe[512] = {0};
+    uint8_t tgtIe[1024] = {0};
     uint32_t tgtIeLen = 0;
     char m1buf[3072] = {0};
     size_t m1len = 0;
