@@ -71,6 +71,14 @@ amfi_get_out_of_my_way=0x1 amfi=0x80 itldiag=90 itlxr=2 itlmt_m1=75 itlmt_m2=1 i
 | `msgbuf=1048576` | larger kernel message buffer, so the kext logs are not truncated |
 | `itlkick=<us>` (not set) | ItlXhciKick period; default 1000 µs, `0` disables (`docs/USB-XHCI-LAG.md`) |
 
+### Display resolution
+
+`UEFI > Output > Resolution` is `2880x1800@32`, the native mode of the GA403WM's 2.8K panel (GOP mode 0; the firmware also
+offers 1920x1200, 1920x1080 and a dozen 4:3/16:9 modes). While there was no NVIDIA driver the picker and Recovery were
+sluggish at that size because the firmware framebuffer is mapped uncached, and the stick used `1280x720@32` and then
+`1920x1200@32` as a workaround. With the NullMoth driver installed the native mode is the right one. A different panel
+option needs a different value: set `Max` to let OpenCore pick the largest mode. `UIScale` stays `0` (automatic).
+
 ### Known leftovers (harmless, not removed because the configuration is published exactly as tested)
 
 * `DeviceProperties > Add` has `IOPCIMSIMode = false` on the four xHCI controllers. It does nothing: IOPCIFamily *sets*
