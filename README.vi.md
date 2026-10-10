@@ -14,6 +14,7 @@ Gồm driver Wi-Fi MediaTek MT7925 viết từ đầu và bản sửa lỗi bàn
 | `kexts/ItlXhciKick` | sửa lỗi USB trễ ~2 giây (gõ "d" ra "ddddd") do xHCI AMD chỉ có 1 vector MSI | chạy tốt, xem `docs/USB-XHCI-LAG.md` |
 | `kexts/ItlDiag` | chẩn đoán lúc boot, ghi log qua NVRAM | công cụ debug |
 | `patches/opencore` | vá OcCpuLib cho Zen 5 (family 1Ah): timer chạy sớm ~10 lần | dùng trong EFI tham khảo |
+| dGPU RTX 5060 | dùng [driver NVIDIA của NullMoth](https://github.com/nullmoth/nvidia-macos-driver) (cài *trong* macOS 15, không nằm trong EFI); `config.plist` đã có sẵn boot-args và SIP của nó, repo này không kiểm chứng | xem `efi/README.md` |
 | `scripts/restore-limine-entry.ps1` | tạo lại entry UEFI của Limine/Linux khi NVRAM bị mất | xem `docs/DUAL-BOOT.md` |
 
 Tên các kext (`itlmt7925`, `ItlXhciKick`, `ItlDiag`) giữ nguyên vì dự án bắt đầu từ driver Wi-Fi.
@@ -41,4 +42,4 @@ Tài liệu chi tiết (tiếng Anh): `efi/README.md`, `docs/WIFI.md`, `docs/USB
 ## Giấy phép
 
 [Clear BSD License](LICENSE) cho mã trong repo (dựa trên driver Linux `mt76`, © MediaTek, BSD-3-Clause-Clear).
-Firmware trong `fw/` là của MediaTek, giữ nguyên [license riêng](fw/LICENCE.mediatek). Xem `NOTICE.md`.
+Firmware trong `fw/` là của MediaTek, giữ nguyên [license riêng](fw/LICENCE.mediatek). Thư mục `efi/` dẫn xuất từ [nullmoth/1401](https://github.com/nullmoth/1401) (PolyForm Noncommercial 1.0.0), **không** thuộc Clear BSD. Xem `NOTICE.md`.

@@ -14,7 +14,7 @@ keyboard/mouse lag that AMD Strix Point controllers cause on macOS.
 |---|---|
 | Laptop | ASUS ROG Zephyrus G14 2025, model GA403WM |
 | CPU / iGPU | AMD Ryzen AI 9 HX 370 (12 cores, Zen 5), Radeon 890M (disabled for macOS in `DeviceProperties`) |
-| dGPU | NVIDIA GeForce RTX 5060 Laptop (Blackwell: no macOS driver) |
+| dGPU | NVIDIA GeForce RTX 5060 Laptop (Blackwell), used through [NullMoth's NVIDIA driver](https://github.com/nullmoth/nvidia-macos-driver) |
 | Wi-Fi | MediaTek MT7925, PCI `14c3:7925` |
 | USB | four AMD xHCI controllers `1022:151e`, `151f`, `151a`, `151b` |
 | Input | I2C-HID touchpad `093a:3011`, USB keyboard `0b05:19b6` |
@@ -31,7 +31,7 @@ keyboard/mouse lag that AMD Strix Point controllers cause on macOS.
 | Wi-Fi MT7925 | works: WPA2-PSK on 2.4/5 GHz, DHCP/DNS; minimal (fixed 6 Mb/s TX, no UI, no reconnect) | [docs/WIFI.md](docs/WIFI.md) |
 | USB port map | **not done** (placeholder) | [docs/ROADMAP.md](docs/ROADMAP.md) |
 | Full install, sleep/wake, audio, battery, display brightness, Bluetooth, webcam | **not verified** | |
-| NVIDIA dGPU | not supported by macOS | |
+| NVIDIA dGPU | third-party driver by NullMoth (macOS 15, installed inside macOS, not part of the EFI). The reference `config.plist` already carries its boot-args and SIP value; not verified by this project | [efi/README.md](efi/README.md#nvidia-dgpu-nullmoth-driver) |
 
 ## What is in this repository
 
@@ -90,4 +90,5 @@ Tiếng Việt: [README.vi.md](README.vi.md).
 
 [Clear BSD License](LICENSE) for the code in this repository, which re-implements parts of the Linux `mt76` driver
 (BSD-3-Clause-Clear, © MediaTek). The firmware in `fw/` is MediaTek's and keeps [its own license](fw/LICENCE.mediatek). The
-OpenCore configuration derives from <https://github.com/nullmoth/1401>, which declares no license, see [NOTICE.md](NOTICE.md).
+OpenCore configuration in `efi/` derives from <https://github.com/nullmoth/1401> (PolyForm Noncommercial 1.0.0) and is **not**
+covered by the Clear BSD License, see [NOTICE.md](NOTICE.md).

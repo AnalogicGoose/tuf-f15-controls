@@ -26,4 +26,4 @@ environment (Recovery or installed) you tested on, and attach the redacted `itlk
 * Hardware behaviour is ported from the Linux `mt76` driver; cite the Linux function in a comment next to the port and keep
   the MediaTek copyright notice.
 * No patching of Apple binaries, no raw writes to registers the Linux driver does not touch, without a written reason.
-* Keep the files under the Clear BSD License (`SPDX-License-Identifier: BSD-3-Clause-Clear` on top).
+* Keep the files under the Clear BSD License (`SPDX-License-Identifier: BSD-3-Clause-Clear` on top); `efi/` is the exception, see `NOTICE.md`.

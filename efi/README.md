@@ -64,8 +64,8 @@ amfi_get_out_of_my_way=0x1 amfi=0x80 itldiag=90 itlxr=2 itlmt_m1=75 itlmt_m2=1 i
 |---|---|
 | `-v`, `debug=0x100`, `keepsyms=1` | verbose boot; keep panic text on screen; keep kernel symbols in panic logs |
 | `-vi2c-force-polling` | VoodooI2C polls the trackpad instead of using GPIO interrupts |
-| `nvfb=1 nvaccel=1 nvfbheads=4 -nvkmsnosmooth` | inherited from the base configuration's NVIDIA driver build; unrelated to Wi-Fi / USB |
-| `amfi_get_out_of_my_way=0x1 amfi=0x80` | disables AMFI; inherited from the base configuration |
+| `nvfb=1 nvaccel=1 nvfbheads=4 -nvkmsnosmooth` | NullMoth NVIDIA driver: framebuffer, accelerator, 4 display heads (see below) |
+| `amfi_get_out_of_my_way=0x1 amfi=0x80` | disables AMFI so WindowServer can load the NVIDIA driver bundle (NullMoth driver requirement) |
 | `itlmt_m1=75 itlmt_m2=1 itlmt_m3=1` | itlmt7925: start after 75 s, scan, connect (`docs/WIFI.md`) |
 | `itldiag=90 itlxr=2` | ItlDiag diagnostics and xHCI event-ring sampler (`docs/DEBUGGING.md`); not needed for normal use |
 | `msgbuf=1048576` | larger kernel message buffer, so the kext logs are not truncated |
@@ -76,7 +76,28 @@ amfi_get_out_of_my_way=0x1 amfi=0x80 itldiag=90 itlxr=2 itlmt_m1=75 itlmt_m2=1 i
 * `DeviceProperties > Add` has `IOPCIMSIMode = false` on the four xHCI controllers. It does nothing: IOPCIFamily *sets*
   that property when it enables MSI and never reads it back (`docs/USB-XHCI-LAG.md`). It can be deleted.
 * `ItlDiag.kext` and the `itldiag` / `itlxr` boot-args are debugging tools.
-* The `nv*` boot-args and the NVIDIA-related entries of the base configuration are unused here.
+
+## NVIDIA dGPU (NullMoth driver)
+
+The RTX 5060 is driven by [NullMoth's NVIDIA driver for macOS 15](https://github.com/nullmoth/nvidia-macos-driver)
+(installed with its `install.sh` or the 1401 Mac app, **inside** macOS: kexts go to `/Library/Extensions` and load from the
+Auxiliary Kernel Collection, so nothing NVIDIA is in `EFI/OC/Kexts`). This repository does not contain or modify it. The EFI
+only carries what that driver asks of OpenCore:
+
+| Setting | Value here | Driver's installed-system value |
+|---|---|---|
+| `NVRAM > csr-active-config` | `43 0A 00 00` (0x0A43) | same |
+| boot-args `nvfb=1 nvaccel=1 nvfbheads=4 -nvkmsnosmooth amfi_get_out_of_my_way=0x1 amfi=0x80` | set | same |
+| `Misc > Security > SecureBootModel` | `Disabled` | same |
+| `Booter > Quirks > ResizeAppleGpuBars` | `0` | `-1` |
+| `UEFI > Quirks > ResizeGpuBars` | `-1` | `13` (8 GB BAR) |
+| `Kernel > Block` `com.apple.iokit.IONDRVSupport` (Exclude) | absent | present |
+| `DeviceProperties` for the card | none | none |
+
+The two BAR values and the missing `Block` entry are the driver's *installer-phase* settings; its Mac app switches them when it
+installs the driver. The 890M is hidden with `disable-gpu`, WhateverGreen is disabled, and BIOS needs Above 4G Decoding ON and
+CSM OFF. Whether the driver works on this laptop has **not** been verified in this repository; only Recovery was exercised. Read the driver's own README and licence before
+relying on it.
 
 ## The OpenCore patch (`patches/opencore/fix-zen5-fsb.diff`)
 
@@ -97,6 +118,7 @@ builds OpenCore from the exact upstream commit with the patch applied (manual tr
 
 ## Provenance
 
-The configuration and the SSDTs started from <https://github.com/nullmoth/1401> and were adapted. That repository does not
-declare a license; the files here keep their origin visible (OEM table id `ZPSS`, patch comments by their authors).
-If you are the author and want them removed or attributed differently, open an issue.
+The configuration and the SSDTs started from <https://github.com/nullmoth/1401> and were adapted. That repository is under the
+**PolyForm Noncommercial License 1.0.0**, so the files in this directory are **not** under the Clear BSD License of the rest
+of the repository: use them for noncommercial purposes and keep this attribution. They keep their origin visible (OEM table
+id `ZPSS`, patch comments by their authors). If you are the author and want them removed or attributed differently, open an issue.
