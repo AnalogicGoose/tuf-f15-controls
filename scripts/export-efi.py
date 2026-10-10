@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: BSD-3-Clause-Clear
-# Copyright (c) 2026 thanhnndev and itlmt7925 contributors
+# Copyright (c) 2026 thanhnndev and contributors
 """Export a working EFI/OC folder into efi/OC for publishing, with every machine identifier removed.
 
     python scripts/export-efi.py [--src Y:/EFI/OC] [--dst efi/OC]

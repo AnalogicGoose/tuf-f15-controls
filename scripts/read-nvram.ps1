@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: BSD-3-Clause-Clear
-# Copyright (c) 2026 thanhnndev and itlmt7925 contributors
+# Copyright (c) 2026 thanhnndev and contributors
 # Reads firmware (NVRAM) variables written by macOS under the Apple GUID and prints them. Needs an elevated PowerShell.
 # usage: .\read-nvram.ps1 [name ...]   (default: boot-args and every itl* variable listed in docs/DEBUGGING.md)
 param([string[]]$Names)

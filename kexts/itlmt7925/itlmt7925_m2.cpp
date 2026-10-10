@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BSD-3-Clause-Clear
-// Copyright (c) 2026 thanhnndev and itlmt7925 contributors
+// Copyright (c) 2026 thanhnndev and contributors
 // Portions derived from the Linux mt76 driver, Copyright (C) 2020, 2023 MediaTek Inc. (BSD-3-Clause-Clear)
 // itlmt7925 - M2: UNI command transport, interface setup (dev/bss info) and a passive/active scan.
 // Port of the connac3 path in Linux mt76 (BSD-3-Clause-Clear, Copyright (C) MediaTek Inc.):

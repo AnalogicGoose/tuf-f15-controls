@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: BSD-3-Clause-Clear
-# Copyright (c) 2026 thanhnndev and itlmt7925 contributors
+# Copyright (c) 2026 thanhnndev and contributors
 """Fail if efi/OC/config.plist carries anything but the placeholder platform identifiers (run in CI and before a commit).
 
     python scripts/check-efi-privacy.py [path/to/config.plist ...]

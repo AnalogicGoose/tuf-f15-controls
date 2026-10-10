@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BSD-3-Clause-Clear
-// Copyright (c) 2026 thanhnndev and itlmt7925 contributors
+// Copyright (c) 2026 thanhnndev and contributors
 // MediaTek MT7925 firmware, embedded into the kext (nothing can be read from disk in Recovery).
 // Origin: linux-firmware mediatek/mt7925/, redistributable under the MediaTek licence in LICENCE.mediatek.
 // Built from the repo root, so the .incbin paths are relative to it.

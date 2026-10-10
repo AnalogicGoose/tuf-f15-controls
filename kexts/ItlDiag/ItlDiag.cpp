@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BSD-3-Clause-Clear
-// Copyright (c) 2026 thanhnndev and itlmt7925 contributors
+// Copyright (c) 2026 thanhnndev and contributors
 // ItlDiag - boot-time diagnostics. Collects what macOS sees (Wi-Fi card, USB controllers/devices, HID, clocks, the whole
 // registry tree) and persists it to a pre-allocated file on the boot USB stick (see scripts/usblog.ps1), so no screenshots
 // or working keyboard are needed. The same lines also go to the verbose console.

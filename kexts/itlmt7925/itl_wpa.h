@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BSD-3-Clause-Clear
-// Copyright (c) 2026 thanhnndev and itlmt7925 contributors
+// Copyright (c) 2026 thanhnndev and contributors
 // itl_wpa.h - WPA2-PSK primitives with no OS dependencies (compiles in the kext and in the host test, test/wpa_test.cpp).
 //   SHA-1, HMAC-SHA1, PBKDF2-HMAC-SHA1, IEEE 802.11i PRF, AES-128 (decrypt only), RFC 3394 key unwrap,
 //   PTK derivation and EAPOL-Key (RSN, descriptor version 2) parsing / building.
