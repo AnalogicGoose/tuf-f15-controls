@@ -58,7 +58,7 @@ Optional kext, boot-args:
 |---|---|
 | `itldiag=<n>` | enable the diagnostics worker (any non-zero value; it runs for about 20 minutes) |
 | `itlxr=1\|2` | sample xHCI event rings (`itlx*`); `2` is the variant used on the reference machine |
-| `itlfile=1` | experimental: also try to write the text log into `ITLLOG.BIN` on the boot stick (`scripts/usblog.ps1 -Prepare` creates it, `-Read` shows it). Never worked on the reference machine and may block; use NVRAM instead |
+| `itlfile=0` | the raw-file log path is on by default: ItlDiag looks for `ITLLOG.BIN` in the root of every FAT32 partition (the ESP OpenCore booted from, the stick) and writes the text log into its clusters, so no stick is needed. `scripts/usblog.ps1 -Esp -Prepare` creates the file on the ESP (elevated shell), `-Esp -Read` shows it. `itlfile=0` turns it off |
 | `itlpanic=<s>` | after that many seconds call `panic()` with the digest as the message, to get a log out of a machine you cannot otherwise reach |
 | `itloff=1` | stay completely passive (to check whether the diagnostics themselves disturb something) |
 | `itlkbd=<ms>` | fallback: initial key-repeat delay in milliseconds, `0` = off |
