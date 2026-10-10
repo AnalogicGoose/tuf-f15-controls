@@ -28,7 +28,7 @@ fi
 echo "== NVRAM (whitelist; SMBIOS vars MLB/ROM/SSN/HW_* are never read) =="
 for n in boot-args:7c436110-ab2a-4bbb-a880-fe41995c9f82 csr-active-config:7c436110-ab2a-4bbb-a880-fe41995c9f82 \
          auto-boot:7c436110-ab2a-4bbb-a880-fe41995c9f82 opencore-version:4d1fda02-38c7-4a6a-9cc6-4bcca8b30102 \
-         efi-boot-device:7c436110-ab2a-4bbb-a880-fe41995c9f82 aapl,panic-info:7c436110-ab2a-4bbb-a880-fe41995c9f82 \
+         aapl,panic-info:7c436110-ab2a-4bbb-a880-fe41995c9f82 \
          LastBootFailed:b540a530-6978-4da7-91cb-7207d764d262; do
   f="$EV/${n%%:*}-${n#*:}"
   [ -r "$f" ] && { printf '%s = ' "${n%%:*}"; tail -c +5 "$f" | tr -d '\0' | tr -cd '[:print:]'; echo; } || echo "${n%%:*} = <not set>"
