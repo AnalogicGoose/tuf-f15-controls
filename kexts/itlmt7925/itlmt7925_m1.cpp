@@ -522,7 +522,7 @@ void itlmt7925::m1Main()
     uint32_t fast = 0;
     if (PE_parse_boot_argn("itlmt_fast", &fast, sizeof(fast)) && fast) {
         m3fast = true;
-        fastLevel = fast > 3 ? 3 : (uint8_t)fast;
+        fastLevel = fast > 6 ? 6 : (uint8_t)fast;
     }
     m1log("armed, starting in %us", delay);
     IOSleep(delay * 1000);

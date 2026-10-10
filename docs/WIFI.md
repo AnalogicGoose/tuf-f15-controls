@@ -56,21 +56,28 @@ same LAN and `iperf3 -c <ip> -t 30` (and `-R`) from the Hackintosh. Recovery has
 [Measuring the speed in Recovery](#measuring-the-speed-in-recovery). Compare against the counters in the `itls0` line (`rxd`, `tx`, `fail`).
 Record results in this file with the AP model, band, channel and distance.
 
-## HT/VHT mode and Block Ack (`itlmt_fast=1..3`)
+## HT/VHT/HE mode, Block Ack, A-MSDU and wide channels (`itlmt_fast=1..6`)
 
 Off by default, so the verified legacy path is untouched. It is selected with the boot-arg `itlmt_fast=<level>` next to
-`itlmt_m3=1`, and only used when the chosen AP is on 5 GHz and advertises HT; otherwise the driver stays on the legacy path.
+`itlmt_m3=1`, and only used when the chosen AP advertises HT (5 GHz or 2.4 GHz); otherwise the driver stays on the legacy path.
 
 | Level | What it adds | New risk compared with the level below |
 |---|---|---|
 | 1 | HT/VHT capabilities in the association, the AP's capabilities and the 20/40/80 MHz width to the firmware, unicast data as QoS data with the firmware's rate control (instead of fixed 6 Mb/s) | association rejected, firmware dislikes a TLV |
 | 2 | **Receive Block Ack**: the AP's ADDBA request is accepted (`STA_REC_BA` recipient + ADDBA response, no A-MSDU, window 64), frames are put back in order in a reorder buffer (100 ms hole timeout, BlockAckReq honoured), deeper RX ring, closer polling while traffic flows | reorder bug; firmware refuses the BA record |
 | 3 | **Transmit Block Ack**: after 10 unicast frames an ADDBA request for TID 0 (window 64); on success `STA_REC_BA` originator and the firmware aggregates our QoS data. Also: AC queue instead of the management queue, sequence numbers assigned by the driver, TX staging buffers released on `TXFREE` events instead of reused blindly | wrong queue or sequence handling; TXFREE layout |
+| 4 | **A-MSDU receive**: the AP may send A-MSDUs (the ADDBA response and `STA_REC_BA` allow it, the firmware splits them into one RX packet per subframe). The driver rebuilds the Ethernet frames, keeps all subframes of one MPDU together in the reorder buffer (a "bundle") and releases them as a unit | subframe layout (2-byte pad, first/last flag) differs from the assumption; wrong reorder of subframes |
+| 5 | **160 MHz** (5 GHz, only if the AP's VHT operation says 160 MHz; 80+80 is run as 80 MHz): VHT capabilities with 160 MHz and SGI160, BSS and STA record at CBW 160 | firmware or regulatory refusal of the 160 MHz BSS |
+| 6 | **HE (802.11ax)**: HE capabilities in the association, `STA_REC_HE_V2`, `BSS_INFO_HE_BASIC` and `BSS_COLOR`, HE bit in `STA_REC_PHY`, HE rates in rate control | TLV layout (HE phy/mac bytes) refused by the firmware |
 
-Recommended for the first test, boot-args `itlmt_m1=75 itlmt_m2=1 itlmt_m3=1 itlmt_fast=3` (build the kext from this branch with
-`scripts/build.sh itlmt7925` or the `build-kexts` workflow, inject the credentials as usual). The driver tries level 3 and **steps down by itself**: if the association or the
-4-way handshake fails, or if 25 s after link-up it has transmitted but never received a unicast frame from the AP, it
-sends a deauthentication, connects again one level lower and finally falls back to the legacy 6 Mb/s path. The result is the
+2.4 GHz is not a separate level: it is used whenever the chosen AP is on 2.4 GHz and `itlmt_fast` is at least 1. There it is HT 20/40 only (VHT is cleared),
+CCK/ERP basic rates and short preamble are announced, and levels 4 and 6 apply (HE on 2.4 GHz uses `AX_24G`).
+
+Recommended for the first test, boot-args `itlmt_m1=75 itlmt_m2=1 itlmt_m3=1 itlmt_fast=6` (build the kext from this branch with
+`scripts/build.sh itlmt7925` or the `build-kexts` workflow, inject the credentials as usual). The driver tries level 6 and **steps down by itself**: if the association or the
+4-way handshake fails, if 25 s after link-up it has transmitted but never received a unicast frame from the AP, if A-MSDUs cannot be unpacked
+(packets seen but no valid subframe, or most subframes malformed), or if the firmware reports at least 80 % of the transmitted frames as failed in two consecutive 5 s windows (level 3 and up), it
+sends a deauthentication, connects again one level lower and finally falls back to the legacy 6 Mb/s path. Levels that would not change the configuration for this AP (for example HE on an AP without HE) are skipped. The result is the
 highest level that works, in one boot. (Failures that do not break connectivity, such as a stalled upload, are not
 detected: check the counters below.)
 
@@ -85,11 +92,11 @@ After the boot, read the NVRAM from Windows (`scripts/read-nvram.ps1`, see `docs
 
 | Variable | Content |
 |---|---|
-| `itlb0`..`itlb2` | the fast-mode log: `fast on lvl=3 bw=2 c=155 nss=2 ...` negotiated; `rx addba tid=0 ssn=.. -> accept win=64`; `sta_rec_ba rx on ... rc=0 st=0`; `tx addba req`; `tx ba on`; `delba`; `lvl 3 given up, connecting again at 2` |
+| `itlb0`..`itlb2` | the fast-mode log: `fast on lvl=6 ch=.. bw=.. c=.. nss=2 ...` negotiated; `fast feat amsdu=1 he=1(ap 1) 160=0 heph=.. hemac=.. map=..` which features were actually offered; `rxd len=.. d1=.. d2=.. d4=.. hdr@.. fc=.. qc=..` raw RX descriptor words of the first three data frames; `amsdu ok ai=.. len=.. hdr@.. hl=.. sn=.. sub=..` / `amsdu BAD ... d=<hex>` the first good and the first malformed A-MSDU (with a hex dump); `lvl N: A-MSDUs cannot be unpacked`, `lvl N: tx failing`; `rx addba tid=0 ssn=.. -> accept win=64`; `sta_rec_ba rx on ... rc=0 st=0`; `tx addba req`; `tx ba on`; `delba`; `lvl 3 given up, connecting again at 2` |
 | `itls0` | counters every 5 s: `up=..s L3 ... uni=<rx>/<tx> ba=<rx sessions>/<tx sessions> reo=<in>/<direct>/<buffered>/<dup>/<old>/<flushed>/<timeouts> txf=<freed>/<reclaimed>/<no slot>/<fw failed>/<fw retries>` |
 | `itlk0`..`itlk7` | the usual connect log (`fast: on ...` or `fast: off ...`) |
 
-How to tell what worked: `L3` in `itls0` means level 3 stayed; `ba=N/1` means N receive sessions and the transmit session are up;
+How to tell what worked: `L6` (or whatever number) in `itls0` is the level that stayed; `am=` with the second number growing means A-MSDUs are being unpacked; `ba=N/1` means N receive sessions and the transmit session are up;
 `reo` has `buffered` > 0 and `timeouts` small relative to `in` when aggregation is really happening; `txf` should have the first
 number growing with `tx` (if it stays 0 and the second number grows, TXFREE parsing is wrong and buffers are reclaimed by
 timeout, which caps TX at a low rate, so tell me).
@@ -109,8 +116,9 @@ channel into this file.
 
 ### What is still missing
 
-No A-MSDU (refused in both directions), no HE/EHT, no 2.4 GHz, no widths above 80 MHz (a 160 MHz BSS is used at the 80 MHz block with the
-primary channel), only TID 0 is aggregated on transmit, CPU-polled rings. Not verified on the GA403WM: everything in this section.
+No A-MSDU on transmit (A-MPDU already carries most of the gain), no EHT / Wi-Fi 7 and no 6 GHz, 80+80 MHz is run as 80 MHz, only TID 0 is aggregated on transmit,
+CPU-polled rings. Not verified on the GA403WM: everything in this section, including levels 4 to 6 (A-MSDU, 160 MHz, HE) and 2.4 GHz. The assumptions that the
+first boot will confirm or correct are in the `rxd`, `amsdu` and `fast feat` lines of `itlb*`.
 
 ## How it works
 
@@ -146,7 +154,7 @@ BSS enable and STA state 2, 4-way handshake, PTK/GTK install, interface creation
 | `itlmt_m1=<seconds>` | **required** to do anything beyond probing: wait that long, then download firmware. The reference machine uses `75` |
 | `itlmt_m2=1` | after the firmware is running: bring up the interface and scan |
 | `itlmt_m3=1` | also connect (implies `itlmt_m2=1`) |
-| `itlmt_fast=<1..3>` | **experimental, untested on hardware**: HT/VHT rates (1), + receive Block Ack (2), + transmit Block Ack (3). Falls back one level at a time if a level does not work. See [HT/VHT mode](#htvht-mode-and-block-ack-itlmt_fast13) |
+| `itlmt_fast=<1..6>` | **experimental, untested on hardware**: HT/VHT rates (1), + receive Block Ack (2), + transmit Block Ack (3), + A-MSDU receive (4), + 160 MHz (5), + HE (6). Falls back one level at a time if a level does not work. See [HT/VHT mode](#htvhthe-mode-block-ack-a-msdu-and-wide-channels-itlmt_fast16) |
 | `itlmt_hold=<seconds>` | repeat the probe log on the verbose console for that long (to photograph it) |
 
 Without any of them the kext only maps the card, takes ownership and logs the chip id (`CHIPID=...7925`).

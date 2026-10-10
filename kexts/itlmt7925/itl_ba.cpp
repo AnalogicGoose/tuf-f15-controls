@@ -127,6 +127,46 @@ void itl_reorder_stop(itl_reorder *r, itl_ba_deliver_fn fn, void *ctx)
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
+// bundles
+// ---------------------------------------------------------------------------------------------------------------------------
+uint32_t itl_bundle_add(uint8_t *buf, uint32_t cap, uint32_t used, const uint8_t *frame, uint32_t len)
+{
+    if (!len || len > 0xffff || used + 2 + len > cap) return used;
+    put16(buf + used, (uint16_t)len);
+    memcpy(buf + used + 2, frame, len);
+    return used + 2 + len;
+}
+
+void itl_bundle_each(const uint8_t *blob, uint32_t len, itl_ba_deliver_fn fn, void *ctx)
+{
+    uint32_t o = 0;
+    while (o + 2 <= len) {
+        uint32_t l = le16(blob + o);
+        if (!l || o + 2 + l > len) return;
+        fn(ctx, blob + o + 2, l);
+        o += 2 + l;
+    }
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// A-MSDU
+// ---------------------------------------------------------------------------------------------------------------------------
+uint32_t itl_amsdu_each(const uint8_t *b, uint32_t n, uint32_t maxPayload, itl_amsdu_fn fn, void *ctx)
+{
+    uint32_t o = 0, count = 0;
+    while (o + 14 + 8 <= n) {
+        uint32_t L = (uint32_t)((b[o + 12] << 8) | b[o + 13]);
+        const uint8_t *l = b + o + 14;
+        if (L < 8 || L > 2304 || o + 14 + L > n) break;
+        if (l[0] != 0xaa || l[1] != 0xaa || l[2] != 0x03) break;       // not LLC/SNAP: no way to find the ethertype
+        count++;
+        if (L - 8 <= maxPayload) fn(ctx, b + o, b + o + 6, (uint16_t)((l[6] << 8) | l[7]), l + 8, L - 8);
+        o += (14 + L + 3) & ~3u;
+    }
+    return count;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
 // action frames
 // ---------------------------------------------------------------------------------------------------------------------------
 bool itl_ba_action_parse(const uint8_t *b, size_t len, itl_ba_action *a)
