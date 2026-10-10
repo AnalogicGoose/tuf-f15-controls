@@ -72,6 +72,11 @@ No SMBIOS values, passphrases, MACs or neighbour SSIDs belong in this file.
   a whitelist of NVRAM vars (efivars are world-readable; SMBIOS vars are not touched), macOS panic reports, `fsck_apfs.log`
   and optionally the unified log into `~/ga403-logs/<time>` (outside the repo).
 * Writing to APFS (display override) stays a root job on purpose: `scripts/install-display-override.sh`.
+* Decode the unified log (`linux-collect-logs.sh --unified`) with `scripts/decode-unified-log.sh <logarchive> "<UTC since>"`.
+  A hard power-off loses the last minutes of it (persisted in chunks), so a log that ends abruptly is not proof of a reset.
+* Tidy the ESP: `scripts/esp-cleanup.sh` (dry run; `--apply` moves, never deletes). `scripts/esp-cleanup.sh` keeps the config
+  backup that NullMoth's `1401 --remove` restores from. FAT dirtied by a hard reset makes fsck rename directories to
+  `FSCK0000.000`: `ls /boot/EFI/OC` after any unclean shutdown.
 
 ## How to get data on macOS
 
