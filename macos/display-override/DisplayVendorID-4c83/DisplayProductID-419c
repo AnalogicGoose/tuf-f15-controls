@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>DisplayProductID</key>
+	<integer>16796</integer>
+	<key>DisplayProductName</key>
+	<string>Built-in OLED 120 Hz</string>
+	<key>DisplayVendorID</key>
+	<integer>19587</integer>
+	<key>IODisplayEDID</key>
+	<data>
+	AP///////wBMg5xBAAAAAAAhAQS1HhN4A8/RrlE+tiMLUFQAAAABAQEBAQEBAQEBAQEB
+	AQEByv5AZLAIGHAgCIgALr0QAAAbAAAA/QAweNraQgEAAAAAAAAAAAAA/gBTREMKICAg
+	ICAgICAgAAAA/ABBVE5BNDBDVTA1LTAgAU9wIHkCACAADEyDAJxBAAAAAAAhACYACQQA
+	AAAAAFAAACIAFOfzCYU/C2MAHwAHAAcHFwAHAAcAKwAMJwAwdwAAJwAwOwAAgQAfcxoA
+	AAMDMHgAoHQCYAJ4AAAAAI3jBYAA5gYFAXRgAi4ABhgQQF7QYAAAAAAAAAAAAAAAAAD8
+	kA==
+	</data>
+	<key>scale-resolutions</key>
+	<array>
+		<data>
+		AAALQAAABwgAAAABACAAAA==
+		</data>
+	</array>
+</dict>
+</plist>
