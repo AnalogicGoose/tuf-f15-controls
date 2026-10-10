@@ -20,5 +20,5 @@ public static class FwDel {
 '@
 if (-not [FwDel]::Priv()) { Write-Host "need an elevated (Administrator) PowerShell"; exit 1 }
 $g = '{7C436110-AB2A-4BBB-A880-FE41995C9F82}'
-$names = @('itl0','itl1','itl2','itl3','itlm0','itlm1','itlm2','itlm3','itlm4','itlm5','itln0','itln1','itln2','itln3','itln4','itlk0','itlk1','itlk2','itlk3','itlk4','itlt0','itlt1','itli0','itly0','itly1','itly2','itlx0','itlx1','itlx2','itlx3','itlmt7925-log')
+$names = @('itl0','itl1','itl2','itl3','itlm0','itlm1','itlm2','itlm3','itlm4','itlm5','itln0','itln1','itln2','itln3','itln4','itlk0','itlk1','itlk2','itlk3','itlk4','itlt0','itlt1','itli0','itly0','itly1','itly2','itlx0','itlx1','itlx2','itlx3','itlk5','itlk6','itlk7','itls0','itlz0','itlmt7925-log')
 foreach ($n in $names) { $ok = [FwDel]::Del($n, $g); Write-Host ("{0,-16} {1}" -f $n, $(if ($ok) {'deleted'} else {'-'})) }
