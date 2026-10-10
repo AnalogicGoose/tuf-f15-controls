@@ -220,7 +220,7 @@ void itlmt7925::m3FastPlan()
     fastRate = itl_caps_max_rate(&apCaps, fastBw, fastHe);
     fastActive = true;
     txPool = lvl >= 3;
-    txBusy = 0;
+    txClrAll();
     m3log("fast: on lvl=%u ht=%d vht=%d he=%d/%d bw=%u center=%u nss=%u rate~%u htcap=%04x vhtcap=%08x", lvl, apCaps.ht ? 1 : 0,
           apCaps.vht ? 1 : 0, apCaps.he ? 1 : 0, fastHe ? 1 : 0, fastBw, fastCenter, fastNss, fastRate, apCaps.htCap, apCaps.vhtCap);
     baLog("fast on lvl=%u ch=%u bw=%u c=%u nss=%u ht=%04x vht=%08x ampdu=%02x vhtop=%u/%u/%u", lvl, tgtCh, fastBw, fastCenter, fastNss,
@@ -525,7 +525,7 @@ bool itlmt7925::m3Tx(const uint8_t *frame, uint32_t len, uint8_t type, uint8_t s
         // staging buffer owned until the firmware reports it free (TXFREE); no slot or no descriptor: drop, TCP will resend
         if (!txSlotAlloc(&slot, &tok)) { stTxNoSlot++; return false; }
         if ((txData.head + 1) % txData.n == (int)(rd(txData.regs + Q_DMA_IDX) & 0xffff)) {
-            txBusy &= ~(1ull << slot);
+            txClrBusy(slot);
             stTxNoSlot++;
             return false;
         }

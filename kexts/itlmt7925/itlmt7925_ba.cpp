@@ -110,7 +110,7 @@ void itlmt7925::baReset()
     txBaTries = 0;
     txBaNextMs = 0;
     BaLock lk(txLock);
-    txBusy = 0;
+    txClrAll();
 }
 
 // STA_REC_UPDATE with one STA_REC_BA TLV (mt7925_mcu_sta_ba). tid, direction, enable, starting sequence number, window.
@@ -331,18 +331,18 @@ bool itlmt7925::txSlotAlloc(uint32_t *slot, uint16_t *tok)
 {
     uint32_t now = nowMs();
     uint32_t reclaim = txFreeSeen ? 300 : 30;
-    for (uint32_t i = 0; i < 64; i++) {
-        uint32_t s = (txNext + i) & 63;
-        if (txBusy & (1ull << s)) {
+    for (uint32_t i = 0; i < kTxSlots; i++) {
+        uint32_t s = (txNext + i) & (kTxSlots - 1);
+        if (txIsBusy(s)) {
             if ((uint32_t)(now - txSlotT[s]) < reclaim) continue;
             stTxReclaim++;
         }
-        txBusy |= 1ull << s;
+        txSetBusy(s);
         txSlotT[s] = now;
-        txGen[s] = (uint8_t)((txGen[s] % 127) + 1);          // 1..127, so a late TXFREE of an earlier use does not free this one
+        txGen[s] = (uint8_t)((txGen[s] % 31) + 1);           // 1..31, so a late TXFREE of an earlier use does not free this one
         *slot = s;
-        *tok = (uint16_t)((txGen[s] << 6) | s);              // 13 bits: generation(7) | slot(6)
-        txNext = (uint8_t)((s + 1) & 63);
+        *tok = (uint16_t)((txGen[s] << 8) | s);              // 13 bits: generation(5) | slot(8)
+        txNext = (uint8_t)((s + 1) & (kTxSlots - 1));
         return true;
     }
     return false;
@@ -374,9 +374,9 @@ void itlmt7925::m3TxFree(const uint8_t *p, uint32_t len)
             uint32_t id = (info >> (15 * i)) & 0x7fff;
             if (id == 0x7fff) continue;
             count++;
-            uint32_t s = id & 63;
-            if (((txBusy >> s) & 1) && txGen[s] == (id >> 6)) {
-                txBusy &= ~(1ull << s);
+            uint32_t s = id & (kTxSlots - 1);
+            if (txIsBusy(s) && txGen[s] == (id >> 8)) {
+                txClrBusy(s);
                 stTxFree++;
                 txFreeSeen = true;
             }
