@@ -37,6 +37,12 @@ jobs:
           clang++ -std=c++17 -Wall -I../kexts/itlmt7925 caps_test.cpp ../kexts/itlmt7925/itl_caps.cpp -o caps_test
           ./caps_test
 
+      - name: Host Block Ack test (reorder buffer, ADDBA / DELBA / BAR frames)
+        run: |
+          cd test
+          clang++ -std=c++17 -Wall -I../kexts/itlmt7925 ba_test.cpp ../kexts/itlmt7925/itl_ba.cpp -o ba_test
+          ./ba_test
+
       - name: Build kexts
         run: bash scripts/build.sh
 

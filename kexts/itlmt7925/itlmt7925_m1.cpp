@@ -469,7 +469,8 @@ int itlmt7925::m1Run()
     if (!ringInit(txWm, MT7925_TXQ_MCU_WM, MT_TX_RING_BASE, 256, false) ||
         !ringInit(txFwdl, MT7925_TXQ_FWDL, MT_TX_RING_BASE, 128, false) ||
         !ringInit(rxEvt, MT7925_RXQ_MCU_WM, MT_RX_EVENT_RING_BASE, 128, true) ||
-        (m2On && !ringInit(rxData, MT7925_RXQ_BAND0, MT_RX_DATA_RING_BASE, 128, true)) ||
+        // A-MPDU bursts arrive back to back: a deeper data ring when Block Ack is on
+        (m2On && !ringInit(rxData, MT7925_RXQ_BAND0, MT_RX_DATA_RING_BASE, fastLevel >= 2 ? 256 : 128, true)) ||
         (m3On && !ringInit(txData, MT7925_TXQ_BAND0, MT_TX_RING_BASE, 256, false))) {
         m1log("ring alloc failed");
         return ITL_EIO;
@@ -519,7 +520,10 @@ void itlmt7925::m1Main()
     if (PE_parse_boot_argn("itlmt_m2", &m2, sizeof(m2)) && m2) m2On = true;
     if (PE_parse_boot_argn("itlmt_m3", &m3, sizeof(m3)) && m3) m3On = m2On = true;
     uint32_t fast = 0;
-    if (PE_parse_boot_argn("itlmt_fast", &fast, sizeof(fast)) && fast) m3fast = true;
+    if (PE_parse_boot_argn("itlmt_fast", &fast, sizeof(fast)) && fast) {
+        m3fast = true;
+        fastLevel = fast > 3 ? 3 : (uint8_t)fast;
+    }
     m1log("armed, starting in %us", delay);
     IOSleep(delay * 1000);
     int rc = m1Run();
