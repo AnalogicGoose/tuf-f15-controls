@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: BSD-3-Clause-Clear
 // Copyright (c) 2026 thanhnndev and contributors
-// itlmt7925 - Block Ack (A-MPDU), TX buffer tracking and logging for the HT/VHT mode (boot-arg itlmt_fast=2 or 3).
+// itlmt7925 - Block Ack (A-MPDU), TX buffer tracking and logging for the HT/VHT/HE mode (boot-arg itlmt_fast=2 or higher).
 //
 //  * RX: the AP sends an ADDBA request; we tell the firmware (STA_REC_BA, recipient), answer with an ADDBA response and put the
 //    frames of that TID back in order with itl_reorder (the hardware acknowledges the A-MPDUs but does not reorder).
@@ -83,9 +83,15 @@ void itlmt7925::ethDeliver(const uint8_t *frame, uint32_t len)
     ethRx(frame, len);
 }
 
-void itlmt7925::baDeliverCb(void *ctx, const uint8_t *frame, uint32_t len)
+void itlmt7925::ethDeliverCb(void *ctx, const uint8_t *frame, uint32_t len)
 {
     ((itlmt7925 *)ctx)->ethDeliver(frame, len);
+}
+
+// The reorder buffer hands over bundles: the Ethernet frames of one MPDU, each with a 2-byte length (itl_bundle_add).
+void itlmt7925::baDeliverCb(void *ctx, const uint8_t *blob, uint32_t len)
+{
+    itl_bundle_each(blob, len, ethDeliverCb, ctx);
 }
 
 void itlmt7925::baReset()
@@ -97,6 +103,8 @@ void itlmt7925::baReset()
         }
         bzero(&rxBa[t], sizeof(rxBa[t]));
     }
+    amsduAsm.active = false;
+    amsduAsm.used = 0;
     baQn = 0;
     txBaState = TXBA_IDLE;
     txBaTries = 0;
@@ -106,7 +114,7 @@ void itlmt7925::baReset()
 }
 
 // STA_REC_UPDATE with one STA_REC_BA TLV (mt7925_mcu_sta_ba). tid, direction, enable, starting sequence number, window.
-int itlmt7925::baStaCmd(uint8_t tid, bool recipient, bool enable, uint16_t ssn, uint16_t win)
+int itlmt7925::baStaCmd(uint8_t tid, bool recipient, bool enable, uint16_t ssn, uint16_t win, bool amsdu)
 {
     uint8_t b[8 + 16];
     bzero(b, sizeof(b));
@@ -121,7 +129,7 @@ int itlmt7925::baStaCmd(uint8_t tid, bool recipient, bool enable, uint16_t ssn, 
     put16(t + 2, 16);
     t[4] = tid;
     t[5] = recipient ? MT_BA_TYPE_RECIPIENT : MT_BA_TYPE_ORIGINATOR;
-    t[6] = 0;                                                // amsdu: not used
+    t[6] = amsdu ? 1 : 0;                                    // amsdu: the agreement allows A-MSDU (level 4, receive side)
     t[7] = enable ? (uint8_t)(1u << tid) : 0;                // ba_en bitmap
     put16(t + 8, ssn);
     put16(t + 10, win);
@@ -129,7 +137,7 @@ int itlmt7925::baStaCmd(uint8_t tid, bool recipient, bool enable, uint16_t ssn, 
     uint32_t evl = 0;
     int rc = uniSend(UNI_STA_REC_UPDATE, b, sizeof(b), false, ev, sizeof(ev), &evl, 3000);
     int st = evl >= 52 ? (int)le32(ev + 48) : -1;
-    baLog("sta_rec_ba %s %s tid=%u ssn=%u win=%u rc=%d st=%d", recipient ? "rx" : "tx", enable ? "on" : "off", tid, ssn, win, rc, st);
+    baLog("sta_rec_ba %s %s tid=%u ssn=%u win=%u am=%d rc=%d st=%d", recipient ? "rx" : "tx", enable ? "on" : "off", tid, ssn, win, amsdu ? 1 : 0, rc, st);
     return (rc == 0 && (st == 0 || st == -1)) ? 0 : -1;
 }
 
@@ -158,13 +166,14 @@ void itlmt7925::baRxRequest(const itl_ba_action &a)
     uint8_t tid = a.tid;
     uint16_t win = itl_reorder_size(a.bufsize);
     bool ok = false;
+    bool am = fastAmsdu && a.amsdu;                          // level 4: unpack A-MSDUs the AP sends inside the A-MPDUs
     if (lvl >= 2 && fastActive && a.immediate) {
         if (rxBa[tid].mem) baRxStop(tid, false);             // the AP starts the agreement again
         uint32_t bytes = (uint32_t)win * (uint32_t)sizeof(itl_ba_slot);
         itl_ba_slot *mem = (itl_ba_slot *)IOMalloc(bytes);
         if (mem) {
             bzero(mem, bytes);
-            if (baStaCmd(tid, true, true, a.ssn, win) == 0) {   // firmware first, as mac80211 does (drv_ampdu_action RX_START)
+            if (baStaCmd(tid, true, true, a.ssn, win, am) == 0) {   // firmware first, as mac80211 does (drv_ampdu_action RX_START)
                 itl_reorder_start(&rxBa[tid].r, mem, a.ssn, win);
                 rxBa[tid].mem = mem;
                 rxBa[tid].memBytes = bytes;
@@ -176,10 +185,10 @@ void itlmt7925::baRxRequest(const itl_ba_action &a)
         }
     }
     uint8_t body[16];
-    size_t n = itl_addba_resp_build(body, a.token, ok ? ITL_STATUS_SUCCESS : ITL_STATUS_DECLINED, tid, ok ? win : 0, false, 0);   // no A-MSDU
+    size_t n = itl_addba_resp_build(body, a.token, ok ? ITL_STATUS_SUCCESS : ITL_STATUS_DECLINED, tid, ok ? win : 0, ok && am, 0);
     bool sent = baSendAction(body, n, 0);
     if (!ok) stBaDecl++;
-    baLog("rx addba tid=%u ssn=%u buf=%u amsdu=%d -> %s win=%u sent=%d", tid, a.ssn, a.bufsize, a.amsdu ? 1 : 0, ok ? "accept" : "decline", win, sent ? 1 : 0);
+    baLog("rx addba tid=%u ssn=%u buf=%u amsdu=%d -> %s win=%u am=%d sent=%d", tid, a.ssn, a.bufsize, a.amsdu ? 1 : 0, ok ? "accept" : "decline", win, ok && am ? 1 : 0, sent ? 1 : 0);
 }
 
 void itlmt7925::baRxStop(uint8_t tid, bool sendDelba)
@@ -257,7 +266,7 @@ void itlmt7925::baTxStop(bool sendDelba)
 // ---------------------------------------------------------------------------------------------
 bool itlmt7925::m3RxCtl(const uint8_t *p, uint32_t len)
 {
-    for (uint32_t off = 32; off + 20 <= len && off < 120; off++) {
+    for (uint32_t off = 32; off + 20 <= len && off < 240; off++) {
         uint8_t fc0 = p[off];
         if (fc0 == 0xd0) {                                   // Action
             if (off + 24 + 6 > len) continue;

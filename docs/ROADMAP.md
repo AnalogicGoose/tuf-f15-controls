@@ -25,11 +25,11 @@ download takes about 9 h); with HT/VHT on 5 GHz 80 MHz a few hundred Mb/s; the c
 ceiling of about 2.4 Gb/s at 160 MHz. No throughput benchmark exists yet.
 
 - [ ] **Benchmark first**: a `curl` download of a big file from a LAN machine on the legacy driver (see WIFI.md), recorded there, so every change below has a baseline.
-- [ ] **Test `itlmt_fast=3` on the GA403WM** (levels: 1 HT/VHT rates, 2 receive Block Ack, 3 transmit Block Ack; automatic step-down).
+- [ ] **Test `itlmt_fast=6` on the GA403WM** (levels: 1 HT/VHT rates, 2 receive Block Ack, 3 transmit Block Ack, 4 A-MSDU receive, 5 160 MHz, 6 HE; 2.4 GHz HT included; automatic step-down).
       Implemented and syntax-checked, parsing and reorder logic host-tested; never run on hardware. Record the level reached, the counters
       (`itls0`) and the measured speed in `docs/WIFI.md`.
-- [ ] Rate control, step 2b: A-MSDU (both directions), more than one TID on transmit, a smarter ADDBA policy (start on traffic volume, DELBA on idle).
-- [ ] Rate control, step 3: HE (`STA_REC_HE_V2`), 2.4 GHz HT, 160 MHz.
+- [ ] Rate control, step 2b: A-MSDU on transmit, more than one TID on transmit, a smarter ADDBA policy (start on traffic volume, DELBA on idle). (A-MSDU receive is done, untested.)
+- [ ] Rate control, step 3: EHT (Wi-Fi 7), 6 GHz, 80+80 MHz. (HE, 2.4 GHz HT and 160 MHz are done, untested.)
 - [ ] TX path at levels 1-2 (and legacy): still waits per packet for the descriptor and reuses 64 staging slots blindly; level 3 tracks `TXFREE`. Move the lower levels over once TXFREE is confirmed on hardware.
 - [ ] Reconnect when the AP drops the link; group key re-key; periodic scan for a better configured network.
 - [ ] Power save (no power-save negotiation is implemented).

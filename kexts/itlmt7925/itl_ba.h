@@ -20,10 +20,11 @@ static inline bool itl_sn_less(uint16_t a, uint16_t b) { return ((uint16_t)((a -
 
 // ---- RX reorder buffer ---------------------------------------------------------------------------------------------------
 #define ITL_BA_MAX_WIN    64          // buffer size we offer (must be a power of two and divide 4096)
-#define ITL_BA_SLOT_BYTES 1664        // an Ethernet frame (14 + payload up to 1600) per slot
+#define ITL_BA_SLOT_BYTES 4352        // one MPDU: up to 3895 bytes of A-MSDU (VHT max MPDU) as Ethernet frames, each with a 2-byte length
 
 struct itl_ba_slot {
     uint8_t used;                     // slot holds an MPDU (len 0: a QoS-Null that only occupies its sequence number)
+                                      // The reorder code treats the bytes as opaque; the driver stores a bundle (see below).
     uint16_t len;
     uint32_t t;                       // arrival time (ms)
     uint8_t d[ITL_BA_SLOT_BYTES];
@@ -54,6 +55,22 @@ void itl_reorder_bar(itl_reorder *r, uint16_t ssn, itl_ba_deliver_fn fn, void *c
 void itl_reorder_tick(itl_reorder *r, uint32_t nowMs, uint32_t timeoutMs, itl_ba_deliver_fn fn, void *ctx);
 // Ends the agreement and releases whatever is buffered, in order.
 void itl_reorder_stop(itl_reorder *r, itl_ba_deliver_fn fn, void *ctx);
+
+// ---- bundles --------------------------------------------------------------------------------------------------------------
+// What the driver hands to the reorder buffer for one MPDU: the Ethernet frames it carries (one, or several for an A-MSDU),
+// each preceded by its length (2 bytes, little endian). An A-MSDU must be released as a unit, in sequence with the other MPDUs.
+// Returns the new used size, or `used` unchanged when the frame does not fit in `cap` bytes or is empty / larger than 65535.
+uint32_t itl_bundle_add(uint8_t *buf, uint32_t cap, uint32_t used, const uint8_t *frame, uint32_t len);
+// Calls fn for every frame of a bundle (stops at a truncated entry).
+void itl_bundle_each(const uint8_t *blob, uint32_t len, itl_ba_deliver_fn fn, void *ctx);
+
+// ---- A-MSDU ---------------------------------------------------------------------------------------------------------------
+// Subframes: DA(6) SA(6) length(2, big endian) LLC/SNAP + payload (length bytes), the whole padded to a multiple of 4 bytes except the
+// last. `b` points at the first subframe (after the QoS header and, for a subframe the hardware split off, a 2-byte pad).
+typedef void (*itl_amsdu_fn)(void *ctx, const uint8_t *da, const uint8_t *sa, uint16_t ethertype, const uint8_t *payload, uint32_t plen);
+// Calls fn for every well-formed subframe (LLC/SNAP header present, length consistent) starting at `b`, stops at the first
+// malformed one. Returns the number of subframes found. Subframes whose payload exceeds maxPayload are counted but not reported.
+uint32_t itl_amsdu_each(const uint8_t *b, uint32_t n, uint32_t maxPayload, itl_amsdu_fn fn, void *ctx);
 
 // ---- Block Ack action frames and BAR -------------------------------------------------------------------------------------
 #define ITL_BA_ACT_ADDBA_REQ  0

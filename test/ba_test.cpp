@@ -53,6 +53,91 @@ int main()
           itl_reorder_size(1) == 1 && itl_reorder_size(7) == 4,
           "size: largest power of two not above the request, 64 at most");
 
+    // ---- bundles: an A-MSDU is released as a unit, in sequence order with the other MPDUs
+    {
+        static uint8_t bun[ITL_BA_SLOT_BYTES];
+        uint8_t fa[100], fb[1500], fc[60];
+        memset(fa, 0xa1, sizeof(fa)); memset(fb, 0xb2, sizeof(fb)); memset(fc, 0xc3, sizeof(fc));
+        uint32_t u = 0;
+        u = itl_bundle_add(bun, sizeof(bun), u, fa, sizeof(fa));
+        u = itl_bundle_add(bun, sizeof(bun), u, fb, sizeof(fb));
+        u = itl_bundle_add(bun, sizeof(bun), u, fc, sizeof(fc));
+        CHECK(u == 3 * 2 + 100 + 1500 + 60, "bundle: three frames with their length prefixes");
+        uint32_t before = u;
+        uint8_t big[4000];
+        memset(big, 0, sizeof(big));
+        u = itl_bundle_add(bun, sizeof(bun), u, big, sizeof(big));
+        CHECK(u == before, "bundle: a frame that does not fit is refused");
+        CHECK(itl_bundle_add(bun, sizeof(bun), u, fa, 0) == u, "bundle: an empty frame is refused");
+        struct Cnt { std::vector<uint32_t> lens; } cn;
+        auto cb = [](void *ctx, const uint8_t *f, uint32_t l) { (void)f; ((Cnt *)ctx)->lens.push_back(l); };
+        itl_bundle_each(bun, u, cb, &cn);
+        CHECK(cn.lens.size() == 3 && cn.lens[0] == 100 && cn.lens[1] == 1500 && cn.lens[2] == 60, "bundle: frames come out in order");
+        cn.lens.clear();
+        itl_bundle_each(bun, u - 5, cb, &cn);
+        CHECK(cn.lens.size() == 2, "bundle: a truncated last entry is dropped");
+
+        // through the reorder buffer: MPDU 11 is an A-MSDU of three frames and arrives before MPDU 10
+        Rx x(10);
+        struct Seq { std::vector<uint32_t> n; } sq;
+        auto flat = [](void *ctx, const uint8_t *f, uint32_t l) { itl_bundle_each(f, l, [](void *c2, const uint8_t *, uint32_t fl) { ((Seq *)c2)->n.push_back(fl); }, ctx); };
+        uint8_t one[2 + 40];
+        uint32_t o1 = itl_bundle_add(one, sizeof(one), 0, fc, 40);
+        itl_reorder_rx(&x.r, 11, bun, u, 0, flat, &sq);
+        CHECK(sq.n.empty() && x.r.nBuffered == 1, "bundle reorder: the A-MSDU waits behind the hole");
+        itl_reorder_rx(&x.r, 10, one, o1, 0, flat, &sq);
+        CHECK(sq.n.size() == 4 && sq.n[0] == 40 && sq.n[1] == 100 && sq.n[2] == 1500 && sq.n[3] == 60, "bundle reorder: released as a unit, after MPDU 10");
+    }
+
+    // ---- A-MSDU subframes
+    {
+        struct Got { std::vector<uint32_t> plen; std::vector<uint16_t> et; uint8_t da0 = 0, sa0 = 0; } g;
+        auto cb = [](void *ctx, const uint8_t *da, const uint8_t *sa, uint16_t et, const uint8_t *pl, uint32_t pn) {
+            Got *g = (Got *)ctx; g->plen.push_back(pn); g->et.push_back(et); g->da0 = da[0]; g->sa0 = sa[0]; (void)pl;
+        };
+        auto sub = [](std::vector<uint8_t> &v, uint8_t da, uint8_t sa, uint16_t et, uint32_t pn, bool last) {
+            uint32_t L = 8 + pn;
+            size_t o = v.size();
+            v.resize(o + 14 + L, 0);
+            memset(&v[o], da, 6); memset(&v[o + 6], sa, 6);
+            v[o + 12] = (uint8_t)(L >> 8); v[o + 13] = (uint8_t)L;
+            v[o + 14] = 0xaa; v[o + 15] = 0xaa; v[o + 16] = 0x03; v[o + 20] = (uint8_t)(et >> 8); v[o + 21] = (uint8_t)et;
+            if (!last) v.resize((v.size() + 3) & ~3u, 0);                       // padding after every subframe but the last
+        };
+        std::vector<uint8_t> a;
+        sub(a, 0x11, 0x22, 0x0800, 1000, false);
+        sub(a, 0x33, 0x44, 0x0806, 28, false);
+        sub(a, 0x55, 0x66, 0x86dd, 101, true);
+        uint32_t n = itl_amsdu_each(a.data(), (uint32_t)a.size(), 1600, cb, &g);
+        CHECK(n == 3 && g.plen.size() == 3 && g.plen[0] == 1000 && g.plen[1] == 28 && g.plen[2] == 101 && g.et[1] == 0x0806 && g.da0 == 0x55 && g.sa0 == 0x66,
+              "amsdu: three subframes with padding between them");
+        g = Got();
+        std::vector<uint8_t> one;
+        sub(one, 1, 2, 0x0800, 60, true);
+        n = itl_amsdu_each(one.data(), (uint32_t)one.size(), 1600, cb, &g);
+        CHECK(n == 1 && g.plen[0] == 60, "amsdu: single subframe");
+        g = Got();
+        n = itl_amsdu_each(one.data(), (uint32_t)one.size() - 1, 1600, cb, &g);
+        CHECK(n == 0 && g.plen.empty(), "amsdu: truncated subframe is not reported");
+        std::vector<uint8_t> bad = one;
+        bad[14] = 0xab;                                                         // not LLC
+        CHECK(itl_amsdu_each(bad.data(), (uint32_t)bad.size(), 1600, cb, &g) == 0, "amsdu: no LLC/SNAP header stops the parse");
+        bad = one; bad[12] = 0xff;                                              // absurd length
+        CHECK(itl_amsdu_each(bad.data(), (uint32_t)bad.size(), 1600, cb, &g) == 0, "amsdu: length beyond the packet");
+        g = Got();
+        std::vector<uint8_t> big;
+        sub(big, 1, 2, 0x0800, 1700, false);
+        sub(big, 3, 4, 0x0800, 40, true);
+        n = itl_amsdu_each(big.data(), (uint32_t)big.size(), 1600, cb, &g);
+        CHECK(n == 2 && g.plen.size() == 1 && g.plen[0] == 40, "amsdu: oversized subframe is counted but not reported");
+        // a 2-byte pad in front is what the driver skips: with the wrong offset nothing parses
+        std::vector<uint8_t> padded(2, 0xee);
+        padded.insert(padded.end(), one.begin(), one.end());
+        g = Got();
+        CHECK(itl_amsdu_each(padded.data(), (uint32_t)padded.size(), 1600, cb, &g) == 0, "amsdu: pad not skipped -> nothing parses");
+        CHECK(itl_amsdu_each(padded.data() + 2, (uint32_t)padded.size() - 2, 1600, cb, &g) == 1, "amsdu: pad skipped -> parses");
+    }
+
     // ---- in order
     {
         Rx x(100);

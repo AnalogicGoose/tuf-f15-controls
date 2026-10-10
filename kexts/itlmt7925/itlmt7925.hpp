@@ -137,7 +137,8 @@ private:
     volatile bool rocGrant = false;
     uint8_t rocTok = 0, rocStatus = 0xff;
     uint8_t m3cipher = 0;                    // 0 = open, 4 = CCMP (BSS_INFO sec TLV)
-    uint8_t apSupp = 0, apBasic = 0;         // 5 GHz legacy rate bitmaps (6,9,12,18,24,36,48,54 -> bit 0..7)
+    uint8_t apSupp = 0, apBasic = 0;         // OFDM rate bitmaps (6,9,12,18,24,36,48,54 -> bit 0..7)
+    uint8_t apCck = 0, apBasicCck = 0;       // 2.4 GHz CCK rate bitmaps (1,2,5.5,11 -> bit 0..3)
     uint8_t apRsn[64] = {0};
     uint8_t apRsnLen = 0;
     char m3buf[3000] = {0};
@@ -195,12 +196,19 @@ private:
     itl_ap_caps apCaps = {};
     uint8_t fastBw = 0, fastCenter = 0, fastNss = 1;   // operating width (CMD_CBW_*), center channel, usable streams
     uint32_t fastRate = 54;                  // estimated best PHY rate, Mb/s
+    bool fastHe = false;                     // level 6 and the AP has HE: advertise and use 802.11ax
+    bool fastAmsdu = false;                  // level 4: accept A-MSDU in the Block Ack agreement and unpack it
+    bool fastAllow160 = false;               // level 5 and the BSS is 160 MHz wide: advertise 160 MHz
     void m3FastPlan();
+    uint8_t fastSig(uint8_t level);          // features at `level` for the current AP, to skip levels that change nothing
+    void m3Hex(char *out, size_t outLen, const uint8_t *p, uint32_t n);
 
     // ---- Block Ack, TX buffer tracking and the fallback ladder (itlmt7925_ba.cpp) ----
     // itlmt_fast=<level>: 1 HT/VHT rates, 2 + receive Block Ack (reorder buffer), 3 + transmit Block Ack, QoS access-category
-    // queue, host-assigned sequence numbers and TXFREE-tracked buffers. If a level does not work (association or handshake
-    // fails, or no unicast frame comes back from the AP after the link is up) the driver connects again one level lower.
+    // queue, host-assigned sequence numbers and TXFREE-tracked buffers, 4 + A-MSDU receive, 5 + 160 MHz channels, 6 + HE (802.11ax).
+    // If a level does not work (association or handshake fails, or no unicast frame comes back from the AP after the link is
+    // up, or A-MSDUs cannot be unpacked, or the firmware reports nearly every transmission failed) the driver connects again
+    // one level lower, skipping levels that would change nothing for this AP.
     uint8_t fastLevel = 0;                   // requested by the boot-arg
     uint8_t lvl = 0;                         // level of the current attempt, 0 = legacy 6 Mb/s
     bool m3stepDown = false;                 // set when the attempt at `lvl` failed; m3Run() then retries one level lower
@@ -223,6 +231,18 @@ private:
     uint32_t stTxUni = 0, stRxUni = 0, stRxAmsdu = 0, stTxFree = 0, stTxReclaim = 0, stTxNoSlot = 0, stTxFwFail = 0, stTxFwRetry = 0;
     uint32_t stBaReqRx = 0, stBaDecl = 0, stBaRxOn = 0, stBaTxOn = 0, stBaDel = 0, stBaBar = 0;
     uint32_t linkUpMs = 0, lastReorderMs = 0;
+    // A-MSDU receive (level 4): the hardware splits an A-MSDU into one RX packet per subframe (first / middle / last in RXD4),
+    // each with the 802.11 header. The subframes of one MPDU are collected in a bundle and handed to the reorder buffer together.
+    struct AmsduAsm { bool active; uint8_t tid; bool reorder; uint16_t sn; uint32_t used, t; uint8_t buf[ITL_BA_SLOT_BYTES]; };
+    AmsduAsm amsduAsm = {};
+    uint32_t stAmsduPkt = 0, stAmsduSub = 0, stAmsduBad = 0, stRxBigDrop = 0;
+    uint32_t amsduLogged = 0, amsduBadLogged = 0, rxdLogged = 0;
+    uint32_t txfWinFree = 0, txfWinFail = 0, txfBad = 0;   // TX failure watchdog (level >= 3), 5 s windows
+    uint32_t m3RxAmsdu(const uint8_t *body, uint32_t blen, uint8_t ai, bool reorder, uint8_t tid, uint16_t sn);
+    void amsduFlush();                       // hand the collected subframes to the reorder buffer
+    void rxStore(const uint8_t *eb, uint32_t n, bool reorder, uint8_t tid, uint16_t sn, bool last);   // Ethernet frame -> stack / reorder buffer
+    static void ethDeliverCb(void *ctx, const uint8_t *frame, uint32_t len);
+    static void amsduFrameCb(void *ctx, const uint8_t *da, const uint8_t *sa, uint16_t et, const uint8_t *pl, uint32_t pn);
     char balog[1100] = {0};
     size_t balen = 0;
     void baLog(const char *fmt, ...);
@@ -235,7 +255,7 @@ private:
     void baTxStart();
     void baTxResponse(const itl_ba_action &a);
     void baTxStop(bool sendDelba);
-    int  baStaCmd(uint8_t tid, bool recipient, bool enable, uint16_t ssn, uint16_t win);
+    int  baStaCmd(uint8_t tid, bool recipient, bool enable, uint16_t ssn, uint16_t win, bool amsdu = false);
     bool baSendAction(const uint8_t *body, size_t blen, uint8_t tid);
     bool txSlotAlloc(uint32_t *slot, uint16_t *tok);
     void m3TxFree(const uint8_t *p, uint32_t len);
