@@ -1,4 +1,6 @@
-// Host test for src/itl_wpa.cpp. Build: c++ -I../src wpa_test.cpp ../src/itl_wpa.cpp -o wpa_test
+// SPDX-License-Identifier: BSD-3-Clause-Clear
+// Copyright (c) 2026 thanhnndev and itlmt7925 contributors
+// Host test for kexts/itlmt7925/itl_wpa.cpp. Build: c++ -std=c++17 -I../kexts/itlmt7925 wpa_test.cpp ../kexts/itlmt7925/itl_wpa.cpp -o wpa_test
 #include "itl_wpa.h"
 #include "wpa_vectors.h"
 #include <stdio.h>

@@ -1,4 +1,7 @@
-# Prepare / read the USB log file used by ItlDiag (no admin rights needed).
+# SPDX-License-Identifier: BSD-3-Clause-Clear
+# Copyright (c) 2026 thanhnndev and itlmt7925 contributors
+# Prepare / read the USB log file used by ItlDiag's itlfile=1 path (no admin rights needed). Experimental: this path never
+# worked on the reference machine; the NVRAM channel (scripts/read-nvram.ps1) is the reliable one.
 #   .\scripts\usblog.ps1 -Prepare            create Y:\ITLLOG.BIN (1 MB, magic head/tail)
 #   .\scripts\usblog.ps1 -Read               print and save the log the kext wrote
 # Unplug and re-plug the stick after the macOS boot before -Read so Windows does not serve a cached copy.

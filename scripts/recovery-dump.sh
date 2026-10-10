@@ -1,7 +1,11 @@
 #!/bin/sh
-# Recovery Terminal (stick auto-mounts as /Volumes/1401, MBR FAT32):  sh /Volumes/1401/d
-OUT=/Volumes/1401/dump
-mkdir -p "$OUT" || { echo "stick not mounted at /Volumes/1401"; exit 1; }
+# SPDX-License-Identifier: BSD-3-Clause-Clear
+# Copyright (c) 2026 thanhnndev and itlmt7925 contributors
+# Collects ioreg / system_profiler / kextstat / dmesg and a 25 s typing trace into <stick>/dump for USB HID latency work.
+# Recovery Terminal (the stick auto-mounts under /Volumes):  sh /Volumes/<stick label>/recovery-dump.sh [mountpoint]
+STICK="${1:-$(dirname "$0")}"
+OUT="$STICK/dump"
+mkdir -p "$OUT" || { echo "cannot write to $STICK"; exit 1; }
 cd "$OUT" || exit 1
 echo "== system"
 date > info.txt

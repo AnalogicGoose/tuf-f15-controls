@@ -1,6 +1,14 @@
 #!/bin/bash
-# Build itlmt7925.kext on macOS without an Xcode project. Needs Xcode command line tools.
-# Uses acidanthera/MacKernelSDK for the kernel headers/libs.
+# SPDX-License-Identifier: BSD-3-Clause-Clear
+# Copyright (c) 2026 thanhnndev and itlmt7925 contributors
+# Builds every kext of this repo on macOS without an Xcode project. Needs the Xcode command line tools.
+# Kernel headers/libs come from acidanthera/MacKernelSDK (cloned into build/ on first use, or set MACKERNELSDK).
+#
+#   scripts/build.sh            build itlmt7925, ItlXhciKick, ItlDiag into build/*.kext
+#   scripts/build.sh itlmt7925  build only the named kext(s)
+#
+# The MediaTek firmware in fw/ is embedded into itlmt7925 with .incbin (kexts/itlmt7925/fw_blob.c), so this script must
+# run with the repo root as working directory (it does: it cd's there).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -10,49 +18,39 @@ if [ ! -d "$SDK_DIR" ]; then
   git clone --depth 1 https://github.com/acidanthera/MacKernelSDK "$SDK_DIR"
 fi
 
-OUT=build/itlmt7925.kext
-rm -rf "$OUT"; mkdir -p "$OUT/Contents/MacOS"
-cp Info.plist "$OUT/Contents/Info.plist"
+COMMON="-arch x86_64 -mmacosx-version-min=12.0 -O2 -g -mkernel -fapple-kext -fno-builtin -fno-stack-protector -nostdlib -ffreestanding -DKERNEL -DKERNEL_PRIVATE -DDRIVER_PRIVATE -DAPPLE -DNeXT -I$SDK_DIR/Headers"
+CXXFLAGS="-std=c++17 -fno-exceptions -fno-rtti"
+OBJ=build/obj
+mkdir -p "$OBJ"
 
-COMMON="-arch x86_64 -mmacosx-version-min=12.0 -O2 -g -mkernel -fapple-kext -fno-builtin -fno-stack-protector -nostdlib -ffreestanding -DKERNEL -DKERNEL_PRIVATE -DDRIVER_PRIVATE -DAPPLE -DNeXT -I$SDK_DIR/Headers -Isrc"
-mkdir -p build/obj
-clang $COMMON -c src/kmod_info.c -o build/obj/kmod_info.o
-clang++ $COMMON -std=c++17 -fno-exceptions -fno-rtti -c src/itlmt7925.cpp -o build/obj/itlmt7925.o
-clang++ $COMMON -std=c++17 -fno-exceptions -fno-rtti -c src/itlmt7925_m1.cpp -o build/obj/itlmt7925_m1.o
-clang++ $COMMON -std=c++17 -fno-exceptions -fno-rtti -c src/itlmt7925_m2.cpp -o build/obj/itlmt7925_m2.o
-clang++ $COMMON -std=c++17 -fno-exceptions -fno-rtti -c src/itlmt7925_m3.cpp -o build/obj/itlmt7925_m3.o
-clang++ $COMMON -std=c++17 -fno-exceptions -fno-rtti -c src/itlmt7925_eth.cpp -o build/obj/itlmt7925_eth.o
-clang++ $COMMON -std=c++17 -fno-exceptions -fno-rtti -c src/itl_wpa.cpp -o build/obj/itl_wpa.o
-clang $COMMON -c src/fw_blob.c -o build/obj/fw_blob.o     # embeds fw/*.bin, path relative to repo root
-clang++ -arch x86_64 -mmacosx-version-min=12.0 -nostdlib -Xlinker -kext -Xlinker -no_data_const   -L"$SDK_DIR/Library/x86_64" -lkmodc++ -lkmod -lcc_kext   build/obj/kmod_info.o build/obj/itlmt7925.o build/obj/itlmt7925_m1.o build/obj/itlmt7925_m2.o build/obj/itlmt7925_m3.o build/obj/itlmt7925_eth.o build/obj/itl_wpa.o build/obj/fw_blob.o   -o "$OUT/Contents/MacOS/itlmt7925"
+# build_kext <name> <source dir> <source files...>
+# Bundle layout: build/<name>.kext/Contents/{Info.plist,MacOS/<name>}
+build_kext() {
+  local name="$1" dir="$2"; shift 2
+  local out="build/$name.kext" objs=()
+  rm -rf "$out"; mkdir -p "$out/Contents/MacOS"
+  cp "$dir/Info.plist" "$out/Contents/Info.plist"
+  for src in "$@"; do
+    local o="$OBJ/${name}_$(basename "${src%.*}").o"
+    case "$src" in
+      *.cpp) clang++ $COMMON $CXXFLAGS -I"$dir" -c "$dir/$src" -o "$o" ;;
+      *.c)   clang   $COMMON -I"$dir" -c "$dir/$src" -o "$o" ;;
+    esac
+    objs+=("$o")
+  done
+  clang++ -arch x86_64 -mmacosx-version-min=12.0 -nostdlib -Xlinker -kext -Xlinker -no_data_const \
+    -L"$SDK_DIR/Library/x86_64" -lkmodc++ -lkmod -lcc_kext "${objs[@]}" -o "$out/Contents/MacOS/$name"
+  echo "built $out"
+  file "$out/Contents/MacOS/$name"
+  echo "--- undefined symbols ($name)"
+  nm -um "$out/Contents/MacOS/$name" || true
+}
 
-echo "built $OUT"
-file "$OUT/Contents/MacOS/itlmt7925"
+want() { local n="$1"; shift; [ $# -eq 0 ] && return 0; for a in "$@"; do [ "$a" = "$n" ] && return 0; done; return 1; }
+TARGETS=("$@")
 
-echo "--- undefined symbols"
-nm -um "$OUT/Contents/MacOS/itlmt7925" || true
-echo "--- load commands"
-otool -l "$OUT/Contents/MacOS/itlmt7925" | grep -E "segname|sectname|cmd " | head -60 || true
-echo "--- kextlibs"
-kextlibs -xml -all-symbols "$OUT" 2>&1 | head -40 || true
-
-# ---- ItlDiag (boot-time PCI/USB dump) ----
-D=build/ItlDiag.kext
-rm -rf "$D"; mkdir -p "$D/Contents/MacOS"
-cp diag/Info.plist "$D/Contents/Info.plist"
-clang $COMMON -c diag/kmod_info.c -o build/obj/diag_kmod_info.o
-clang++ $COMMON -std=c++17 -fno-exceptions -fno-rtti -c diag/ItlDiag.cpp -o build/obj/ItlDiag.o
-clang++ -arch x86_64 -mmacosx-version-min=12.0 -nostdlib -Xlinker -kext -Xlinker -no_data_const \
-  -L"$SDK_DIR/Library/x86_64" -lkmodc++ -lkmod -lcc_kext \
-  build/obj/diag_kmod_info.o build/obj/ItlDiag.o -o "$D/Contents/MacOS/ItlDiag"
-file "$D/Contents/MacOS/ItlDiag"
-
-# ---- ItlXhciKick (services the secondary xHCI event rings of single-vector AMD controllers) ----
-K=build/ItlXhciKick.kext
-rm -rf "$K"; mkdir -p "$K/Contents/MacOS"
-cp kick/Info.plist "$K/Contents/Info.plist"
-clang $COMMON -c kick/kmod_info.c -o build/obj/kick_kmod_info.o
-clang++ $COMMON -std=c++17 -fno-exceptions -fno-rtti -c kick/ItlXhciKick.cpp -o build/obj/ItlXhciKick.o
-clang++ -arch x86_64 -mmacosx-version-min=12.0 -nostdlib -Xlinker -kext -Xlinker -no_data_const   -L"$SDK_DIR/Library/x86_64" -lkmodc++ -lkmod -lcc_kext   build/obj/kick_kmod_info.o build/obj/ItlXhciKick.o -o "$K/Contents/MacOS/ItlXhciKick"
-file "$K/Contents/MacOS/ItlXhciKick"
-nm -um "$K/Contents/MacOS/ItlXhciKick" || true
+want itlmt7925 "${TARGETS[@]+"${TARGETS[@]}"}" && build_kext itlmt7925 kexts/itlmt7925 \
+  kmod_info.c itlmt7925.cpp itlmt7925_m1.cpp itlmt7925_m2.cpp itlmt7925_m3.cpp itlmt7925_eth.cpp itl_wpa.cpp fw_blob.c
+want ItlXhciKick "${TARGETS[@]+"${TARGETS[@]}"}" && build_kext ItlXhciKick kexts/ItlXhciKick kmod_info.c ItlXhciKick.cpp
+want ItlDiag "${TARGETS[@]+"${TARGETS[@]}"}" && build_kext ItlDiag kexts/ItlDiag kmod_info.c ItlDiag.cpp
+exit 0
