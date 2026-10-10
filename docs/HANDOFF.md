@@ -64,6 +64,15 @@ No SMBIOS values, passphrases, MACs or neighbour SSIDs belong in this file.
 5. Housekeeping: old kext backup `itlmt7925.e8df337.old` in the ESP root; retired remote branches
    (`ccr-fc111298-ip8jp5`, `diag-esp-log`, `diag-mirror-m2m3`) not deleted.
 
+## How to get data from Linux (CachyOS)
+
+* One time: `sudo bash scripts/setup-linux-access.sh` gives your user the ESP (`/boot` gets `uid=`/`gid=`, still private)
+  and a `noauto,user,ro` fstab entry for the macOS Data volume (`mount /mnt/macos-vol0`). `--undo` restores fstab.
+* Afterwards, no sudo: `bash scripts/linux-collect-logs.sh [--unified]` copies the newest OpenCore logs, `ITLLOG.BIN`,
+  a whitelist of NVRAM vars (efivars are world-readable; SMBIOS vars are not touched), macOS panic reports, `fsck_apfs.log`
+  and optionally the unified log into `~/ga403-logs/<time>` (outside the repo).
+* Writing to APFS (display override) stays a root job on purpose: `scripts/install-display-override.sh`.
+
 ## How to get data on macOS
 
 * Mount the ESP: `diskutil list` (find the EFI partition on the NVMe), `sudo diskutil mount <diskNs1>`.
