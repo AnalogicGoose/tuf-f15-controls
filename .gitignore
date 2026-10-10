@@ -1,3 +1,17 @@
+# build output and local working material
 build/
-ref/
+dist/
 out/
+ref/
+*.kext
+__pycache__/
+# never commit these: real EFI binaries, backups, logs
+efi/**/Kexts/
+efi/**/Drivers/
+efi/**/Resources/
+*.efi
+config.plist.bak*
+config.*.plist
+!efi/OC/config.plist
+ITLLOG.BIN
+nv*.txt

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: BSD-3-Clause-Clear
+# Copyright (c) 2026 thanhnndev and itlmt7925 contributors
 # Deletes the itl* diagnostic variables (Apple GUID) from firmware NVRAM so the variable store has room again. Needs an elevated PowerShell.
 Add-Type -TypeDefinition @'
 using System;

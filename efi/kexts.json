@@ -1,0 +1,131 @@
+{
+  "note": "Third-party kexts used on the reference machine (SHA-256 of the executable); they are not redistributed. itlmt7925, ItlXhciKick and ItlDiag are built from this repository.",
+  "kexts": [
+    {
+      "path": "Kexts/AppleALC.kext",
+      "bundle_id": "as.vit9696.AppleALC",
+      "version": "1.9.9",
+      "executable_sha256": "21d5ffbf515aba5f9cacf48c0d4bd0b11189cb844133f696f027fd5d7998e9dd"
+    },
+    {
+      "path": "Kexts/AppleMCEReporterDisabler.kext",
+      "bundle_id": "org.xlnc.disabler.MCEReporter",
+      "version": "1.2",
+      "executable_sha256": null
+    },
+    {
+      "path": "Kexts/BrightnessKeys.kext",
+      "bundle_id": "as.acidanthera.BrightnessKeys",
+      "version": "1.0.4",
+      "executable_sha256": "f47210181030a6005ccb17c125dbe81b359c2c9fd74c12b99b860b8b5f44a72a"
+    },
+    {
+      "path": "Kexts/ForgedInvariant.kext",
+      "bundle_id": "org.ChefKiss.ForgedInvariant",
+      "version": "1.5.0",
+      "executable_sha256": "328beb1265f1fc0c91053fe0308e953f3890ea588183ef2ba7259032ed539f37"
+    },
+    {
+      "path": "Kexts/HoRNDIS.kext",
+      "bundle_id": "com.joshuawise.kexts.HoRNDIS",
+      "version": "9.3",
+      "executable_sha256": "d7ec97a3a6c26a96e806d7a660ad26d13863352bba539e9ba10ea3c3b66a1408"
+    },
+    {
+      "path": "Kexts/Lilu.kext",
+      "bundle_id": "as.vit9696.Lilu",
+      "version": "1.7.3",
+      "executable_sha256": "e3f00df5aca98c70363489292514f088ae3b667417c9c5afdd33799ff09390bd"
+    },
+    {
+      "path": "Kexts/NVMeFix.kext",
+      "bundle_id": "org.acidanthera.NVMeFix",
+      "version": "1.1.4",
+      "executable_sha256": "d32c743220011f162ac104cdf73b1bce71cca77459a54553e461b89b9837a4d6"
+    },
+    {
+      "path": "Kexts/NullEthernet.kext",
+      "bundle_id": "org.rehabman.driver.NullEthernet",
+      "version": "1.0.6",
+      "executable_sha256": "86bf2fede46b6bbd819bc875090f11505ec4f6964a19073ee07690c09120bce4"
+    },
+    {
+      "path": "Kexts/RestrictEvents.kext",
+      "bundle_id": "as.vit9696.RestrictEvents",
+      "version": "1.1.7",
+      "executable_sha256": "8a244c696234c4ae1dec7c318664c57b685f9d2501e8bb6649ec805b21e9fa3a"
+    },
+    {
+      "path": "Kexts/SMCBatteryManager.kext",
+      "bundle_id": "ru.usrsse2.SMCBatteryManager",
+      "version": "1.3.9",
+      "executable_sha256": "791d81018a5374ddc63b8d97ba976e03bab6d241fec08ec3487e4c4e74fc24e4"
+    },
+    {
+      "path": "Kexts/SMCLightSensor.kext",
+      "bundle_id": "ru.usrsse2.SMCLightSensor",
+      "version": "1.3.9",
+      "executable_sha256": "b3aca78cd5aca2fb4229bb7fb1258bb04f54af391605d29dac92438193346606"
+    },
+    {
+      "path": "Kexts/Sinetek-rtsx.kext",
+      "bundle_id": "com.sinet3k.Sinetek-rtsx",
+      "version": "9.0.0",
+      "executable_sha256": "909d7f7bcb504781c2a85abdcd01cc53bfa1770d9295e6d8addd487a21461bb4"
+    },
+    {
+      "path": "Kexts/USBToolBox.kext",
+      "bundle_id": "com.dhinakg.USBToolBox.kext",
+      "version": "1.2.0",
+      "executable_sha256": "c5c8dc205a079ee3f90b7875fb5ff622e4f15d32f29cf519123dab2822c422b7"
+    },
+    {
+      "path": "Kexts/UTBDefault.kext",
+      "bundle_id": "com.dhinakg.USBToolBox.injector",
+      "version": "1.0",
+      "executable_sha256": null
+    },
+    {
+      "path": "Kexts/VirtualSMC.kext",
+      "bundle_id": "as.vit9696.VirtualSMC",
+      "version": "1.3.9",
+      "executable_sha256": "bf91e9542b86c20acaf210353a93742291c49328e2d14b03fa0fa4fc52b3b5ce"
+    },
+    {
+      "path": "Kexts/VoodooI2C.kext",
+      "bundle_id": "com.alexandred.VoodooI2C",
+      "version": "2.9.1",
+      "executable_sha256": "dbb7865eec4eeb0ea4e303789407c8cbbbfa3a944780191bd9943279c64ebe9f"
+    },
+    {
+      "path": "Kexts/VoodooI2C.kext/Contents/PlugIns/VoodooGPIO.kext",
+      "bundle_id": "org.coolstar.VoodooGPIO",
+      "version": "1.1",
+      "executable_sha256": "c29472606eb6c86f24bf927cada8f1a78107b2659bad813671bd73eb01163643"
+    },
+    {
+      "path": "Kexts/VoodooI2C.kext/Contents/PlugIns/VoodooI2CServices.kext",
+      "bundle_id": "com.alexandred.VoodooI2CServices",
+      "version": "1.0",
+      "executable_sha256": "0dda79836a5ec2b1b60cacb27c2a7e022993b9983a3689f6b0826505c51c5e1e"
+    },
+    {
+      "path": "Kexts/VoodooI2C.kext/Contents/PlugIns/VoodooInput.kext",
+      "bundle_id": "me.kishorprins.VoodooInput",
+      "version": "1.1.7",
+      "executable_sha256": "b20f06a6f344ef303dde4b7026a41fc6c1d220ebb5b7da3c3d9ac1d2bdadda9e"
+    },
+    {
+      "path": "Kexts/VoodooI2CHID.kext",
+      "bundle_id": "com.alexandred.VoodooI2CHID",
+      "version": "1.0",
+      "executable_sha256": "1ba930b05d5c786b97353a63767fab090125d8d3e665443db4e07e46ab8b2e53"
+    },
+    {
+      "path": "Kexts/WhateverGreen.kext",
+      "bundle_id": "as.vit9696.WhateverGreen",
+      "version": "1.7.2",
+      "executable_sha256": "059967ba94fba6cbf3c2cdf40fb4277e00a2a42bc1aa250e632103acbc3efdd0"
+    }
+  ]
+}

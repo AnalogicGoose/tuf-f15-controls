@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: BSD-3-Clause-Clear
+# Copyright (c) 2026 thanhnndev and itlmt7925 contributors
 # Fills itl_ssid / itl_psk (and itl_ssid2.. / itl_psk2.. for further networks, in priority order) in a built itlmt7925.kext
 # Info.plist from the Wi-Fi profiles saved on this PC. The passphrases end up in plaintext inside the kext (and therefore on the
 # EFI stick); they are never printed here and the repo keeps empty values.
