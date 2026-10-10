@@ -147,8 +147,8 @@ bool itlmt7925::ringInit(itl_ring &r, int qid, uint32_t base, int n, bool rx)
     r.regs = base + qid * 0x10;
     r.head = r.tail = 0;
     if (!dmaAlloc(r.desc, (size_t)n * 16)) return false;
-    // txData stages TXD + txp + the whole 802.11 frame in 2 KiB slots (64 of them); the other tx rings need one 4 KiB buffer
-    if (!dmaAlloc(r.buf, rx ? (size_t)n * MT_RX_BUF_SIZE : (&r == &txData ? (size_t)64 * 2048 : 4096))) return false;
+    // txData stages TXD + txp + the whole 802.11 frame in 2 KiB slots (kTxSlots of them); the other tx rings need one 4 KiB buffer
+    if (!dmaAlloc(r.buf, rx ? (size_t)n * MT_RX_BUF_SIZE : (&r == &txData ? (size_t)kTxSlots * 2048 : 4096))) return false;
 
     // mt76_dma_queue_reset(): every descriptor starts out DMA_DONE, indices zero, then ring base/size
     for (int i = 0; i < n; i++) put32(r.desc.va + i * 16 + 4, MT_DMA_CTL_DMA_DONE);

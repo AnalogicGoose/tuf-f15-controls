@@ -224,10 +224,18 @@ private:
     volatile uint16_t txSn = 0;              // next sequence number of TID 0 (level 3)
     bool txPool = false;                     // level 3: TX staging buffers are released by TXFREE, not reused blindly
     bool txFreeSeen = false;
-    uint64_t txBusy = 0;                     // staging slots in flight
-    uint32_t txSlotT[64] = {0};
-    uint8_t txGen[64] = {0};
+    // Staging slots of txData. One slot per ring descriptor, and well above the 64-frame Block Ack window: with 64 slots
+    // every aggregate in flight held the whole pool and any retransmission produced "no slot" drops (13k of 316k frames
+    // measured). The token is generation(5) | slot(8) = 13 bits, the same range the Linux driver uses for msdu ids.
+    static const uint32_t kTxSlots = 256;
+    uint64_t txBusy[kTxSlots / 64] = {0};    // staging slots in flight
+    uint32_t txSlotT[kTxSlots] = {0};
+    uint8_t txGen[kTxSlots] = {0};
     uint8_t txNext = 0;
+    bool txIsBusy(uint32_t s) const { return (txBusy[s >> 6] >> (s & 63)) & 1; }
+    void txSetBusy(uint32_t s) { txBusy[s >> 6] |= 1ull << (s & 63); }
+    void txClrBusy(uint32_t s) { txBusy[s >> 6] &= ~(1ull << (s & 63)); }
+    void txClrAll() { for (uint32_t i = 0; i < kTxSlots / 64; i++) txBusy[i] = 0; }
     uint32_t stTxUni = 0, stRxUni = 0, stRxAmsdu = 0, stTxFree = 0, stTxReclaim = 0, stTxNoSlot = 0, stTxFwFail = 0, stTxFwRetry = 0;
     uint32_t stBaReqRx = 0, stBaDecl = 0, stBaRxOn = 0, stBaTxOn = 0, stBaDel = 0, stBaBar = 0;
     uint32_t linkUpMs = 0, lastReorderMs = 0;
