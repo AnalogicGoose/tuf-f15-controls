@@ -567,20 +567,33 @@ static void kbWorker(void *)
 // grew into the file so the M1 result is on the stick even if nothing could be typed in Recovery.
 static void copyKextLogs()
 {
-    static size_t seen0, seen1;
+    // Everything the Wi-Fi kext publishes as a registry property: stage logs M0..M3 (+ results), the Block Ack / fast-mode log and
+    // the rolling data-path status line. Re-printed whenever the text changed, so the file holds the whole story even when the
+    // NVRAM channel (itl*) does not land.
+    static const char *keys[8] = { "m0-log", "m1-log", "m2-log", "m2-res", "m3-log", "m3-res", "ba-log", "stat-log" };
+    static char *seen[8];
+    static size_t seenLen[8];
     IORegistryIterator *it = IORegistryIterator::iterateOver(gIOServicePlane, kIORegistryIterateRecursively);
     if (!it) return;
     IORegistryEntry *e;
     while ((e = it->getNextObject())) {
-        static const char *keys[2] = { "m0-log", "m1-log" };
-        size_t *seen[2] = { &seen0, &seen1 };
-        for (int k = 0; k < 2; k++) {
+        for (int k = 0; k < 8; k++) {
             OSString *v = OSDynamicCast(OSString, e->getProperty(keys[k]));
             if (!v) continue;
             const char *m = v->getCStringNoCopy();
             size_t n = strlen(m);
-            if (n == *seen[k]) continue;
-            *seen[k] = n;
+            if (seen[k] && seenLen[k] == n && !memcmp(seen[k], m, n)) continue;
+            char *copy = (char *)IOMalloc(n + 1);
+            if (copy) {
+                memcpy(copy, m, n + 1);
+                if (seen[k]) IOFree(seen[k], seenLen[k] + 1);
+                seen[k] = copy;
+                seenLen[k] = n;
+            }
+            if (k == 7) {
+                fileLine("stat: %.300s", m);
+                continue;
+            }
             fileLine("---- %s (%lu bytes) ----", keys[k], (unsigned long)n);
             for (size_t o = 0; o < n; o += 100) {
                 char seg[104];
