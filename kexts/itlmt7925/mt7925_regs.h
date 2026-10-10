@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BSD-3-Clause-Clear
-// Copyright (c) 2026 thanhnndev and itlmt7925 contributors
+// Copyright (c) 2026 thanhnndev and contributors
 // Portions derived from the Linux mt76 driver, Copyright (C) 2020, 2023 MediaTek Inc. (BSD-3-Clause-Clear)
 // Register constants for M0, taken from the Linux mt76 driver
 // (drivers/net/wireless/mediatek/mt76/mt792x_regs.h, mt7925/regs.h, mt7925/pci.c),

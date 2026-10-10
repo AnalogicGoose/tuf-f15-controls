@@ -1,73 +1,93 @@
-# itlmt7925
+# ga403wm-hackintosh
 
-macOS support pieces for the **ASUS ROG Zephyrus G14 (GA403WM, Ryzen AI 9 HX 370)** and, more generally, for
-AMD Strix Point laptops with a **MediaTek MT7925 Wi-Fi card**, built while bringing the machine up as a Hackintosh with
-OpenCore.
+**OpenCore EFI, kernel extensions and notes for running macOS on the ASUS ROG Zephyrus G14 (GA403WM) with a Ryzen AI 9 HX 370
+("Strix Point", Zen 5).** It includes a from-scratch Wi-Fi driver for the MediaTek MT7925 card and a fix for the USB
+keyboard/mouse lag that AMD Strix Point controllers cause on macOS.
 
-| Component | What it is | State |
+> **Experimental, one laptop.** Everything was developed on a single GA403WM and verified by booting the macOS 15.6.1
+> Recovery image from a USB stick with OpenCore 1.0.9. A full installation on the internal disk has not been done yet.
+> Keep a backup, boot from a USB stick first, and read [docs/DUAL-BOOT.md](docs/DUAL-BOOT.md) if you also run Windows/Linux.
+
+## Machine
+
+| | |
+|---|---|
+| Laptop | ASUS ROG Zephyrus G14 2025, model GA403WM |
+| CPU / iGPU | AMD Ryzen AI 9 HX 370 (12 cores, Zen 5), Radeon 890M (disabled for macOS in `DeviceProperties`) |
+| dGPU | NVIDIA GeForce RTX 5060 Laptop (Blackwell: no macOS driver) |
+| Wi-Fi | MediaTek MT7925, PCI `14c3:7925` |
+| USB | four AMD xHCI controllers `1022:151e`, `151f`, `151a`, `151b` |
+| Input | I2C-HID touchpad `093a:3011`, USB keyboard `0b05:19b6` |
+| Storage | NVMe SSD, Realtek SD-card reader |
+
+## What works
+
+| Area | State | Where |
 |---|---|---|
-| [`kexts/itlmt7925`](kexts/itlmt7925) | Wi-Fi driver for the MT7925 (PCI `14c3:7925`): firmware load, scan, WPA2-PSK, Ethernet interface | works in Recovery, slow and minimal, see [docs/WIFI.md](docs/WIFI.md) |
-| [`kexts/ItlXhciKick`](kexts/ItlXhciKick) | fixes ~2 s USB keyboard/mouse latency on single-vector AMD xHCI controllers | works, see [docs/USB-XHCI-LAG.md](docs/USB-XHCI-LAG.md) |
-| [`kexts/ItlDiag`](kexts/ItlDiag) | boot diagnostics (clocks, xHCI, HID, NVRAM digest) | debugging aid |
-| [`efi/`](efi) | the OpenCore `config.plist` and SSDTs used, serials removed | reference, see [efi/README.md](efi/README.md) |
-| [`patches/opencore`](patches/opencore) | OcCpuLib fix for the Zen 5 (family 1Ah) FSB calculation | used by the reference EFI |
-| [`tools/kc.py`](tools/kc.py) | helper to read Apple kexts out of a Recovery image | used for the USB analysis |
+| Boot macOS 15.6.1 Recovery with OpenCore 1.0.9 | works | [efi/](efi/README.md) |
+| Zen 5 timer / FSB calculation (timers firing ~10x early) | fixed by an OpenCore patch | [patches/opencore](patches/opencore), [efi/README.md](efi/README.md#the-opencore-patch-patchesopencorefix-zen5-fsbdiff) |
+| USB keyboards and mice (2 s key-release latency) | fixed by `ItlXhciKick.kext` | [docs/USB-XHCI-LAG.md](docs/USB-XHCI-LAG.md) |
+| Touchpad (I2C) | works in Recovery (VoodooI2C) | [efi/KEXTS.md](efi/KEXTS.md) |
+| Wi-Fi MT7925 | works: WPA2-PSK on 2.4/5 GHz, DHCP/DNS; minimal (fixed 6 Mb/s TX, no UI, no reconnect) | [docs/WIFI.md](docs/WIFI.md) |
+| USB port map | **not done** (placeholder) | [docs/ROADMAP.md](docs/ROADMAP.md) |
+| Full install, sleep/wake, audio, battery, display brightness, Bluetooth, webcam | **not verified** | |
+| NVIDIA dGPU | not supported by macOS | |
 
-> **Experimental.** Everything here was developed and verified on one laptop, in the macOS 15.6.1 Recovery environment booted
-> from a USB stick. The Wi-Fi driver has no UI, no roaming and a fixed 6 Mb/s transmit rate. Use at your own risk, keep a
-> backup of your EFI, and test from a USB stick before touching an internal disk.
+## What is in this repository
+
+```
+efi/                 OpenCore config.plist + SSDTs (serial/MLB/UUID/ROM replaced by placeholders), list of third-party kexts
+kexts/itlmt7925      Wi-Fi driver for the MT7925: firmware load, scan, WPA2-PSK, Ethernet interface
+kexts/ItlXhciKick    keeps the second xHCI event ring serviced on single-vector AMD controllers (fixes the USB lag)
+kexts/ItlDiag        boot diagnostics that log to NVRAM (clocks, xHCI, HID); a debugging aid
+fw/                  MediaTek MT7925 firmware from linux-firmware, with its license
+patches/opencore/    OpenCorePkg patch for Zen 5
+scripts/             build, Wi-Fi credential injection, NVRAM read/clear, EFI export + privacy check, dual-boot repair
+test/                host test of the WPA2 primitives (also run in CI)
+tools/               helper to read Apple kexts out of a Recovery image
+docs/                documentation
+```
+
+The kexts are called `itlmt7925`, `ItlXhciKick` and `ItlDiag` (bundle ids `com.itlmt7925.*`). The name comes from the Wi-Fi
+driver, which started the project; the repository covers the whole machine.
 
 ## Quick start
 
-1. **Get the kexts**: a [release](../../releases) once published, or the `kexts` artifact of the `build-kexts` workflow,
-   or build on a Mac: `bash scripts/build.sh`.
-2. **Assemble an EFI** from [`efi/`](efi/README.md): the configuration, the SSDTs, the third-party kexts of
-   [`efi/KEXTS.md`](efi/KEXTS.md), and OpenCore (the patched build comes from the `opencore` workflow).
-   Generate your own SMBIOS values first.
-3. **Add your network** to the kext (Windows, elevated shell):
+1. **Get the kexts**: a [release](../../releases) (once published), the `kexts` artifact of the `build-kexts` workflow, or
+   `bash scripts/build.sh` on a Mac.
+2. **Assemble an EFI** from [efi/](efi/README.md): `config.plist`, the SSDTs, the third-party kexts listed in
+   [efi/KEXTS.md](efi/KEXTS.md), and OpenCore (build the patched one with the `opencore` workflow).
+   **Generate your own SMBIOS** (serial, MLB, UUID, ROM) first.
+3. **Add your Wi-Fi network** to the driver (Windows, elevated shell):
    `.\scripts\inject-creds.ps1 -Kext <EFI>\OC\Kexts\itlmt7925.kext -Ssid 'MyWifi'`
-4. **Boot-args**: `itlmt_m1=75 itlmt_m2=1 itlmt_m3=1` (Wi-Fi). `ItlXhciKick` needs none.
-5. **Boot, wait two or three minutes**, then check `itls0` / `itlk*` in NVRAM ([docs/DEBUGGING.md](docs/DEBUGGING.md)).
+4. **Boot-args**: `itlmt_m1=75 itlmt_m2=1 itlmt_m3=1` for Wi-Fi. `ItlXhciKick` needs none.
+5. **Boot from the USB stick**, wait two or three minutes, and check the result in NVRAM
+   ([docs/DEBUGGING.md](docs/DEBUGGING.md)).
 
 ## Documentation
 
 | | |
 |---|---|
-| [docs/WIFI.md](docs/WIFI.md) | what the Wi-Fi driver does, how it is configured, limits |
+| [efi/README.md](efi/README.md) | the reference EFI, boot-args, what to change for another machine |
+| [efi/KEXTS.md](efi/KEXTS.md) | every kext, its upstream and role |
+| [docs/WIFI.md](docs/WIFI.md) | the MT7925 driver: design, configuration, limits |
 | [docs/USB-XHCI-LAG.md](docs/USB-XHCI-LAG.md) | the USB latency investigation, cause and fix |
+| [docs/DUAL-BOOT.md](docs/DUAL-BOOT.md) | sharing the machine with Windows / Linux, repairing lost UEFI boot entries |
 | [docs/DEBUGGING.md](docs/DEBUGGING.md) | the NVRAM log channel, variable table, helper scripts |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | what is missing |
-| [efi/README.md](efi/README.md) | the reference EFI and what must be changed for another machine |
 | [NOTICE.md](NOTICE.md) | third-party code, firmware and license notes |
 
 Tiếng Việt: [README.vi.md](README.vi.md).
 
-## Repository layout
-
-```
-kexts/itlmt7925      Wi-Fi driver (m1 firmware, m2 scan, m3 connect, eth interface, WPA primitives, firmware blob)
-kexts/ItlXhciKick    xHCI event-ring service kext
-kexts/ItlDiag        diagnostics kext
-fw/                  MediaTek MT7925 firmware (linux-firmware) + its license
-efi/                 reference OpenCore configuration (no binaries, no serials)
-patches/opencore/    OpenCorePkg patch
-scripts/             build, credential injection, NVRAM read/clear, EFI export (see each header)
-test/                host test for the WPA2 primitives (also run in CI)
-tools/               analysis helper
-docs/                documentation
-.github/workflows/   build-kexts (every push), opencore (manual)
-```
-
 ## Privacy
 
-* The repository never contains Wi-Fi passphrases: `Info.plist` ships with empty `itl_ssid*/itl_psk*` keys and CI builds with
-  them empty. A kext you inject credentials into holds them in **plain text**.
-* The NVRAM logs contain the card's MAC address and the SSIDs / BSSIDs of nearby networks. Redact them before posting a log.
-* `scripts/export-efi.py` produces `efi/` from a working EFI and refuses to write anything that still contains the serial,
-  board serial, UUID or ROM it found in the source configuration.
+* The repository never contains Wi-Fi passphrases or SMBIOS identifiers: `Info.plist` ships with empty `itl_ssid*/itl_psk*`
+  keys, `efi/OC/config.plist` carries `CHANGE_ME_*` placeholders, and CI fails if real values appear. A kext you inject
+  credentials into holds them in **plain text**.
+* NVRAM logs contain the card's MAC address and nearby SSIDs/BSSIDs. Redact them before posting.
 
 ## License
 
 [Clear BSD License](LICENSE) for the code in this repository, which re-implements parts of the Linux `mt76` driver
-(BSD-3-Clause-Clear, © MediaTek). The firmware in `fw/` is MediaTek's and keeps [its own license](fw/LICENCE.mediatek).
-See [NOTICE.md](NOTICE.md).
+(BSD-3-Clause-Clear, © MediaTek). The firmware in `fw/` is MediaTek's and keeps [its own license](fw/LICENCE.mediatek). The
+OpenCore configuration derives from <https://github.com/nullmoth/1401>, which declares no license, see [NOTICE.md](NOTICE.md).

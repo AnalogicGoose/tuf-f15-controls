@@ -1,6 +1,6 @@
 #!/bin/sh
 # SPDX-License-Identifier: BSD-3-Clause-Clear
-# Copyright (c) 2026 thanhnndev and itlmt7925 contributors
+# Copyright (c) 2026 thanhnndev and contributors
 # Collects ioreg / system_profiler / kextstat / dmesg and a 25 s typing trace into <stick>/dump for USB HID latency work.
 # Recovery Terminal (the stick auto-mounts under /Volumes):  sh /Volumes/<stick label>/recovery-dump.sh [mountpoint]
 STICK="${1:-$(dirname "$0")}"

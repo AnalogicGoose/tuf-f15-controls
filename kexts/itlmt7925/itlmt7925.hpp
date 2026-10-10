@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BSD-3-Clause-Clear
-// Copyright (c) 2026 thanhnndev and itlmt7925 contributors
+// Copyright (c) 2026 thanhnndev and contributors
 #ifndef ITLMT7925_HPP
 #define ITLMT7925_HPP
 

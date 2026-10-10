@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BSD-3-Clause-Clear
-// Copyright (c) 2026 thanhnndev and itlmt7925 contributors
+// Copyright (c) 2026 thanhnndev and contributors
 // ItlXhciKick - makes macOS service the secondary xHCI event rings of AMD controllers that only have one MSI vector.
 //
 // Why (all of it read from the macOS 15 Recovery's AppleUSBXHCI / AppleUSBXHCIPCI and measured with ItlDiag):

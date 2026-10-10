@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BSD-3-Clause-Clear
-// Copyright (c) 2026 thanhnndev and itlmt7925 contributors
+// Copyright (c) 2026 thanhnndev and contributors
 // itlmt7925 - Ethernet interface on top of the associated MT7925 link (the "network card" macOS sees).
 // Created by itlmt7925::m3Link() after the 4-way handshake; frames to send arrive in outputPacket(), frames received from the AP are
 // pushed in with rxPacket(). The 802.11 <-> Ethernet conversion is done in itlmt7925_m3.cpp.

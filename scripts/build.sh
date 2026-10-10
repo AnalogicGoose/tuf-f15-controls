@@ -1,6 +1,6 @@
 #!/bin/bash
 # SPDX-License-Identifier: BSD-3-Clause-Clear
-# Copyright (c) 2026 thanhnndev and itlmt7925 contributors
+# Copyright (c) 2026 thanhnndev and contributors
 # Builds every kext of this repo on macOS without an Xcode project. Needs the Xcode command line tools.
 # Kernel headers/libs come from acidanthera/MacKernelSDK (cloned into build/ on first use, or set MACKERNELSDK).
 #

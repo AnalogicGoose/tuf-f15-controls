@@ -1,7 +1,7 @@
 # Contributing
 
-Reports and patches are welcome, especially: results on other machines (xHCI `ItlXhciKick`), other MT7925 laptops, and
-the open items in [docs/ROADMAP.md](docs/ROADMAP.md).
+Reports and patches are welcome, especially: results on other Zephyrus G14 / Strix Point laptops (`ItlXhciKick`, the EFI),
+other MT7925 machines (the Wi-Fi driver), and the open items in [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Before you post a log, a config or a kext
 

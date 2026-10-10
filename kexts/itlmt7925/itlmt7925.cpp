@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BSD-3-Clause-Clear
-// Copyright (c) 2026 thanhnndev and itlmt7925 contributors
+// Copyright (c) 2026 thanhnndev and contributors
 // Portions derived from the Linux mt76 driver, Copyright (C) 2020, 2023 MediaTek Inc. (BSD-3-Clause-Clear)
 // itlmt7925 - PCI probe: map BAR0, take driver ownership from the firmware, read the chip id, then (boot-arg itlmt_m1)
 // start the firmware / scan / connect worker implemented in itlmt7925_m1.cpp, _m2.cpp and _m3.cpp.

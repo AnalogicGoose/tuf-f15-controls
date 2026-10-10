@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: BSD-3-Clause-Clear
-# Copyright (c) 2026 thanhnndev and itlmt7925 contributors
+# Copyright (c) 2026 thanhnndev and contributors
 """Small helper to explore BootKernelExtensions.kc (x86_64 Mach-O fileset): symbols, string xrefs, disassembly."""
 import os, struct, re, sys, bisect
 from capstone import Cs, CS_ARCH_X86, CS_MODE_64
