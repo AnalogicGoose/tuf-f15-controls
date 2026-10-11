@@ -1,4 +1,4 @@
-# Handoff: state of the GA403WM macOS bring-up (2026-10-10)
+# Handoff: state of the GA403WM macOS bring-up (2026-10-11)
 
 Where the work stands, what is proven, what is open, and how to get data. Written to continue on the macOS side.
 No SMBIOS values, passphrases, MACs or neighbour SSIDs belong in this file.
@@ -57,26 +57,64 @@ No SMBIOS values, passphrases, MACs or neighbour SSIDs belong in this file.
    * NVRMFB takes its timing list from the framebuffer family (`setDetailedTimings`) and NVKMS accepts only real EDID
      modes; the boot raster is the firmware mode, which is 120 Hz ("no modeset"); WindowServer then asks for 0x10000 (60 Hz) from its saved prefs.
    * Tried and dropped: a macOS display override (EDID with a 120 Hz base DTD). The generator and sources were removed from
-     the repo; the override is still on the Mac until `sudo bash scripts/remove-display-override.sh` is run from Linux.
-     The way forward is the driver update (1.10.0 offers DisplayID-only modes), see `NULLMOTH.md`.
-4. **Wi-Fi shows as Ethernet** in macOS. Clean-room `IO80211Controller` subclass (plan in `WIFI-AS-WIFI.md`, extract
+     the repo. Checked on macOS 2026-10-11: `/Library/Displays/Contents/Resources/Overrides` is empty, it was never installed.
+     The panel boots and stays at 120 Hz on 1.13.0. HiDPI without touching the EDID: item 7.
+4. **Wi-Fi shows as Ethernet** in macOS (works: en2, DHCP). Runtime control: see 8. Clean-room `IO80211Controller` subclass (plan in `WIFI-AS-WIFI.md`, extract
    the ABI from the kernel collection with `tools/kc.py`; do not copy GPL `itlwm`). Step 1 (controller vtable, 12 pure virtuals)
    is in `IO80211-ABI.md`; the kernel collection is available at `Previous Content/com.apple.installer/` on the Data volume,
    so no BaseSystem.dmg download is needed. Skywalk interface and `apple80211_*` structs are not mapped yet.
 5. Housekeeping: old kext backup `itlmt7925.e8df337.old` in the ESP root. (Retired remote branches `ccr-fc111298-ip8jp5`,
    `diag-esp-log`, `diag-mirror-m2m3` were deleted 2026-10-11 with the owner's permission.)
 
-6. **Desktop is laggy** (macOS boots and is usable, 2026-10-11). *Leading lead now: driver 1.9.0 flips the primary surface on
-   every cursor move (fixed in 1.10.0, commit `3619f95e`); see `NULLMOTH.md`. The analysis below was the first pass.* `sample WindowServer` (`efi-audit/windowserver-sample.txt`,
-   6.7 s idle desktop): WindowServer is ~95 % blocked in `mach_msg`, so it is not CPU bound. The only real work is on the render
-   path `CA::OGL::MetalContext::draw` -> `-[NVMTLRenderCommandEncoder setFragmentTexture:]` -> `-[NVMTLTexture nvmtlSurfaceIn]` ->
-   `nvmtl_vk_image_write` -> `memmove` (a CPU copy of the IOSurface into the GPU image on every texture bind; vendor
-   NVMTLDriver, Metal translated to Vulkan/NVK) plus `vk_WaitForFences` -> `nvrm_gsub_wait`. Needs a sample taken **while
-   dragging a window** and the active mode (Hz, HiDPI) before drawing conclusions; do not guess boot-args.
-   Findings and unknowns are in `NULLMOTH.md`. To get the missing data, on macOS run
-   `bash scripts/macos-nullmoth-probe.sh --window` (no sudo, masks UUID/MAC/serial) and drag a window in circles
-   during the 5 s sample. Caveat: the ioreg/kextstat/system_profiler files in `efi-audit/` are from a boot **before** the
-   driver was installed; do not use them for the current state.
+6. **Desktop lag** (NullMoth 1.13.0, 2880x1800 @ 120 Hz, measured 2026-10-11; details in `NULLMOTH.md`). Composition sustains
+   ~116 flips/s while a window is dragged; the lag is spikes. Two causes found:
+   * NVRMFB clears every new VRAM grant with byte stores over BAR1 (upstream PR #64 measured ~180 ms per 8 MB). Local fix:
+     `scripts/macos-nullmoth-vramclear.sh` (49-byte patch of the 1.13.0 binary, harness-verified, `--undo`). Measure with
+     `scripts/macos-vramtest.sh` before/after. Before: **0.7-1.1 s per 8 MB grant**. Patch applied 2026-10-11 00:52 local
+     (auxKC rebuilt with all four kexts); takes effect at the next boot. After-numbers: pending.
+   * NullMoth exports `MESA_SHADER_CACHE_DIR`; the Terminal process tree inherited root's cache dir, so Metal programs started
+     from a shell run without a shader cache. Workaround `scripts/zshrc-nullmoth.sh`; plugin fix to be reported upstream.
+   (The 1.9.0 lead "every cursor move is a primary flip" was fixed upstream in 1.10.0; installed now is 1.13.0.)
+   Tools: `tools/framepace.swift` (no sudo), `scripts/macos-ws-frame-sample.sh` (sudo, WindowServer sample of the same frames).
+
+7. **HiDPI**: the boot raster is already 120 Hz. `scripts/macos-install-hidpi.sh` adds a scale-resolutions-only override
+   (1440x900, 1680x1050, 1280x800 "looks like"); no EDID change, no prefs deleted, so no new NVKMS mode. It lives in the
+   same directory `scripts/remove-display-override.sh` (Linux) deletes, so that script removes it too. **Not applied yet.**
+
+8. **Wi-Fi runtime control** (option B of `WIFI-AS-WIFI.md`): user client + supervisor in `itlmt7925` (scan, join, disconnect,
+   reconnect after deauth/beacon loss, link down while between networks) and the ItlWiFi menu bar app (`macos/ItlWiFi`,
+   `scripts/build-itlwifi.sh`). Builds clean, all symbols resolve against 24.6.0, app runs. **Kext not run on hardware yet.**
+   Install: `scripts/macos-install-kext.sh itlmt7925` (keeps the plist credentials, backup in `EFI/OC/Kexts-backup/`).
+   ItlDiag up to 2026-10-11 kept the ESP IOMedia open read/write for ITLLOG.BIN, so macOS could not mount the ESP (EBUSY,
+   `fskit_helper error=16`). Fixed in ItlDiag: it opens the partition only for each flush and skips flushes while anyone
+   else has it open (mounted, fsck, diskutil; counted as "flush(es) skipped while in use" in the log). Until the fixed
+   ItlDiag is on the ESP, install from Linux: `scripts/linux-apply-2026-10-11.sh`.
+
+Everything that needs sudo from this session is in `scripts/macos-apply-2026-10-11.sh` (one run, then reboot; it prints the
+undo commands and a Recovery-terminal undo for the NVRMFB/HiDPI part).
+
+## Next steps (2026-10-11, in this order)
+
+State: NVRMFB patch is installed in the auxiliary kernel collection (active from the next boot). ItlWiFi is in
+/Applications and starts at login. The new `itlmt7925` and `ItlDiag` are built (in `build/` on the macOS volume) but **not on
+the ESP yet**, because the old ItlDiag holds the ESP open while macOS runs. The ESP still has `itlmt_m1=75`.
+
+1. macOS: `bash scripts/macos-apply-2026-10-11.sh` (safe to re-run: HiDPI override; skips what is done; the kext step is
+   skipped with a note while the ESP is busy). Reboot into **Linux**.
+2. Linux: `git pull`, then `bash scripts/linux-apply-2026-10-11.sh` (no sudo): both kexts from `build/` on the macOS volume
+   (credentials carried over), `itlmt_m1=0`, `occonfig check`. Reboot into **macOS**.
+3. macOS: ItlWiFi menu (Wi-Fi a few seconds after boot), `bash scripts/macos-vramtest.sh` (expect tens of ms, was 0.7-1.1 s),
+   Displays > 1440 x 900, `sudo diskutil mount disk0s1` (must work now). Then report the numbers upstream (PR #64 comment,
+   issue for the `MESA_SHADER_CACHE_DIR` leak).
+
+Prompt for Claude Code on Linux (paste as is):
+
+> Repo ga403wm-hackintosh. Read docs/HANDOFF.md, section "Next steps (2026-10-11)". Do step 2 on this Linux machine:
+> `git pull --ff-only`, check that /mnt/macos-vol0 mounts and that build/itlmt7925.kext and build/ItlDiag.kext exist on the
+> macOS volume and are newer than the kexts in /boot/EFI/OC/Kexts, then run `bash scripts/linux-apply-2026-10-11.sh`.
+> Never print Wi-Fi passphrases, SMBIOS values or MACs. If any step fails, stop and show me the output, do not improvise
+> on the ESP. At the end show `ls -la /boot/EFI/OC/Kexts /boot/EFI/OC/Kexts-backup` and the boot-args, then tell me to
+> reboot into macOS.
 
 ## NullMoth update to 1.12.0 (manual route, EFI part done 2026-10-11)
 
@@ -144,7 +182,8 @@ Do not run 1401.exe "Build". "Send logs" uploads to NullMoth: the owner decides.
   `scripts/inject-creds.ps1` (Windows) or by editing `Info.plist` (`itl_psk*`) in your local copy only.
 * Install a kext on the ESP: replace `EFI/OC/Kexts/itlmt7925.kext` and `ItlDiag.kext`. Keep a backup of the old one.
   Never commit a kext with credentials (`*.kext` is ignored).
-* Useful boot-args now: `itldiag=90 itlxr=2 itlmt_m1=75 itlmt_m2=1 itlmt_m3=1 itlmt_fast=6 msgbuf=1048576`
+* Useful boot-args now: `itldiag=90 itlxr=2 itlmt_m1=0 itlmt_m2=1 itlmt_m3=1 itlmt_fast=6 msgbuf=1048576` (`itlmt_m1` is now an
+  extra delay after the root filesystem is mounted; it was 75 s from kext start)
   (`itlfile=0` disables the ESP file; see `docs/DEBUGGING.md`).
 
 ## Reading the log

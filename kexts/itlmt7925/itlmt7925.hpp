@@ -15,6 +15,7 @@
 #include "itl_ba.h"
 
 class itlmt7925Eth;
+class IOUserClient;
 
 // Per-frame options for m3Tx (everything defaults to the verified legacy behaviour: fixed 6 Mb/s, management queue)
 struct M3TxOpt {
@@ -57,6 +58,12 @@ public:
     // Speed shown by macOS for the interface: the estimated best PHY rate when HT/VHT is in use, else the 54 Mb/s legacy value
     static void baDeliverCb(void *ctx, const uint8_t *frame, uint32_t len);
     uint64_t linkSpeedBps() const { return fastActive ? (uint64_t)fastRate * 1000000ull : 54000000ull; }
+    // Runtime control from user space (itlmt7925_uc.cpp, ABI in itl_uc_abi.h): the worker thread picks the commands up.
+    IOReturn newUserClient(task_t owningTask, void *securityID, UInt32 type, OSDictionary *properties,
+                           IOUserClient **handler) override;
+    IOReturn ucScan();
+    IOReturn ucJoin(const char *ssid, const char *psk);
+    IOReturn ucDisconnect();
 
 private:
     IOPCIDevice *pci = nullptr;
@@ -116,7 +123,8 @@ private:
     bool scanDone = false;
     uint32_t rxPkts = 0, rxBeacons = 0, rxOther = 0, rxDump = 0;
     uint32_t evCount = 0;
-    struct itl_ap { uint8_t bssid[6]; uint8_t ch; char ssid[33]; } aps[48];
+    // sec: ITL_SEC_* (itlmt7925_uc.cpp); rssi in dBm, 0 = not measured; seenMs = nowMs() of the last beacon / probe response
+    struct itl_ap { uint8_t bssid[6]; uint8_t ch; char ssid[33]; int8_t rssi; uint8_t sec; uint32_t seenMs; } aps[48];
     int nAps = 0;
     uint8_t mcuSeq = 0;
     // M3 (boot-arg itlmt_m3=1, implies M2): associate to the configured network, WPA2-PSK, Ethernet interface
@@ -286,6 +294,33 @@ private:
     char logbuf[240] = {0};
     size_t loglen = 0;
     void note(const char *fmt, uint32_t a = 0, uint32_t b = 0, uint32_t c = 0);
+
+    // ---- runtime control: command mailbox, supervisor loop, status for the menu bar app (itlmt7925_uc.cpp) ----
+    enum { CMD_SCAN = 1, CMD_JOIN = 2, CMD_DISCONNECT = 4 };
+    struct Net { char ssid[33]; char psk[72]; };
+    IOLock *cmdLock = nullptr;
+    volatile uint32_t cmdBits = 0;
+    Net reqNet = {};                         // the network of the last join command (under cmdLock)
+    uint32_t lastScanReqMs = 0;
+    bool cmdPending(uint32_t mask) const { return (__atomic_load_n(&cmdBits, __ATOMIC_ACQUIRE) & mask) != 0; }
+    uint32_t cmdTake(uint32_t mask, Net *join);
+    Net candNets[4] = {};                    // candidates for the next m3Run1(), in priority order
+    int candN = 0;
+    int loadPlistNets(Net *out, int max);
+    void m3Supervise();                      // replaces a single m3Run(): connect, reconnect, obey commands
+    void wifiState(const char *st, const char *err);
+    void wifiLink();                         // ssid / channel / rssi / rate of the current link
+    void wifiNets();                         // wifi-networks from aps[]
+    void wifiScan();                         // wildcard scan, then wifiNets()
+    void apSeen(const uint8_t *p, uint32_t len, uint32_t off, const char *ssid, uint8_t ch);   // beacon / probe response
+    int8_t rxRssi(const uint8_t *p, uint32_t len, uint32_t hdrOff);
+    char wstate[16] = {0};
+    uint32_t scanGen = 0;
+    volatile bool m3lost = false;            // the AP sent deauthentication / disassociation, or went silent
+    char m3lostWhy[48] = {0};
+    uint32_t tgtLastBcnMs = 0, lastRxDataMs = 0;
+    int8_t tgtRssi = 0;
+    void ethLink(bool up);
 };
 
 #endif

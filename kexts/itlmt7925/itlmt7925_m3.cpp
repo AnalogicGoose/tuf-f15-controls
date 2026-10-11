@@ -694,20 +694,10 @@ int itlmt7925::m3Run1()
     fastActive = false;
     txPool = false;
 
-    // 0. credentials: itl_ssid / itl_psk, then itl_ssid2 / itl_psk2 ... itl_ssid4 / itl_psk4 (the list order is the priority)
-    struct Net { char ssid[33]; char psk[72]; } nets[4];
-    int nn = 0;
-    for (int i = 1; i <= 4; i++) {
-        char ks[16], kp[16];
-        snprintf(ks, sizeof(ks), i == 1 ? "itl_ssid" : "itl_ssid%d", i);
-        snprintf(kp, sizeof(kp), i == 1 ? "itl_psk" : "itl_psk%d", i);
-        OSString *s = OSDynamicCast(OSString, getProperty(ks));
-        OSString *k = OSDynamicCast(OSString, getProperty(kp));
-        if (!s || !k || !s->getLength() || s->getLength() > 32 || k->getLength() < 8 || k->getLength() > 63) continue;
-        strlcpy(nets[nn].ssid, s->getCStringNoCopy(), sizeof(nets[nn].ssid));
-        strlcpy(nets[nn].psk, k->getCStringNoCopy(), sizeof(nets[nn].psk));
-        nn++;
-    }
+    // 0. credentials: the candidates m3Supervise() put in nets[] (a joined network, or itl_ssid / itl_psk .. itl_ssid4 / itl_psk4
+    // from the personality in that order)
+    Net *nets = candNets;
+    int nn = candN;
     if (!nn) {
         m3log("no usable itl_ssid/itl_psk in the personality");
         m3Publish("nocred");
@@ -742,7 +732,8 @@ int itlmt7925::m3Run1()
     if (sel < 0) { m3log("no configured network seen in the scan"); return ITL_EIO; }
     strlcpy(m3ssid, nets[sel].ssid, sizeof(m3ssid));
     strlcpy(m3psk, nets[sel].psk, sizeof(m3psk));
-    bzero(nets, sizeof(nets));
+    bzero(candNets, sizeof(candNets));
+    candN = 0;
     m3log("selected net%d ssid len=%u", sel + 1, (unsigned)strlen(m3ssid));
     m3log("target %02x:%02x:%02x:%02x:%02x:%02x ch=%u cap=%04x bi=%u ies=%u", tgtBssid[0], tgtBssid[1], tgtBssid[2],
           tgtBssid[3], tgtBssid[4], tgtBssid[5], tgtCh, tgtCap, tgtBcnInt, tgtIeLen);
@@ -818,6 +809,7 @@ int itlmt7925::m3Run()
 void itlmt7925::m3Teardown()
 {
     m3linkUp = false;
+    ethLink(false);
     baReset();
     uint8_t f[26];
     m3Hdr(f, 0xc0, tgtBssid, mac);                           // deauthentication, reason 3: station is leaving
@@ -988,6 +980,7 @@ bool itlmt7925::m3RxData(const uint8_t *p, uint32_t len)
             const uint8_t *pl = l + 8;
             uint32_t pn = len - (uint32_t)(pl - p);
             stRxData++;
+            lastRxDataMs = nowMs();
             if (et == 0x888e) {
                 stRxEapol++;
                 if (m3wantEapol && !m3eapolLen) {
@@ -1178,6 +1171,7 @@ void itlmt7925::m3Link()
 {
     bool eok = eth ? true : ethCreate();                     // the interface survives a fall-back to a lower level
     m3log("ethernet interface %s", eok ? "created" : "FAILED");
+    ethLink(true);
     baReset();
     txSn = 0;
     stRxUni = stTxUni = 0;
@@ -1191,10 +1185,36 @@ void itlmt7925::m3Link()
     uint32_t t0 = nowMs(), lastStat = 0, lastActive = t0;
     linkUpMs = t0;
     lastReorderMs = t0;
+    m3lost = false;
+    tgtLastBcnMs = 0;                                        // beacon watch is armed by the first beacon of this link
+    lastRxDataMs = t0;
+    tgtRssi = 0;
+    wifiState("connected", "");
+    wifiLink();
     bool watchdogDone = false;
     for (;;) {
         int act = m3PumpOnce();
         uint32_t now = nowMs();
+        if (cmdPending(CMD_SCAN)) {                          // scan on the link: the firmware returns to the AP's channel between dwells
+            cmdTake(CMD_SCAN, nullptr);
+            wifiScan();
+            wifiState("connected", "");
+            now = nowMs();
+        }
+        if (cmdPending(CMD_JOIN | CMD_DISCONNECT)) {         // another network, or off: m3Supervise() takes it from here
+            m3log("link: leaving for a command");
+            m3Teardown();
+            return;
+        }
+        if (!m3lost && tgtLastBcnMs && now - tgtLastBcnMs > 15000 && now - lastRxDataMs > 15000) {
+            snprintf(m3lostWhy, sizeof(m3lostWhy), "no beacon or data from the AP for 15 s");
+            m3lost = true;
+        }
+        if (m3lost) {
+            m3log("link lost: %s", m3lostWhy);
+            m3Teardown();
+            return;
+        }
         baService();
         if (amsduAsm.active && now - amsduAsm.t >= 4) amsduFlush();      // the last subframe of an A-MSDU never came
         if (now - lastReorderMs >= 10) {                     // frames waiting behind a hole in a Block Ack window for too long
@@ -1243,6 +1263,7 @@ void itlmt7925::m3Link()
                      stRxBigDrop);
             nvramStat(st);
             nvramChunks(m3buf);
+            wifiLink();
         }
         if (m3stepDown) return;
         if (!fastActive) { IOSleep(1); continue; }           // legacy path: exactly as verified (1 ms poll)

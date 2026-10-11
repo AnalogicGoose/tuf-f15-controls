@@ -19,6 +19,7 @@ class itlmt7925Eth : public IOEthernetController {
 public:
     bool setup(itlmt7925 *d, const uint8_t *m);
     void rxPacket(const uint8_t *e, uint32_t len);
+    void setLink(bool up);
 
     bool start(IOService *provider) override;
     void stop(IOService *provider) override;
@@ -39,6 +40,7 @@ private:
     uint8_t addr[6] = {0};
     IOEthernetInterface *netif = nullptr;
     IOWorkLoop *wl = nullptr;
+    IONetworkMedium *medium = nullptr;
     uint8_t txb[1600];
 };
 
@@ -78,6 +80,8 @@ bool itlmt7925Eth::start(IOService *provider)
     IONetworkMedium::addMedium(media, med);
     bool ok = publishMediumDictionary(media) && setCurrentMedium(med) && setSelectedMedium(med);
     if (ok) setLinkStatus(kIONetworkLinkValid | kIONetworkLinkActive, med, speed);
+    medium = med;                                                          // kept for setLink()
+    medium->retain();
     med->release();
     media->release();
     if (!ok) return false;
@@ -95,6 +99,7 @@ void itlmt7925Eth::stop(IOService *provider)
 
 void itlmt7925Eth::free()
 {
+    if (medium) { medium->release(); medium = nullptr; }
     if (wl) { wl->release(); wl = nullptr; }
     super::free();
 }
@@ -151,6 +156,14 @@ UInt32 itlmt7925Eth::outputPacket(mbuf_t m, void *)
     return kIOReturnOutputSuccess;
 }
 
+// Link state for macOS: down while the driver is between networks, so DHCP and the routes follow the Wi-Fi link.
+void itlmt7925Eth::setLink(bool up)
+{
+    if (!medium) return;
+    UInt64 speed = drv ? drv->linkSpeedBps() : 54ULL * 1000000ULL;
+    setLinkStatus(kIONetworkLinkValid | (up ? kIONetworkLinkActive : 0), up ? medium : nullptr, up ? speed : 0);
+}
+
 void itlmt7925Eth::rxPacket(const uint8_t *e, uint32_t len)
 {
     if (!netif || len < 14) return;
@@ -176,4 +189,9 @@ bool itlmt7925::ethCreate()
 void itlmt7925::ethRx(const uint8_t *frame, uint32_t len)
 {
     if (eth) eth->rxPacket(frame, len);
+}
+
+void itlmt7925::ethLink(bool up)
+{
+    if (eth) eth->setLink(up);
 }

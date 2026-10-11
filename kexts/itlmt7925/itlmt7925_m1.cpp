@@ -524,8 +524,17 @@ void itlmt7925::m1Main()
         m3fast = true;
         fastLevel = fast > 6 ? 6 : (uint8_t)fast;
     }
-    m1log("armed, starting in %us", delay);
-    IOSleep(delay * 1000);
+    // Start when the kernel is ready instead of after a fixed sleep: the IOBSD resource is published once the root
+    // filesystem is mounted, i.e. early boot (PCI enumeration, the GPU bring-up) is behind us. The firmware is embedded,
+    // so nothing else has to exist. itlmt_m1=<s> is an extra delay after that point (0 = none; the old default was 75 s
+    // from kext start).
+    uint32_t t0 = nowMs();
+    OSDictionary *match = IOService::resourceMatching("IOBSD");
+    IOService *bsd = match ? IOService::waitForMatchingService(match, 120ull * 1000 * 1000 * 1000) : nullptr;
+    if (match) match->release();
+    if (bsd) bsd->release();
+    m1log("armed: system ready after %ums (%s), extra delay %us", nowMs() - t0, bsd ? "IOBSD" : "IOBSD wait timed out", delay);
+    if (delay) IOSleep(delay * 1000);
     int rc = m1Run();
     m1log("RESULT rc=%d", rc);
     char s[48];
@@ -536,12 +545,7 @@ void itlmt7925::m1Main()
         m2log("RESULT rc=%d", r2);
         snprintf(s, sizeof(s), "M1 rc=0 M2 rc=%d", r2);
         nvramLog(s);
-        if (m3On) {
-            int r3 = m3Run();
-            m3log("RESULT rc=%d", r3);
-            snprintf(s, sizeof(s), "M1 rc=0 M2 rc=%d M3 rc=%d", r2, r3);
-            nvramLog(s);
-        }
+        if (m3On) m3Supervise();                             // connects, reconnects and takes user-client commands; never returns
     }
 }
 

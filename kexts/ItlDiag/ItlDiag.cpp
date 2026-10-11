@@ -127,11 +127,12 @@ static IOReturn mediaIO(IOMedia *m, IOService *client, bool wr, UInt64 off, void
 
 #define MAX_LOGS 4
 struct LogTarget {
-    IOMedia *media;                  // opened once found
+    IOMedia *media;                  // retained once found; opened only for the duration of each flush
     UInt64 start;                    // byte offset (within media) of the first log byte (after the header sector)
     UInt64 cap;                      // usable bytes
     size_t flushedSec;               // sectors of txt already written
     bool failed;                     // a write failed: stop hitting this volume
+    unsigned busySkips;              // flushes skipped because someone else (a mounted filesystem, fsck, diskutil) had it open
     char name[24];
 };
 static LogTarget logs[MAX_LOGS];
@@ -209,21 +210,14 @@ static void tryAttach(IOService *me)
         seen++;
         char why[100];
         UInt64 off = 0, size = 0;
+        if (m->isOpen()) { snprintf(last, sizeof(last), "%s: in use (mounted?)", e->getName()); continue; }
         if (!m->open(me, 0, kIOStorageAccessReader)) { snprintf(last, sizeof(last), "%s: open(r) fail", e->getName()); continue; }
         bool ok = probeMedia(m, me, &off, &size, why, sizeof(why));
         m->close(me, 0);
         if (!ok) { snprintf(last, sizeof(last), "%s: %s", e->getName(), why); continue; }
-        // found our file: reopen read/write
-        bool rw = m->open(me, 0, kIOStorageAccessReaderWriter);
-        if (!rw) rw = m->open(me, 0, kIOStorageAccessReaderWriter | kIOStorageAccessSharedLock);
-        const char *how = "rw";
-        if (!rw) {
-            // A mounted read/write volume already holds the media open for writing; IOMedia::write only needs *some*
-            // opener with write access, so keep a reader open and try the write anyway.
-            rw = m->open(me, 0, kIOStorageAccessReader);
-            how = "ro+try";
-        }
-        if (!rw) { snprintf(last, sizeof(last), "%s: %s but open fail", e->getName(), why); continue; }
+        // Found our file. The media is NOT kept open: holding it read/write made the ESP unmountable for macOS
+        // (DiskArbitration: EBUSY). flushLog() opens it per write and skips while anyone else has it open.
+        const char *how = "per-flush";
         m->retain();
         LogTarget &t = logs[nLogs++];
         t.media = m;
@@ -231,6 +225,7 @@ static void tryAttach(IOService *me)
         t.cap = size - 1024;
         t.flushedSec = 0;
         t.failed = false;
+        t.busySkips = 0;
         snprintf(t.name, sizeof(t.name), "%s", e->getName());
         logClient = me;
         snprintf(attachMsg, sizeof(attachMsg), "ATTACHED %d(%s) %s: %s", nLogs, how, e->getName(), why);
@@ -285,13 +280,17 @@ static void flushLog()
         size_t secs = (tlen + 511) / 512;
         if (secs * 512 > t.cap) secs = (size_t)(t.cap / 512);
         if (secs <= t.flushedSec) continue;
+        // Never write raw sectors under a filesystem: if another client (msdosfs after a mount, fsck, a diskutil probe) has
+        // the partition open, keep the text in memory and try again at the next flush.
+        if (t.media->isOpen()) { t.busySkips++; continue; }
+        if (!t.media->open(logClient, 0, kIOStorageAccessReaderWriter)) { t.busySkips++; continue; }
         size_t from = t.flushedSec;
         bool ok = true;
         while (from < secs) {
             size_t n = secs - from;
             if (n > 64) n = 64;
             uint8_t *buf = (uint8_t *)IOMalloc(n * 512);
-            if (!buf) return;
+            if (!buf) { ok = false; break; }
             bzero(buf, n * 512);
             size_t src = from * 512;
             size_t avail = tlen > src ? tlen - src : 0;
@@ -306,6 +305,7 @@ static void flushLog()
             }
             from += n;
         }
+        t.media->close(logClient, 0);
         // the last sector may still grow: rewrite it next time
         if (ok) t.flushedSec = secs > 0 ? secs - 1 : 0;
     }
@@ -407,6 +407,8 @@ static void collect()
     uint64_t dTsc = rdtsc_() - tsc0;
     add("clk cal=%llums mach=%llums tsc=%lluMHz", dCal, dAbs, dCal ? dTsc / (dCal * 1000ull) : 0ull);
     add("usblog: %s", attachMsg);
+    for (int i = 0; i < nLogs; i++)
+        if (logs[i].busySkips) add("usblog %s: %u flush(es) skipped while in use", logs[i].name, logs[i].busySkips);
     add("vfs: %s", vfsMsg);
 
     IORegistryIterator *it = IORegistryIterator::iterateOver(gIOServicePlane, kIORegistryIterateRecursively);
