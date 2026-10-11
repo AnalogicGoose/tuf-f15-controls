@@ -61,8 +61,8 @@ No SMBIOS values, passphrases, MACs or neighbour SSIDs belong in this file.
      `scripts/install-display-override.sh` (undo: `--undo`). Sources are in `macos/display-override/`.
 4. **Wi-Fi shows as Ethernet** in macOS. Clean-room `IO80211Controller` subclass (plan in `WIFI-AS-WIFI.md`, extract
    the ABI from the 15.6.1 kernel collection with `tools/kc.py`; do not copy GPL `itlwm`). Wanted, not started.
-5. Housekeeping: old kext backup `itlmt7925.e8df337.old` in the ESP root; retired remote branches
-   (`ccr-fc111298-ip8jp5`, `diag-esp-log`, `diag-mirror-m2m3`) not deleted.
+5. Housekeeping: old kext backup `itlmt7925.e8df337.old` in the ESP root. (Retired remote branches `ccr-fc111298-ip8jp5`,
+   `diag-esp-log`, `diag-mirror-m2m3` were deleted 2026-10-11 with the owner's permission.)
 
 6. **Desktop is laggy** (macOS boots and is usable, 2026-10-11). `sample WindowServer` (`efi-audit/windowserver-sample.txt`,
    6.7 s idle desktop): WindowServer is ~95 % blocked in `mach_msg`, so it is not CPU bound. The only real work is on the render
@@ -70,6 +70,23 @@ No SMBIOS values, passphrases, MACs or neighbour SSIDs belong in this file.
    `nvmtl_vk_image_write` -> `memmove` (a CPU copy of the IOSurface into the GPU image on every texture bind; vendor
    NVMTLDriver, Metal translated to Vulkan/NVK) plus `vk_WaitForFences` -> `nvrm_gsub_wait`. Needs a sample taken **while
    dragging a window** and the active mode (Hz, HiDPI) before drawing conclusions; do not guess boot-args.
+   Findings and unknowns are in `NULLMOTH.md`. To get the missing data, on macOS run
+   `bash scripts/macos-nullmoth-probe.sh --window` (no sudo, masks UUID/MAC/serial) and drag a window in circles
+   during the 5 s sample. Caveat: the ioreg/kextstat/system_profiler files in `efi-audit/` are from a boot **before** the
+   driver was installed; do not use them for the current state.
+
+## Config tooling (Linux, no sudo once `/boot` is writable)
+
+* `python3 tools/occonfig.py get|set|add|del|args|check|diff` edits `config.plist` by schema path
+  (`UEFI/Quirks/ResizeGpuBars`, `Kernel/Add/[BundlePath=Foo.kext]/Enabled`). Every write first copies to
+  `config.plist.<tag>` (never overwrites an existing backup) and re-parses afterwards. Secrets are masked unless
+  `--reveal`. Default file: `$OC_CONFIG`, else `/boot/EFI/OC/config.plist`, else `efi/OC/config.plist`.
+  Tests: `python3 test/occonfig_test.py`. Schema: `tools/occonfig-schema.json` (from OpenCorePkg `Docs/Sample.plist` at
+  963025f1; regenerate with `occonfig.py schema`).
+* `bash scripts/build-ocvalidate.sh` builds `~/.cache/ga403/bin/ocvalidate` for the pinned OpenCore commit (needs
+  acidanthera/audk; upstream edk2 lacks `CommonMemoryAllocationLib`). `occonfig.py check` runs it when present.
+  Both the ESP and `efi/OC/config.plist` validate clean (2026-10-11).
+* Repo config vs ESP config differ only in how one short `<data>AAAAAAAA</data>` is wrapped; use `occonfig.py diff`.
 
 ## How to get data from Linux (CachyOS)
 
