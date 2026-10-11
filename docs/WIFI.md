@@ -32,6 +32,20 @@ therefore takes about 6 hours at the theoretical rate and about 9 hours in pract
 drop, so a single transfer of that size is unlikely to finish. Use USB Ethernet or USB tethering, or copy the installer from
 another machine, until the rate work below is done.
 
+**Measured on the GA403WM** (full macOS 15.6.1 install, `itlmt_fast=6`, link at L6: HE, 160 MHz on 5 GHz channel 44 / center 50,
+2 spatial streams, A-MSDU receive on, Block Ack 8 RX sessions + 1 TX session; single TCP stream to `speed.cloudflare.com`
+over the internet, about 50 ms RTT, so this is **not** a LAN `iperf3` number and the ISP uplink may be the limit):
+
+| | `e8df337` (64 TX staging slots) | `89d2cfd` (256 TX staging slots) |
+|---|---|---|
+| 30 MB upload | about 1.08 MB/s | 1.5 to 1.7 MB/s |
+| `no slot` drops during the upload | +479 on +17 976 frames (2.7 %) | **0** on +38 854 frames |
+| 25 MB download | not recorded | about 5.4 MB/s |
+| gateway ping | 3 ms, 0 % loss | 3.7 ms, 0 % loss |
+
+The firmware still retries about 16 % of the transmitted frames (`txf` fifth number), which is where a LAN measurement and the
+AP's rates should be looked at next.
+
 **Hardware ceiling (chip, not driver).** The MT7925 is a 2x2 Wi-Fi 7 (802.11be) chip:
 
 | Band / width | PHY rate (2 spatial streams) | Typical real throughput |
