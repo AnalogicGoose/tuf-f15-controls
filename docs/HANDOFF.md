@@ -77,7 +77,13 @@ No SMBIOS values, passphrases, MACs or neighbour SSIDs belong in this file.
    (The 1.9.0 lead "every cursor move is a primary flip" was fixed upstream in 1.10.0; installed now is 1.13.0.)
    Tools: `tools/framepace.swift` (no sudo), `scripts/macos-ws-frame-sample.sh` (sudo, WindowServer sample of the same frames).
 
-7. **HiDPI**: the boot raster is already 120 Hz. `scripts/macos-install-hidpi.sh` adds a scale-resolutions-only override
+7. **HiDPI: not possible on NullMoth 1.13 (2026-10-11, measured).** With the scale-resolutions override macOS offers no HiDPI
+   mode at all (every mode has points == pixels; listed with CGDisplayCopyAllDisplayModes). "1440 x 900" is a low-resolution
+   mode `0x80001000`: NVRMFB implements it as a 1440x900 surface scaled by NVKMS to the 2880x1800 raster, the NVKMS test commit
+   fails (`switchMode 0x80001000: test 1440x900 -> raster 2880x1800 ... -> 0`), NVRMFB stays on 0x10100 while WindowServer has
+   switched: black screen with flips still running (display-trace of 01:11:36). Every scaled mode takes the same path.
+   **Keep 2880 x 1800.** The override is removed again by `scripts/macos-apply-2026-10-11b.sh`. To report upstream.
+   Old text: the boot raster is already 120 Hz. `scripts/macos-install-hidpi.sh` adds a scale-resolutions-only override
    (1440x900, 1680x1050, 1280x800 "looks like"); no EDID change, no prefs deleted, so no new NVKMS mode. It lives in the
    same directory `scripts/remove-display-override.sh` (Linux) deletes, so that script removes it too. **Not applied yet.**
 
@@ -89,6 +95,17 @@ No SMBIOS values, passphrases, MACs or neighbour SSIDs belong in this file.
    `fskit_helper error=16`). Fixed in ItlDiag: it opens the partition only for each flush and skips flushes while anyone
    else has it open (mounted, fsck, diskutil; counted as "flush(es) skipped while in use" in the log). Until the fixed
    ItlDiag is on the ESP, install from Linux: `scripts/linux-apply-2026-10-11.sh`.
+
+9. **Boot time.** Unified log of the 01:15 boot: kernel 01:15:07, WindowServer 01:15:55, NVRM "boot screen: copied 2880x1800
+   ... in 15271 ms" (the boot before: 18674 ms), display armed 01:17:02. `NVRM::snapshotBootScreen` reads the 28 MB GOP console
+   through an uncached mapping 8 bytes at a time. Fix: boot-arg `-nvrmnobootscreen` (vendor switch; the takeover shows black
+   instead of the copied console, which is verbose text with `-v` anyway). Also seen: an 11 s gap after the APFS root graft and
+   a 4.9 s NVMe `setPowerState`; firmware/OpenCore time is not measured yet (OpenCore logs are copied by the round-b script).
+
+10. **Wi-Fi throughput** (driver L6/HE, PHY estimate 2402 Mb/s): measured ~8 Mb/s down, ~4-6 Mb/s up (curl over en2 to
+    speed.cloudflare.com). Counters after 536 s: reorder 35362 in / 18200 buffered / 1258 timeouts at 100 ms (= 126 s, 23 % of
+    the time with receive held), TX retries 13269 of 44055. Reorder timeout now 30 ms (`itlmt_reo=<ms>`); next suspects are
+    RX ring drops and the TX retry rate. ItlWiFi has a Speed Test (menu, curl bound to the Wi-Fi interface).
 
 Everything that needs sudo from this session is in `scripts/macos-apply-2026-10-11.sh` (one run, then reboot; it prints the
 undo commands and a Recovery-terminal undo for the NVRMFB/HiDPI part).

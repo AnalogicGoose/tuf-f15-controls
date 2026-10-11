@@ -116,6 +116,67 @@ enum LoginItem {
     }
 }
 
+// ---- speed test ------------------------------------------------------------------------------------------------------------
+// Runs /usr/bin/curl bound to the Wi-Fi interface (--interface), so a phone tether or Ethernet with a better route cannot
+// take the traffic. Server: Cloudflare's speed test endpoints (speed.cloudflare.com/__down and /__up), the same ones its web
+// test uses. Each direction runs for at most `secs` seconds; the rate is bytes moved / time, so a cut-off run still counts.
+struct SpeedResult { var pingMs: Double?; var downMbps: Double?; var upMbps: Double?; var error: String?; var at = Date() }
+
+enum SpeedTest {
+    static let host = "https://speed.cloudflare.com"
+
+    static func wifiInterface() -> String? {
+        let svc = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("itlmt7925Eth"))
+        guard svc != 0 else { return nil }
+        defer { IOObjectRelease(svc) }
+        return IORegistryEntrySearchCFProperty(svc, kIOServicePlane, "BSD Name" as CFString, kCFAllocatorDefault,
+                                               IOOptionBits(kIORegistryIterateRecursively)) as? String
+    }
+
+    // curl ... -w "<size> <time> <connect>"; returns nil when curl moved nothing
+    static func curl(_ iface: String, _ args: [String], stdin: URL? = nil) -> (bytes: Double, secs: Double, connect: Double)? {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/curl")
+        p.arguments = ["-s", "-o", "/dev/null", "--interface", iface, "-w", "%{size_download} %{size_upload} %{time_total} %{time_connect} %{time_starttransfer}"] + args
+        let out = Pipe(); p.standardOutput = out; p.standardError = FileHandle.nullDevice
+        if let f = stdin { p.standardInput = try? FileHandle(forReadingFrom: f) }
+        do { try p.run() } catch { return nil }
+        p.waitUntilExit()                                    // exit 28 (time limit) is expected for the transfers
+        let f = String(data: out.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
+            .split(separator: " ").compactMap { Double($0) } ?? []
+        guard f.count == 5 else { return nil }
+        let bytes = max(f[0], f[1]), xfer = f[2] - f[4]      // time after the first byte, so the handshake does not count
+        return (bytes, xfer > 0.2 ? xfer : f[2], f[3])
+    }
+
+    static func run(secs: Int = 10) -> SpeedResult {
+        var r = SpeedResult(pingMs: nil, downMbps: nil, upMbps: nil, error: nil)
+        guard let iface = wifiInterface() else { r.error = "no Wi-Fi interface (is itlmt7925 connected?)"; return r }
+        // latency: TCP connect time of a few empty requests, best of them
+        let pings = (0..<4).compactMap { _ in curl(iface, ["--max-time", "3", "\(host)/__down?bytes=0"])?.connect }.filter { $0 > 0 }
+        if let best = pings.min() { r.pingMs = best * 1000 } else { r.error = "speed.cloudflare.com not reachable over \(iface)"; return r }
+        if let d = curl(iface, ["--max-time", "\(secs)", "\(host)/__down?bytes=50000000"]), d.bytes > 0 {
+            r.downMbps = d.bytes * 8 / d.secs / 1e6 }
+        // upload: a temporary file of random bytes (not compressible), streamed until the time limit
+        let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("itlwifi-up.bin")
+        if !FileManager.default.fileExists(atPath: tmp.path) {
+            var buf = [UInt8](repeating: 0, count: 64 << 20)
+            _ = SecRandomCopyBytes(kSecRandomDefault, buf.count, &buf)
+            FileManager.default.createFile(atPath: tmp.path, contents: Data(buf))
+        }
+        if let u = curl(iface, ["--max-time", "\(secs)", "-X", "POST", "-H", "Content-Type: application/octet-stream",
+                                "--data-binary", "@\(tmp.path)", "\(host)/__up"]), u.bytes > 0 {
+            r.upMbps = u.bytes * 8 / u.secs / 1e6 }
+        if r.downMbps == nil && r.upMbps == nil { r.error = "no data moved" }
+        return r
+    }
+
+    static func fmt(_ v: Double?) -> String {
+        guard let v else { return "–" }
+        return v >= 100 ? String(format: "%.0f", v) : v >= 10 ? String(format: "%.1f", v) : String(format: "%.2f", v)
+    }
+}
+
 // ---- UI ------------------------------------------------------------------------------------------------------------------
 final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -125,6 +186,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var pending: (ssid: String, psk: String, remember: Bool)?   // saved to the keychain once the link is up
     var userOff = false
     var autoTried = Set<String>()
+    var speed: SpeedResult?
+    var speedRunning = false
 
     func applicationDidFinishLaunching(_ n: Notification) {
         menu.delegate = self
@@ -161,7 +224,9 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         img?.isTemplate = true
         b.image = img
         b.alphaValue = alpha
-        b.toolTip = st.state == "connected" ? "\(st.ssid) · \(st.rssi) dBm" : st.state
+        var tip = st.state == "connected" ? "\(st.ssid) · ch \(st.channel)" + (st.rssi == 0 ? "" : " · \(st.rssi) dBm") : st.state
+        if let r = speed, r.error == nil { tip += " · ↓\(SpeedTest.fmt(r.downMbps)) ↑\(SpeedTest.fmt(r.upMbps)) Mb/s" }
+        b.toolTip = tip
     }
 
     func menuNeedsUpdate(_ m: NSMenu) {
@@ -201,6 +266,16 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             m.addItem(i)
         }
         m.addItem(.separator())
+        if speedRunning { label("Speed test running… (about 25 s)") }
+        else if let r = speed {
+            let t = DateFormatter.localizedString(from: r.at, dateStyle: .none, timeStyle: .short)
+            label(r.error.map { "Speed test failed: \($0)" } ??
+                  "↓ \(SpeedTest.fmt(r.downMbps)) Mb/s  ↑ \(SpeedTest.fmt(r.upMbps)) Mb/s  ·  \(SpeedTest.fmt(r.pingMs)) ms  (\(t))")
+        }
+        let sp = NSMenuItem(title: "Speed Test", action: speedRunning || st.state != "connected" ? nil : #selector(speedTest),
+                            keyEquivalent: "t")
+        sp.target = self; sp.isEnabled = !speedRunning && st.state == "connected"
+        m.addItem(sp)
         m.addItem(withTitle: "Scan Now", action: #selector(scan), keyEquivalent: "r").target = self
         m.addItem(withTitle: "Other Network…", action: #selector(other), keyEquivalent: "").target = self
         if st.state == "connected" || st.state == "connecting" {
@@ -218,6 +293,25 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         li.target = self; li.state = LoginItem.enabled ? .on : .off
         m.addItem(li)
         m.addItem(withTitle: "Quit ItlWiFi", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+    }
+
+    @objc func speedTest() {
+        guard !speedRunning else { return }
+        speedRunning = true
+        item.button?.toolTip = "Speed test running…"
+        DispatchQueue.global(qos: .userInitiated).async {
+            let r = SpeedTest.run()
+            DispatchQueue.main.async {
+                self.speedRunning = false
+                self.speed = r
+                self.updateIcon()
+                if let e = r.error { self.alert("Speed test failed", e); return }
+                self.alert("Wi-Fi speed (\(self.st.ssid))",
+                           "Download \(SpeedTest.fmt(r.downMbps)) Mb/s\nUpload \(SpeedTest.fmt(r.upMbps)) Mb/s\n" +
+                           "Latency \(SpeedTest.fmt(r.pingMs)) ms\n\nLink: channel \(self.st.channel), PHY estimate \(self.st.rate) Mb/s. " +
+                           "Measured against speed.cloudflare.com over the Wi-Fi interface only.")
+            }
+        }
     }
 
     @objc func scan() {

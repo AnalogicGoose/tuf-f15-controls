@@ -220,40 +220,49 @@ void itlmt7925::wifiScan()
 // ---------------------------------------------------------------------------------------------------------------------------
 // Beacon / probe response bookkeeping: signal and security of every AP (called by rxParseFrame)
 // ---------------------------------------------------------------------------------------------------------------------------
-// Signal from the RX vector (RXD group 3). The 802.11 header was located by pattern at `hdrOff`; the group layout taken from
-// RXD1 is accepted only if it ends exactly there (optionally plus the 2-byte header pad), so a wrong guess about the group
-// bits yields "unknown" instead of a wrong value. Group order after the 32-byte base: 4 (16), 1 (16), 2 (8), 3 (16), 5 (96).
+// Signal from the RX vector (RXD group 3). The 802.11 header was located by pattern at `hdrOff`. Group bits in RXD1 (bit 16 up:
+// 1, 2, 3, 4, 5, seen on hardware: d1=0x80070001 for a data frame with the header at byte 86). Group order after the 32-byte
+// base: 4 (16), 1 (16), 2 (8 or 16), 3 = RX vector (16), 5 (96); the header follows with up to 16 bytes of padding. A layout is
+// only used if the header sits there, and a value only if every chain's RCPI gives a plausible, consistent dBm; otherwise
+// the signal is "unknown" (0). The first samples go to the registry (rssi-probe) to pin the layout down.
 int8_t itlmt7925::rxRssi(const uint8_t *p, uint32_t len, uint32_t hdrOff)
 {
     if (len < 36) return 0;
     uint32_t d1 = le32p(p + 4);
-    static const uint8_t g1bit[2] = { 16, 11 };
+    if (rssiProbeN < 4 && ((d1 >> 18) & 1) && hdrOff + 4 <= len) {
+        size_t n = strlen(rssiProbe);
+        n += (size_t)snprintf(rssiProbe + n, sizeof(rssiProbe) - n, "%sd1=%08x d2=%08x hdr@%u:", rssiProbeN ? " | " : "", d1,
+                              le32p(p + 8), hdrOff);
+        for (uint32_t o = 32; o < hdrOff && o < 112 && n + 3 < sizeof(rssiProbe); o++)
+            n += (size_t)snprintf(rssiProbe + n, sizeof(rssiProbe) - n, "%02x", p[o]);
+        rssiProbeN++;
+        setProperty("rssi-probe", rssiProbe);
+    }
+    static const uint8_t g1bit[2] = { 16, 11 }, g2len[2] = { 8, 16 }, dw[2] = { 3, 1 };
     for (int h = 0; h < 2; h++) {
         uint32_t b = g1bit[h];
         bool g1 = (d1 >> b) & 1, g2 = (d1 >> (b + 1)) & 1, g3 = (d1 >> (b + 2)) & 1, g4 = (d1 >> (b + 3)) & 1,
              g5 = (d1 >> (b + 4)) & 1;
         if (!g3) continue;
-        uint32_t o = 32 + (g4 ? 16 : 0) + (g1 ? 16 : 0) + (g2 ? 8 : 0);
-        uint32_t rxv = o;
-        o += 16 + (g5 ? 96 : 0);
-        if (o != hdrOff && o + 2 != hdrOff) continue;
-        if (rxv + 16 > len) return 0;
-        static const uint8_t dw[2] = { 3, 1 };                               // RCPI per chain, one byte each
-        for (int k = 0; k < 2; k++) {
-            const uint8_t *r = p + rxv + 4 * dw[k];
-            int best = -128, n = 0, lo = 0, hi = -128;
-            for (int c = 0; c < 4; c++) {
-                if (r[c] == 0 || r[c] == 255) continue;
-                int dbm = ((int)r[c] - 220) / 2;
-                if (dbm < -100 || dbm > -5) { n = -1; break; }
-                if (dbm > best) best = dbm;
-                if (!n || dbm < lo) lo = dbm;
-                if (dbm > hi) hi = dbm;
-                n++;
+        for (int L = 0; L < 2; L++) {
+            uint32_t rxv = 32 + (g4 ? 16 : 0) + (g1 ? 16 : 0) + (g2 ? g2len[L] : 0);
+            uint32_t end = rxv + 16 + (g5 ? 96 : 0);
+            if (hdrOff < end || hdrOff > end + 16 || rxv + 16 > len) continue;
+            for (int k = 0; k < 2; k++) {
+                const uint8_t *r = p + rxv + 4 * dw[k];
+                int best = -128, n = 0, lo = 0, hi = -128;
+                for (int c = 0; c < 4; c++) {
+                    if (r[c] == 0 || r[c] == 255) continue;
+                    int dbm = ((int)r[c] - 220) / 2;
+                    if (dbm < -100 || dbm > -5) { n = -1; break; }
+                    if (dbm > best) best = dbm;
+                    if (!n || dbm < lo) lo = dbm;
+                    if (dbm > hi) hi = dbm;
+                    n++;
+                }
+                if (n > 0 && hi - lo <= 25) return (int8_t)best;
             }
-            if (n > 0 && hi - lo <= 25) return (int8_t)best;
         }
-        return 0;
     }
     return 0;
 }

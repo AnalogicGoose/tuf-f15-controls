@@ -247,6 +247,12 @@ private:
     uint32_t stTxUni = 0, stRxUni = 0, stRxAmsdu = 0, stTxFree = 0, stTxReclaim = 0, stTxNoSlot = 0, stTxFwFail = 0, stTxFwRetry = 0;
     uint32_t stBaReqRx = 0, stBaDecl = 0, stBaRxOn = 0, stBaTxOn = 0, stBaDel = 0, stBaBar = 0;
     uint32_t linkUpMs = 0, lastReorderMs = 0;
+    // How long a frame waits in a Block Ack reorder buffer for a missing earlier one (boot-arg itlmt_reo=<ms>). mac80211 uses
+    // 100 ms; measured here: 1258 timeouts in 536 s at 100 ms = 23 % of the time with the receive path held, while a hole is
+    // either filled by the AP's retry within a few ms or never. 30 ms keeps the retries and cuts the stalls.
+    uint32_t reoMs = 30;
+    char rssiProbe[700] = {0};               // RXD layout samples of the first beacons with RX vector, for the signal decoder
+    uint8_t rssiProbeN = 0;
     // A-MSDU receive (level 4): the hardware splits an A-MSDU into one RX packet per subframe (first / middle / last in RXD4),
     // each with the 802.11 header. The subframes of one MPDU are collected in a bundle and handed to the reorder buffer together.
     struct AmsduAsm { bool active; uint8_t tid; bool reorder; uint16_t sn; uint32_t used, t; uint8_t buf[ITL_BA_SLOT_BYTES]; };
