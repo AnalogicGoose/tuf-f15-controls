@@ -49,3 +49,10 @@ work queue and the Skywalk interface, so a half implementation risks panics.
   `itlmt7925` data path and publishes the Skywalk interface; (3) implement only `SCAN_REQ`/`SCAN_RESULT`, `SSID`, `BSSID`,
   `CHANNEL`, `RSSI`, `STATE`, `ASSOCIATE`, `POWER`, `CARD_CAPABILITIES`; (4) test on the installed system, not Recovery.
 * It also needs the NVRAM-free user interface the current driver lacks (credentials are compiled into the kext).
+
+## Status (2026-10-11)
+
+* Step 1 done: vtable of `IO80211Controller` for Darwin 24.6.0 and the 12 pure virtual slots are in `IO80211-ABI.md`.
+* Next: map `IO80211SkywalkInterface`, the work queue/command gate and the `apple80211_*_data` structs the same way, then a
+  stub kext that registers a bare controller on the existing `itlmt7925` data path. Not started.
+

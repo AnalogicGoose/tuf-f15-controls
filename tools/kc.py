@@ -2,7 +2,10 @@
 # Copyright (c) 2026 thanhnndev and contributors
 """Small helper to explore BootKernelExtensions.kc (x86_64 Mach-O fileset): symbols, string xrefs, disassembly."""
 import os, struct, re, sys, bisect
-from capstone import Cs, CS_ARCH_X86, CS_MODE_64
+try:
+    from capstone import Cs, CS_ARCH_X86, CS_MODE_64
+except ImportError:      # symbols/vtables work without it; only disasm() needs Capstone
+    Cs = None
 
 KC = os.environ.get('KC') or (sys.argv[1] if len(sys.argv) > 1 else None)
 if not KC or not os.path.isfile(KC):
@@ -87,8 +90,9 @@ def demangle(s):
     return s
 
 
-md = Cs(CS_ARCH_X86, CS_MODE_64)
-md.detail = False
+md = Cs(CS_ARCH_X86, CS_MODE_64) if Cs else None
+if md:
+    md.detail = False
 
 
 def find_func_start(va):
@@ -98,6 +102,8 @@ def find_func_start(va):
 
 
 def disasm(start, end, comment_strings=True):
+    if md is None:
+        raise RuntimeError('disasm needs Capstone (pip install capstone); llvm-objdump works on the extracted kext too')
     off = va2off(start)
     code = d[off:off + (end - start)]
     for ins in md.disasm(code, start):
