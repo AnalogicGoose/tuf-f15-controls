@@ -36,8 +36,12 @@ struct itl_reorder {
     uint16_t size;                    // window size, a power of two <= ITL_BA_MAX_WIN
     uint16_t nframes;                 // slots in use
     bool active;
+    // Sequence numbers the window moved past without having received them (hole flushed on timeout, BAR, window slide).
+    // A frame that arrives later for one of them is delivered out of order instead of being dropped as old: it is usually the
+    // retransmission that fills the hole, and TCP copes with reordering far better than with loss.
+    uint8_t missed[4096 / 8];
     // statistics
-    uint32_t nIn, nDirect, nBuffered, nDup, nOld, nFlushed, nTimeout, nBar, nTooBig;
+    uint32_t nIn, nDirect, nBuffered, nDup, nOld, nFlushed, nTimeout, nBar, nTooBig, nLate;
 };
 
 typedef void (*itl_ba_deliver_fn)(void *ctx, const uint8_t *frame, uint32_t len);

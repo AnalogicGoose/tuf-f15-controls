@@ -130,7 +130,13 @@ No SMBIOS values, passphrases, MACs or neighbour SSIDs belong in this file.
 
 13. **Bluetooth** (MT7925 BT, USB 0489:e11e): no macOS driver; bluetoothd idles out and is respawned every ~32 s.
     2026-10-11: `kexts/MtkBtFw` loads the firmware (Linux btmtk procedure) and BlueToolFixup 2.7.2 + the two NVRAM
-    variables are on the ESP. **Untested until the next boot**; see [BLUETOOTH.md](BLUETOOTH.md).
+    variables are on the ESP. Controller comes up (State On, real address, firmware v9736); pairing not tested yet. See
+    [BLUETOOTH.md](BLUETOOTH.md).
+14. **CPU clock** (AmdCppc, `sysctl debug.amdcppc.freq`, 2026-10-11, AC, CPPC off): the 4 Zen 5 cores (cpu0-7) sit at exactly
+    2000 MHz (P0, hardware P-state status FID 0x190) and never boost; the 8 Zen 5c cores (cpu8-23) run up to 3300 MHz, their
+    CPPC highest perf (125 vs 196-208 for Zen 5). A single thread therefore gets 2.0 or 3.3 GHz depending on where the
+    scheduler puts it, never the 5.1 GHz boost. CPPC on + EPP 0 did not change `cpuclock` once; per-core numbers with CPPC
+    on still to be taken. The machine rebooted a few minutes after the first CPPC enable (cause unknown).
 
 Everything that needs sudo from this session is in `scripts/macos-apply-2026-10-11.sh` (one run, then reboot; it prints the
 undo commands and a Recovery-terminal undo for the NVRMFB/HiDPI part).

@@ -156,6 +156,26 @@ int main()
         x.put(10); x.put(12); x.put(12); x.put(9); x.put(10);
         CHECK(x.s.got == std::vector<uint32_t>({10}) && x.r.nDup == 1 && x.r.nOld == 2, "reorder: duplicate buffered frame and frames behind the window are dropped");
     }
+    // ---- a hole given up on (timeout) is still delivered when its frame arrives late; a real duplicate is not
+    {
+        Rx x(0);
+        x.put(0, 0); x.put(2, 0); x.put(3, 0);
+        itl_reorder_tick(&x.r, 40, 30, deliver, &x.s);                 // 1 is missing: 2 and 3 released after 30 ms
+        CHECK(x.s.got == std::vector<uint32_t>({0, 2, 3}), "late: hole flushed on timeout");
+        x.put(1, 45);                                                  // the AP's retransmission of 1
+        x.put(1, 46);                                                  // and a second copy of it
+        x.put(2, 47);                                                  // a frame that was delivered already
+        CHECK(x.s.got == std::vector<uint32_t>({0, 2, 3, 1}) && x.r.nLate == 1 && x.r.nOld == 2,
+              "late: the flushed hole is delivered once, duplicates are still dropped");
+    }
+    // ---- BAR / window slide also mark the skipped sequence numbers
+    {
+        Rx x(0);
+        x.put(0);
+        itl_reorder_bar(&x.r, 5, deliver, &x.s);                       // originator gave up on 1..4
+        x.put(3); x.put(5);
+        CHECK(x.s.got == std::vector<uint32_t>({0, 3, 5}) && x.r.nLate == 1, "late: frame skipped by a BAR is delivered if it still comes");
+    }
     // ---- window slides when a frame lands beyond it (lost frame 1)
     {
         Rx x(0);
