@@ -82,7 +82,10 @@ No SMBIOS values, passphrases, MACs or neighbour SSIDs belong in this file.
    mode `0x80001000`: NVRMFB implements it as a 1440x900 surface scaled by NVKMS to the 2880x1800 raster, the NVKMS test commit
    fails (`switchMode 0x80001000: test 1440x900 -> raster 2880x1800 ... -> 0`), NVRMFB stays on 0x10100 while WindowServer has
    switched: black screen with flips still running (display-trace of 01:11:36). Every scaled mode takes the same path.
-   **Keep 2880 x 1800.** The override is removed again by `scripts/macos-apply-2026-10-11b.sh`. To report upstream.
+   **Keep 2880 x 1800 in System Settings.** Next try (round c): the override plus the WindowServer pref
+   `DisplayResolutionEnabled` (what one-key-hidpi sets; there is no HiDPI kext, HiDPI is built by WindowServer on the native
+   mode). A real HiDPI mode keeps the 2880x1800 framebuffer, so NVRMFB needs no scaled mode set. Switch only with
+   `tools/hidpi-try.swift` (takes nothing but a native-framebuffer HiDPI mode, reverts after 15 s without confirmation).
    Old text: the boot raster is already 120 Hz. `scripts/macos-install-hidpi.sh` adds a scale-resolutions-only override
    (1440x900, 1680x1050, 1280x800 "looks like"); no EDID change, no prefs deleted, so no new NVKMS mode. It lives in the
    same directory `scripts/remove-display-override.sh` (Linux) deletes, so that script removes it too. **Not applied yet.**
@@ -105,10 +108,23 @@ No SMBIOS values, passphrases, MACs or neighbour SSIDs belong in this file.
    instead of the copied console, which is verbose text with `-v` anyway). Also seen: an 11 s gap after the APFS root graft and
    a 4.9 s NVMe `setPowerState`; firmware/OpenCore time is not measured yet (OpenCore logs are copied by the round-b script).
 
-10. **Wi-Fi throughput** (driver L6/HE, PHY estimate 2402 Mb/s): measured ~8 Mb/s down, ~4-6 Mb/s up (curl over en2 to
+10. **Wi-Fi after boot did not come back (fixed in code 2026-10-11, round c):** the supervisor change wiped the credentials in
+    `m3Run1()` after the first selection, so when L6 passed no unicast and the ladder stepped down, the next level ended in
+    `nocred` (rc -22) and the supervisor started again at L6, forever. Now the ladder keeps them and `lvlCap` remembers the
+    level that worked. RSSI decoding works (2 chains, 0xff for the unused ones; `rssi-probe` holds raw samples).
+    **Wi-Fi throughput** (driver L6/HE, PHY estimate 2402 Mb/s): measured ~8 Mb/s down, ~4-6 Mb/s up (curl over en2 to
     speed.cloudflare.com). Counters after 536 s: reorder 35362 in / 18200 buffered / 1258 timeouts at 100 ms (= 126 s, 23 % of
     the time with receive held), TX retries 13269 of 44055. Reorder timeout now 30 ms (`itlmt_reo=<ms>`); next suspects are
     RX ring drops and the TX retry rate. ItlWiFi has a Speed Test (menu, curl bound to the Wi-Fi interface).
+
+11. **Apps (no sudo):** ItlWiFi is a SwiftUI popover now (current network, speed test, inline password, saved networks;
+    `scripts/build-itlwifi.sh --install`). TapGuard ignores trackpad taps for 350 ms after a key press (VoodooInput's own
+    typing quiet time needs VoodooPS2Keyboard; this keyboard is USB): `scripts/build-tapguard.sh --install`, Accessibility
+    permission, `defaults write com.itlmt7925.TapGuard QuietMs -int <ms>`.
+
+12. **CPU clock** (`tools/cpuclock.c`): 1.4-1.8 GHz sustained single-thread at first (AC), 3.0-3.8 GHz later on battery.
+    macOS has no AMD P-state/CPPC driver; the clock follows the firmware and the Armoury Crate profile. Measure on AC with
+    the Performance/Turbo profile before writing a CPPC kext.
 
 Everything that needs sudo from this session is in `scripts/macos-apply-2026-10-11.sh` (one run, then reboot; it prints the
 undo commands and a Recovery-terminal undo for the NVRMFB/HiDPI part).
