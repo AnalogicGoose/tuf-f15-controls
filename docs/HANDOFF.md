@@ -124,7 +124,12 @@ No SMBIOS values, passphrases, MACs or neighbour SSIDs belong in this file.
 
 12. **CPU clock** (`tools/cpuclock.c`): 1.4-1.8 GHz sustained single-thread at first (AC), 3.0-3.8 GHz later on battery.
     macOS has no AMD P-state/CPPC driver; the clock follows the firmware and the Armoury Crate profile. Measure on AC with
-    the Performance/Turbo profile before writing a CPPC kext.
+    the Performance/Turbo profile before writing a CPPC kext. On AC (03:45): still 1.4-3.3 GHz. `AmdCppc.kext` (round d) reads
+    HWCR/PStateCtl/CPPC on every CPU (`sysctl debug.amdcppc.report`) and changes them only through root sysctls
+    (`pstate`, `boost`, `cppc`, `epp`), so the fix can be tried without a reboot.
+
+13. **Bluetooth** (MT7925 BT, USB 0489:e11e): no macOS driver; bluetoothd idles out and is respawned every ~32 s. Needs a
+    firmware-loader kext (as IntelBluetoothFirmware does for Intel) plus BlueToolFixup. Not started.
 
 Everything that needs sudo from this session is in `scripts/macos-apply-2026-10-11.sh` (one run, then reboot; it prints the
 undo commands and a Recovery-terminal undo for the NVRMFB/HiDPI part).

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: BSD-3-Clause-Clear
 # Copyright (c) 2026 thanhnndev and contributors
 # HiDPI ("200 %") for the built-in OLED on macOS: adds a display override with scale-resolutions only. RUN ON macOS (sudo).
-#   scripts/macos-install-hidpi.sh          install; reboot, then System Settings > Displays > "1440 x 900"
+#   scripts/macos-install-hidpi.sh          install; reboot, then switch with tools/hidpi-try.swift
 #   scripts/macos-install-hidpi.sh --undo   remove it again
 # Unlike the Linux installer (install-display-override.sh) this does NOT replace the EDID and does NOT delete the
 # WindowServer prefs: the panel keeps the timing it boots with (2880x1800 @ 120 Hz), so picking a HiDPI size is a scaling
@@ -30,4 +30,4 @@ plutil -lint "$T/o.plist" >/dev/null
 sudo mkdir -p "$DIR"
 [ -f "$F" ] && sudo cp -p "$F" "$F.bak-$(date +%Y%m%d-%H%M%S)"
 sudo cp "$T/o.plist" "$F"; sudo chown root:wheel "$F"; sudo chmod 644 "$F"
-echo "installed $F. Reboot, then System Settings > Displays: pick 1440 x 900 (keep the refresh rate at 120 Hz)."
+echo "installed $F. Reboot, then switch ONLY with tools/hidpi-try.swift (not System Settings: its 1440 x 900 can be the low-resolution mode that goes black)."
