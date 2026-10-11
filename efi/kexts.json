@@ -2,6 +2,12 @@
   "note": "Third-party kexts used on the reference machine (SHA-256 of the executable); they are not redistributed. itlmt7925, ItlXhciKick and ItlDiag are built from this repository.",
   "kexts": [
     {
+      "path": "Kexts/AMFIPass.kext",
+      "bundle_id": "com.dhinakg.AMFIPass",
+      "version": "1.4.1",
+      "executable_sha256": "4c35bc196d35c69b5f9dca83fe733801211c7828716f51585c7f5450039ca884"
+    },
+    {
       "path": "Kexts/AppleALC.kext",
       "bundle_id": "as.vit9696.AppleALC",
       "version": "1.9.9",

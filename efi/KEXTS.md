@@ -20,6 +20,7 @@ VoodooI2CServices before VoodooI2C, VoodooI2CHID last.
 | Kext (version used) | Upstream | Role here |
 |---|---|---|
 | Lilu 1.7.3 | <https://github.com/acidanthera/Lilu> | patching framework for the plug-ins below |
+| AMFIPass 1.4.1 | <https://github.com/dortania/OpenCore-Legacy-Patcher> (payload, SHA-256 of the zip `07b26614…`) | Lilu plug-in that lets WindowServer (a platform binary) load the ad hoc signed NullMoth driver; required since NullMoth 1.10 |
 | VirtualSMC 1.3.9 | <https://github.com/acidanthera/VirtualSMC> | SMC emulation |
 | SMCBatteryManager 1.3.9 | VirtualSMC release | battery status |
 | SMCLightSensor 1.3.9 | VirtualSMC release | ambient light; **disabled** in `config.plist` |
