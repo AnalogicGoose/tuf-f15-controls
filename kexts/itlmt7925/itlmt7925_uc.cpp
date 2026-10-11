@@ -124,7 +124,7 @@ IOReturn itlmt7925::ucJoin(const char *ssid, const char *psk)
     IOLockLock(cmdLock);
     strlcpy(reqNet.ssid, ssid, sizeof(reqNet.ssid));
     strlcpy(reqNet.psk, psk, sizeof(reqNet.psk));
-    cmdBits = (cmdBits & ~CMD_DISCONNECT) | CMD_JOIN;
+    cmdBits = (cmdBits & ~(uint32_t)CMD_DISCONNECT) | (uint32_t)CMD_JOIN;
     IOLockUnlock(cmdLock);
     return kIOReturnSuccess;
 }
@@ -133,7 +133,7 @@ IOReturn itlmt7925::ucDisconnect()
 {
     if (!m3On || !cmdLock || !wstate[0]) return kIOReturnNotReady;
     IOLockLock(cmdLock);
-    cmdBits = (cmdBits & ~CMD_JOIN) | CMD_DISCONNECT;
+    cmdBits = (cmdBits & ~(uint32_t)CMD_JOIN) | (uint32_t)CMD_DISCONNECT;
     bzero(&reqNet, sizeof(reqNet));
     IOLockUnlock(cmdLock);
     return kIOReturnSuccess;
@@ -275,9 +275,9 @@ static uint8_t secFromIes(const uint8_t *ie, const uint8_t *end, uint16_t cap)
         const uint8_t *v = ie + 2;
         if (id == 48 && l >= 8) {
             rsn = true;
-            uint32_t pc = v[6] | (v[7] << 8), o = 8 + 4 * pc;
+            uint32_t pc = (uint32_t)(v[6] | (v[7] << 8)), o = 8 + 4 * pc;
             if (o + 2 <= l) {
-                uint32_t ac = v[o] | (v[o + 1] << 8);
+                uint32_t ac = (uint32_t)(v[o] | (v[o + 1] << 8));
                 for (uint32_t i = 0; i < ac && o + 2 + 4 * i + 4 <= l; i++) {
                     const uint8_t *s = v + o + 2 + 4 * i;
                     if (s[0] != 0x00 || s[1] != 0x0f || s[2] != 0xac) continue;

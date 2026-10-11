@@ -76,11 +76,11 @@ void itlmt7925::ringRelease(itl_ring &r, int bi)
     put32(nd + 8, 0);
     put32(nd + 12, 0);
     put32(nd + 4, MT_DMA_CTL_SD_LEN0(MT_RX_BUF_SIZE));
-    r.slotBuf[r.head] = bi;
+    r.slotBuf[r.head] = (uint16_t)bi;
     r.head = (r.head + 1) % r.n;
     r.tail = (r.tail + 1) % r.n;
     membar();
-    wr(r.regs + Q_CPU_IDX, r.head);
+    wr(r.regs + Q_CPU_IDX, (uint32_t)r.head);
 }
 
 // One-line snapshot of everything that could explain a silent firmware.
@@ -244,13 +244,13 @@ void itlmt7925::m2Publish()
 {
     size_t n = 0;
     m2res[0] = 0;
-    n += snprintf(m2res + n, sizeof(m2res) - n, "rx=%u bcn=%u oth=%u ap=%d sd=%d@%ums h:", rxPkts, rxBeacons, rxOther, nAps,
+    n += (size_t)snprintf(m2res + n, sizeof(m2res) - n, "rx=%u bcn=%u oth=%u ap=%d sd=%d@%ums h:", rxPkts, rxBeacons, rxOther, nAps,
                   scanDone ? 1 : 0, scanMs);
     for (unsigned c = 0; c < sizeof(chHist) && n + 12 < sizeof(m2res); c++)
-        if (chHist[c]) n += snprintf(m2res + n, sizeof(m2res) - n, "%u=%u,", c, chHist[c]);
-    n += snprintf(m2res + n, sizeof(m2res) - n, ":");
+        if (chHist[c]) n += (size_t)snprintf(m2res + n, sizeof(m2res) - n, "%u=%u,", c, chHist[c]);
+    n += (size_t)snprintf(m2res + n, sizeof(m2res) - n, ":");
     for (int i = 0; i < nAps && n + 40 < sizeof(m2res); i++)
-        n += snprintf(m2res + n, sizeof(m2res) - n, " %s/%u/%02x%02x", aps[i].ssid, aps[i].ch, aps[i].bssid[4],
+        n += (size_t)snprintf(m2res + n, sizeof(m2res) - n, " %s/%u/%02x%02x", aps[i].ssid, aps[i].ch, aps[i].bssid[4],
                       aps[i].bssid[5]);
     setProperty("m2-res", m2res);
 }
@@ -363,10 +363,10 @@ int itlmt7925::m2Run()
         const uint8_t *q = ev + bases[bi2];
         const uint8_t *end = ev + evl;
         if (q + 4 > end) continue;
-        uint16_t n = q[0] | (q[1] << 8);
+        uint16_t n = (uint16_t)(q[0] | (q[1] << 8));
         q += 4;
         for (uint16_t i = 0; i < n && q + 4 <= end; i++) {
-            uint16_t tag = q[0] | (q[1] << 8), tl = q[2] | (q[3] << 8);
+            uint16_t tag = (uint16_t)(q[0] | (q[1] << 8)), tl = (uint16_t)(q[2] | (q[3] << 8));
             if (tl < 4 || q + tl > end) break;
             if (tag == MT_NIC_CAP_MAC_ADDR && tl >= 10) { memcpy(mac, q + 4, 6); gotMac = true; }
             q += tl;

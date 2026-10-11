@@ -30,7 +30,14 @@
 #include <kern/clock.h>
 #include <mach/mach_time.h>
 #include <string.h>
-#include <stdio.h>
+#include <libkern/libkern.h>
+
+// IOCreateThread() is deprecated: a detached kernel thread through the KPI does the same.
+static void startThread(void (*fn)(void *), void *arg)
+{
+    thread_t th = nullptr;
+    if (kernel_thread_start((thread_continue_t)fn, arg, &th) == KERN_SUCCESS) thread_deallocate(th);
+}
 
 class ItlXhciKick : public IOService {
     OSDeclareDefaultStructors(ItlXhciKick)
@@ -169,7 +176,7 @@ static void worker(void *)
             char b[200];
             int n = snprintf(b, sizeof(b), "kick up=%us p=%uus", (unsigned)((now - t0) / 1000000000ull), period);
             for (int i = 0; i < ntg && n < (int)sizeof(b) - 40; i++)
-                n += snprintf(b + n, sizeof(b) - n, " c%d:%u/%u/%u", i, tg[i].kicks, tg[i].hits, tg[i].miss);
+                n += snprintf(b + n, sizeof(b) - (size_t)n, " c%d:%u/%u/%u", i, tg[i].kicks, tg[i].hits, tg[i].miss);
             nvramSet("itlz0", b);
         }
         (void)total;
@@ -181,6 +188,6 @@ static void worker(void *)
 bool ItlXhciKick::start(IOService *provider)
 {
     if (!super::start(provider)) return false;
-    IOCreateThread(worker, nullptr);
+    startThread(worker, nullptr);
     return true;
 }

@@ -28,7 +28,7 @@ extern const uint8_t itl_fw_ram[], itl_fw_ram_end[];
 #define ITL_EINVAL  -22
 
 static inline uint32_t le32(const uint8_t *p) { uint32_t v; memcpy(&v, p, 4); return v; }
-static inline uint32_t be32(const uint8_t *p) { return ((uint32_t)p[0] << 24) | (p[1] << 16) | (p[2] << 8) | p[3]; }
+static inline uint32_t be32(const uint8_t *p) { return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) | ((uint32_t)p[2] << 8) | p[3]; }
 static inline void put32(uint8_t *p, uint32_t v) { memcpy(p, &v, 4); }
 static inline void put16(uint8_t *p, uint16_t v) { memcpy(p, &v, 2); }
 static inline void membar() { __sync_synchronize(); }
@@ -144,7 +144,7 @@ void itlmt7925::ringFree(itl_ring &r)
 bool itlmt7925::ringInit(itl_ring &r, int qid, uint32_t base, int n, bool rx)
 {
     r.n = n;
-    r.regs = base + qid * 0x10;
+    r.regs = base + (uint32_t)qid * 0x10u;
     r.head = r.tail = 0;
     if (!dmaAlloc(r.desc, (size_t)n * 16)) return false;
     // txData stages TXD + txp + the whole 802.11 frame in 2 KiB slots (kTxSlots of them); the other tx rings need one 4 KiB buffer
@@ -154,7 +154,7 @@ bool itlmt7925::ringInit(itl_ring &r, int qid, uint32_t base, int n, bool rx)
     for (int i = 0; i < n; i++) put32(r.desc.va + i * 16 + 4, MT_DMA_CTL_DMA_DONE);
     wr(r.regs + Q_CPU_IDX, 0);
     wr(r.regs + Q_DMA_IDX, 0);
-    wr(r.regs + Q_RING_SIZE, n);
+    wr(r.regs + Q_RING_SIZE, (uint32_t)n);
     wr(r.regs + Q_DESC_BASE, (uint32_t)r.desc.pa);
 
     if (rx) {
@@ -165,11 +165,11 @@ bool itlmt7925::ringInit(itl_ring &r, int qid, uint32_t base, int n, bool rx)
             put32(d + 4, MT_DMA_CTL_SD_LEN0(MT_RX_BUF_SIZE));
             put32(d + 8, 0);
             put32(d + 12, 0);
-            r.slotBuf[i] = i;
+            r.slotBuf[i] = (uint16_t)i;
         }
         r.head = n - 1;
         membar();
-        wr(r.regs + Q_CPU_IDX, r.head);
+        wr(r.regs + Q_CPU_IDX, (uint32_t)r.head);
     }
     return true;
 }
@@ -195,7 +195,7 @@ void itlmt7925::dmaDisable()
 void itlmt7925::dmaEnable()
 {
     // mt7925_dma_prefetch_setup()
-    for (int i = 0; i < 4; i++) wrA(MT_WFDMA0_RX_RING_EXT_CTRL(i), PREFETCH(0x0000 + 0x40 * i, 0x4));
+    for (uint32_t i = 0; i < 4; i++) wrA(MT_WFDMA0_RX_RING_EXT_CTRL(i), PREFETCH(0x0000 + 0x40 * i, 0x4));
     wrA(MT_WFDMA0_TX_RING_EXT_CTRL(0), PREFETCH(0x0100, 0x10));
     wrA(MT_WFDMA0_TX_RING_EXT_CTRL(1), PREFETCH(0x0200, 0x10));
     wrA(MT_WFDMA0_TX_RING_EXT_CTRL(2), PREFETCH(0x0300, 0x10));
@@ -234,7 +234,7 @@ bool itlmt7925::txKick(itl_ring &r, size_t len)
     put32(d + 4, MT_DMA_CTL_SD_LEN0(len) | MT_DMA_CTL_LAST_SEC0);
     r.head = (r.head + 1) % r.n;
     membar();
-    wr(r.regs + Q_CPU_IDX, r.head);
+    wr(r.regs + Q_CPU_IDX, (uint32_t)r.head);
 
     for (int us = 0; us < 500000; us += 20) {
         if ((int)(rd(r.regs + Q_DMA_IDX) & 0xffff) == r.head) return true;
@@ -311,11 +311,11 @@ int itlmt7925::rxWait(uint8_t seq, int *ret, uint32_t timeoutMs)
             put32(nd + 8, 0);
             put32(nd + 12, 0);
             put32(nd + 4, MT_DMA_CTL_SD_LEN0(MT_RX_BUF_SIZE));
-            r.slotBuf[r.head] = bi;
+            r.slotBuf[r.head] = (uint16_t)bi;
             r.head = (r.head + 1) % r.n;
             r.tail = (r.tail + 1) % r.n;
             membar();
-            wr(r.regs + Q_CPU_IDX, r.head);
+            wr(r.regs + Q_CPU_IDX, (uint32_t)r.head);
 
             if (match) return 0;
         }
@@ -339,7 +339,7 @@ int itlmt7925::initDownload(uint32_t addr, uint32_t len, uint32_t mode)
 int itlmt7925::loadPatch()
 {
     const uint8_t *fw = itl_fw_patch;
-    size_t fwlen = itl_fw_patch_end - itl_fw_patch;
+    size_t fwlen = (size_t)(itl_fw_patch_end - itl_fw_patch);
     if (fwlen < PATCH_HDR_SIZE) return ITL_EINVAL;
     m1log("patch: %.16s size=%lu", (const char *)fw, (unsigned long)fwlen);
 
@@ -396,7 +396,7 @@ int itlmt7925::loadPatch()
 int itlmt7925::loadRam()
 {
     const uint8_t *fw = itl_fw_ram;
-    size_t fwlen = itl_fw_ram_end - itl_fw_ram;
+    size_t fwlen = (size_t)(itl_fw_ram_end - itl_fw_ram);
     if (fwlen < FW_TRAILER_SIZE) return ITL_EINVAL;
     const uint8_t *tr = fw + fwlen - FW_TRAILER_SIZE;
     uint32_t nreg = tr[2];
