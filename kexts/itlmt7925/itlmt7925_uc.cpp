@@ -14,6 +14,7 @@
 #include <libkern/c++/OSDictionary.h>
 #include <libkern/c++/OSNumber.h>
 #include <libkern/c++/OSString.h>
+#include <stdarg.h>
 #include <string.h>
 
 enum { ITL_SEC_OPEN, ITL_SEC_WEP, ITL_SEC_WPA, ITL_SEC_WPA2, ITL_SEC_WPA23, ITL_SEC_WPA3, ITL_SEC_ENT };
@@ -168,6 +169,32 @@ void itlmt7925::wifiState(const char *st, const char *err)
     strlcpy(wstate, st, sizeof(wstate));
     setProperty("wifi-state", st);
     if (err) setProperty("wifi-error", err);
+}
+
+// wifi-events: what happened to the link and why, with seconds since boot. The kext's IOLog output does not reach dmesg or the
+// unified log on this machine, and m3-log / ba-log are overwritten by the next attempt, so this is the history to read after a
+// flaky session: ioreg -rc itlmt7925 -l | grep wifi-events
+void itlmt7925::evLog(const char *fmt, ...)
+{
+    char line[160];
+    int n = snprintf(line, sizeof(line), "%us ", nowMs() / 1000);
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(line + n, sizeof(line) - (size_t)n, fmt, ap);
+    va_end(ap);
+    size_t len = strlen(line);
+    while (evlen && evlen + len + 2 > sizeof(evbuf)) {          // drop the oldest lines until the new one fits
+        size_t cut = 0;
+        while (cut < evlen && evbuf[cut] != '\n') cut++;
+        if (cut < evlen) cut++;
+        memmove(evbuf, evbuf + cut, evlen - cut);
+        evlen -= cut;
+    }
+    memcpy(evbuf + evlen, line, len);
+    evlen += len;
+    evbuf[evlen++] = '\n';
+    evbuf[evlen] = 0;
+    setProperty("wifi-events", evbuf);
 }
 
 void itlmt7925::wifiLink()

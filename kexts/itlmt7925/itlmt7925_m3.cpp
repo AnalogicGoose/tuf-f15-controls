@@ -47,6 +47,8 @@ void itlmt7925::m3Publish(const char *stage)
     snprintf(m3res, sizeof(m3res), "%s tgt=%d ch=%u bssid=%02x%02x%02x ie=%u", stage, tgtFound ? 1 : 0, tgtCh, tgtBssid[3],
              tgtBssid[4], tgtBssid[5], tgtIeLen);
     setProperty("m3-res", m3res);
+    size_t sl = strlen(stage);
+    if ((sl >= 4 && !strcmp(stage + sl - 4, "fail")) || !strcmp(stage, "nocred")) evLog("connect failed: %s (lvl %u)", stage, lvl);
 }
 
 // Called by rxParseFrame for every beacon / probe response. `frame` points at the 802.11 header.
@@ -683,7 +685,7 @@ int itlmt7925::m3Assoc()
 int itlmt7925::m3Run1()
 {
     m3log("armed");
-    m3stepDown = false;                                      // per-attempt state (an earlier attempt may have failed half way)
+    m3stepDown = m3stepRadio = false;                        // per-attempt state (an earlier attempt may have failed half way)
     m3reachedAssoc = false;
     m3cipher = 0;
     m3dataOn = false;
@@ -783,6 +785,7 @@ int itlmt7925::m3Run1()
     if (fastActive && lvl >= 1 && m3reachedAssoc) {         // association / handshake failed with HT/VHT: try one level lower
         m3stepDown = true;
         baLog("lvl %u: assoc/handshake rc=%d", lvl, rc);
+        evLog("lvl %u: association/handshake failed rc=%d", lvl, rc);
     }
     return rc;
 }
@@ -801,9 +804,13 @@ int itlmt7925::m3Run()
         // levels 4..6 add features only where the AP offers them: skip the ones that would repeat the configuration that just failed
         while (next >= 4 && fastSig(next) == fastSig(lvl)) next--;
         baLog("level %u given up, connecting again at %u", lvl, next);
+        evLog("level %u -> %u%s", lvl, next, m3stepRadio ? " (radio; next connection starts high again)" : "");
         m3Teardown();
         lvl = next;
-        lvlCap = next;
+        // A level the AP does not work with stays given up for this network. Failing transmissions are radio conditions
+        // (distance, interference, a busy 160 MHz channel): run lower now, but let the next connection try the full level again,
+        // instead of staying slow for the rest of the boot after one bad minute.
+        if (!m3stepRadio) lvlCap = next;
     }
 }
 
@@ -1192,6 +1199,7 @@ void itlmt7925::m3Link()
     tgtRssi = 0;
     wifiState("connected", "");
     wifiLink();
+    evLog("up lvl %u ch %u bw %u", lvl, tgtCh, fastActive ? fastBw : 0);
     bool watchdogDone = false;
     for (;;) {
         int act = m3PumpOnce();
@@ -1213,6 +1221,7 @@ void itlmt7925::m3Link()
         }
         if (m3lost) {
             m3log("link lost: %s", m3lostWhy);
+            evLog("lost after %us at lvl %u: %s", (now - t0) / 1000, lvl, m3lostWhy);
             m3Teardown();
             return;
         }
@@ -1228,11 +1237,13 @@ void itlmt7925::m3Link()
             watchdogDone = true;
             if (!stRxUni && stTx >= 2) {                     // we transmitted, and no unicast frame ever came back: HT/VHT is not working
                 baLog("lvl %u: no unicast rx in %us (tx=%u rxd=%u eth=%u)", lvl, up, stTx, stRxData, stRxEth);
+                evLog("lvl %u: no unicast frame received in %us", lvl, up);
                 m3stepDown = true;
             }
         }
         if (fastAmsdu && ((stAmsduPkt >= 8 && !stAmsduSub) || (stAmsduBad >= 32 && stAmsduBad * 4 > stAmsduSub))) {
             baLog("lvl %u: A-MSDUs cannot be unpacked (pkt=%u sub=%u bad=%u)", lvl, stAmsduPkt, stAmsduSub, stAmsduBad);
+            evLog("lvl %u: A-MSDUs cannot be unpacked", lvl);
             m3stepDown = true;
         }
         if (txPool && now - lastTxf >= 5000) {                           // nearly every transmission reported failed by the firmware, twice in a row
@@ -1243,7 +1254,8 @@ void itlmt7925::m3Link()
             if (df >= 30 && dx * 10 >= df * 8) {
                 if (++txfBad >= 2) {
                     baLog("lvl %u: tx failing (freed=%u failed=%u in 5 s)", lvl, df, dx);
-                    m3stepDown = true;
+                    evLog("lvl %u: tx failing, %u of %u frames in 5 s, rssi %d", lvl, dx, df, tgtRssi);
+                    m3stepDown = m3stepRadio = true;
                 }
             } else {
                 txfBad = 0;
