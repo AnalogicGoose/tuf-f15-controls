@@ -1220,7 +1220,7 @@ void itlmt7925::m3Link()
         if (now - lastReorderMs >= 10) {                     // frames waiting behind a hole in a Block Ack window for too long
             lastReorderMs = now;
             for (int t = 0; t < 8; t++)
-                if (rxBa[t].r.active) itl_reorder_tick(&rxBa[t].r, now, 100, baDeliverCb, this);
+                if (rxBa[t].r.active) itl_reorder_tick(&rxBa[t].r, now, reoMs, baDeliverCb, this);
         }
         uint32_t up = (now - t0) / 1000;
         if (fastActive && !watchdogDone && up >= 25) {
