@@ -82,6 +82,12 @@ No SMBIOS values, passphrases, MACs or neighbour SSIDs belong in this file.
    mode `0x80001000`: NVRMFB implements it as a 1440x900 surface scaled by NVKMS to the 2880x1800 raster, the NVKMS test commit
    fails (`switchMode 0x80001000: test 1440x900 -> raster 2880x1800 ... -> 0`), NVRMFB stays on 0x10100 while WindowServer has
    switched: black screen with flips still running (display-trace of 01:11:36). Every scaled mode takes the same path.
+   **Cause found (2026-10-11, round d):** the override's entries were `w h 1 0x200000`; 0x200000 is
+   `kDisplayModeValidForMirroringFlag`, which alone makes a mode mirror-only. IOGraphicsLib installed them in NVRMFB
+   (`IOFBConfig` has 3360x2100 and 2560x1600 with flags 0x00200003) but CoreGraphics drops them, so no HiDPI mode was built.
+   Apple's own override for the 2880x1800 MacBook Pro panel (`DisplayVendorID-610/DisplayProductID-a013`) uses
+   `w h 9 0xa00000` (always | mirror deps, valid for HiRes | mirroring); `scripts/macos-install-hidpi.sh` now writes that.
+   `hidpi-try list --all` prints every mode with its flags. Not tested yet (needs sudo for /Library, then log out or reboot).
    **Keep 2880 x 1800 in System Settings.** Next try (round c): the override plus the WindowServer pref
    `DisplayResolutionEnabled` (what one-key-hidpi sets; there is no HiDPI kext, HiDPI is built by WindowServer on the native
    mode). A real HiDPI mode keeps the 2880x1800 framebuffer, so NVRMFB needs no scaled mode set. Switch only with
