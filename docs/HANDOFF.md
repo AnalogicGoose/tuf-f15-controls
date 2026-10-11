@@ -128,8 +128,9 @@ No SMBIOS values, passphrases, MACs or neighbour SSIDs belong in this file.
     HWCR/PStateCtl/CPPC on every CPU (`sysctl debug.amdcppc.report`) and changes them only through root sysctls
     (`pstate`, `boost`, `cppc`, `epp`), so the fix can be tried without a reboot.
 
-13. **Bluetooth** (MT7925 BT, USB 0489:e11e): no macOS driver; bluetoothd idles out and is respawned every ~32 s. Needs a
-    firmware-loader kext (as IntelBluetoothFirmware does for Intel) plus BlueToolFixup. Not started.
+13. **Bluetooth** (MT7925 BT, USB 0489:e11e): no macOS driver; bluetoothd idles out and is respawned every ~32 s.
+    2026-10-11: `kexts/MtkBtFw` loads the firmware (Linux btmtk procedure) and BlueToolFixup 2.7.2 + the two NVRAM
+    variables are on the ESP. **Untested until the next boot**; see [BLUETOOTH.md](BLUETOOTH.md).
 
 Everything that needs sudo from this session is in `scripts/macos-apply-2026-10-11.sh` (one run, then reboot; it prints the
 undo commands and a Recovery-terminal undo for the NVRMFB/HiDPI part).
