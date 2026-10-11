@@ -50,7 +50,9 @@ No SMBIOS values, passphrases, MACs or neighbour SSIDs belong in this file.
    Old note: NullMoth's `NVRM-fb:` lines are in the unified log (`log show --last 20m | grep -E "NVRM|NVAccel"`).
    Knobs in the NullMoth kexts (strings of 1.0.8): `-nvoff`, `-nvrmnogo`, `nvhwvbl=0`, `nvcursor=0`, `nvhud=1`,
    `nvfbsample=1`, sysctl `debug.nvrmfb_flip_latch`, `debug.nvaccel_iop`, `debug.nvaccelfb`. Do not toggle them blindly.
-3. **UI scale 2 (HiDPI) and 120 Hz.**
+3. **UI scale 2 (HiDPI) and 120 Hz.** *(2026-10-11: superseded by driver 1.10.0, which offers DisplayID-only modes itself, see
+   `NULLMOTH.md`. Installed here is 1.9.0. Update the driver first; the override below is installed on the Mac and should be
+   removed with `--undo` while testing 1.12.)*
    * Base EDID DTD is only 2880x1800 @ 60.001 Hz (pclk 652.27 MHz, total 2980x3648). The 120 Hz mode exists only in
      the DisplayID 2.0 block (Type VII, total 2980x1824, 120.000 Hz, same pclk), which macOS does not parse.
    * NVRMFB takes its timing list from the framebuffer family (`setDetailedTimings`) and NVKMS accepts only real EDID
@@ -66,7 +68,8 @@ No SMBIOS values, passphrases, MACs or neighbour SSIDs belong in this file.
 5. Housekeeping: old kext backup `itlmt7925.e8df337.old` in the ESP root. (Retired remote branches `ccr-fc111298-ip8jp5`,
    `diag-esp-log`, `diag-mirror-m2m3` were deleted 2026-10-11 with the owner's permission.)
 
-6. **Desktop is laggy** (macOS boots and is usable, 2026-10-11). `sample WindowServer` (`efi-audit/windowserver-sample.txt`,
+6. **Desktop is laggy** (macOS boots and is usable, 2026-10-11). *Leading lead now: driver 1.9.0 flips the primary surface on
+   every cursor move (fixed in 1.10.0, commit `3619f95e`); see `NULLMOTH.md`. The analysis below was the first pass.* `sample WindowServer` (`efi-audit/windowserver-sample.txt`,
    6.7 s idle desktop): WindowServer is ~95 % blocked in `mach_msg`, so it is not CPU bound. The only real work is on the render
    path `CA::OGL::MetalContext::draw` -> `-[NVMTLRenderCommandEncoder setFragmentTexture:]` -> `-[NVMTLTexture nvmtlSurfaceIn]` ->
    `nvmtl_vk_image_write` -> `memmove` (a CPU copy of the IOSurface into the GPU image on every texture bind; vendor
@@ -76,6 +79,14 @@ No SMBIOS values, passphrases, MACs or neighbour SSIDs belong in this file.
    `bash scripts/macos-nullmoth-probe.sh --window` (no sudo, masks UUID/MAC/serial) and drag a window in circles
    during the 5 s sample. Caveat: the ioreg/kextstat/system_profiler files in `efi-audit/` are from a boot **before** the
    driver was installed; do not use them for the current state.
+
+## NullMoth update to 1.12.0 (pending, needs the owner on macOS)
+
+Installed 1.9.0, latest 1.12.0. The Mac app (`1401-Mac-1.12.0.dmg` from the GitHub release, SHA in `SHA256SUMS.txt`) shows
+every change before making it and backs the config up. Expected config changes for our config: add `AMFIPass.kext`
+(downloaded by the app, SHA-256 checked, placed after Lilu) and boot-arg `ipc_control_port_options=0`. Before: a copy of the
+config is at `EFI/OC/config.plist.pre-nullmoth-1.12`. Do not run 1401.exe "Build". After: `scripts/macos-nullmoth-probe.sh`
+and read `/Library/NullMoth/display-trace/`.
 
 ## Config tooling (Linux, no sudo once `/boot` is writable)
 
