@@ -382,6 +382,7 @@ void itlmt7925::m3Supervise()
             wifiState("idle", "");
         }
         if (c & CMD_JOIN) {
+            if (strcmp(user.ssid, j.ssid) != 0) lvlCap = 255;      // another network: its own ladder
             user = j;
             haveUser = true; want = true; everUp = false; fails = 0; nextTry = 0;
             m3log("supervisor: join ssid len=%u", (unsigned)strlen(user.ssid));

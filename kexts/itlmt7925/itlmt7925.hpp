@@ -219,6 +219,7 @@ private:
     // one level lower, skipping levels that would change nothing for this AP.
     uint8_t fastLevel = 0;                   // requested by the boot-arg
     uint8_t lvl = 0;                         // level of the current attempt, 0 = legacy 6 Mb/s
+    uint8_t lvlCap = 255;                    // highest level not given up on the current network (reset when the network changes)
     bool m3stepDown = false;                 // set when the attempt at `lvl` failed; m3Run() then retries one level lower
     bool m3reachedAssoc = false;
     struct RxBaSess { itl_reorder r; itl_ba_slot *mem; uint32_t memBytes; };

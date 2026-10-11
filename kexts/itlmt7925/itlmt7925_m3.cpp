@@ -732,8 +732,7 @@ int itlmt7925::m3Run1()
     if (sel < 0) { m3log("no configured network seen in the scan"); return ITL_EIO; }
     strlcpy(m3ssid, nets[sel].ssid, sizeof(m3ssid));
     strlcpy(m3psk, nets[sel].psk, sizeof(m3psk));
-    bzero(candNets, sizeof(candNets));
-    candN = 0;
+    // candNets stays: the fall-back ladder in m3Run() calls this again for the next level; m3Supervise() wipes it afterwards
     m3log("selected net%d ssid len=%u", sel + 1, (unsigned)strlen(m3ssid));
     m3log("target %02x:%02x:%02x:%02x:%02x:%02x ch=%u cap=%04x bi=%u ies=%u", tgtBssid[0], tgtBssid[1], tgtBssid[2],
           tgtBssid[3], tgtBssid[4], tgtBssid[5], tgtCh, tgtCap, tgtBcnInt, tgtIeLen);
@@ -793,7 +792,8 @@ int itlmt7925::m3Run1()
 // one level lower, down to the legacy 6 Mb/s path that was verified on the reference machine.
 int itlmt7925::m3Run()
 {
-    lvl = m3fast ? fastLevel : 0;
+    // start at the highest level that has not failed for this network in this session (lvlCap), not always at itlmt_fast
+    lvl = m3fast ? (fastLevel < lvlCap ? fastLevel : lvlCap) : 0;
     for (;;) {
         int rc = m3Run1();
         if (!m3stepDown || lvl == 0) return rc;
@@ -803,6 +803,7 @@ int itlmt7925::m3Run()
         baLog("level %u given up, connecting again at %u", lvl, next);
         m3Teardown();
         lvl = next;
+        lvlCap = next;
     }
 }
 
