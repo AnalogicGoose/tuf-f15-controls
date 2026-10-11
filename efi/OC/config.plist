@@ -452,7 +452,7 @@
 				<key>Comment</key>
 				<string>Boot-time PCI/USB dump (boot-arg itldiag=seconds)</string>
 				<key>Enabled</key>
-				<true/>
+				<false/>
 				<key>ExecutablePath</key>
 				<string>Contents/MacOS/ItlDiag</string>
 				<key>MaxKernel</key>
@@ -1845,7 +1845,7 @@
 			<key>PickerVariant</key>
 			<string>Auto</string>
 			<key>PollAppleHotKeys</key>
-			<false/>
+			<true/>
 			<key>ShowPicker</key>
 			<true/>
 			<key>TakeoffDelay</key>
@@ -1856,7 +1856,7 @@
 		<key>Debug</key>
 		<dict>
 			<key>AppleDebug</key>
-			<true/>
+			<false/>
 			<key>ApplePanic</key>
 			<true/>
 			<key>DisableWatchDog</key>
@@ -1870,7 +1870,7 @@
 			<key>SysReport</key>
 			<false/>
 			<key>Target</key>
-			<integer>67</integer>
+			<integer>0</integer>
 		</dict>
 		<key>Entries</key>
 		<array/>
@@ -1947,7 +1947,7 @@
 				Rg==
 				</data>
 				<key>boot-args</key>
-				<string>-v debug=0x100 keepsyms=1 -vi2c-force-polling nvfb=1 nvaccel=1 nvfbheads=4 -nvkmsnosmooth amfi_get_out_of_my_way=0x1 amfi=0x80 itldiag=90 itlxr=2 itlmt_m2=1 itlmt_m3=1 msgbuf=1048576 ipc_control_port_options=0 itlmt_m1=0 -nvrmnobootscreen</string>
+				<string>debug=0x100 keepsyms=1 -vi2c-force-polling nvfb=1 nvaccel=1 nvfbheads=4 -nvkmsnosmooth amfi_get_out_of_my_way=0x1 amfi=0x80 itlmt_m2=1 itlmt_m3=1 msgbuf=1048576 ipc_control_port_options=0 itlmt_m1=0 -nvrmnobootscreen</string>
 				<key>csr-active-config</key>
 				<data>
 				QwoAAA==
