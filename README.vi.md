@@ -27,7 +27,7 @@ Tên các kext (`itlmt7925`, `ItlXhciKick`, `ItlDiag`) giữ nguyên vì dự á
 3. Thêm mạng Wi-Fi vào kext (Windows, PowerShell quyền admin):
    `.\scripts\inject-creds.ps1 -Kext <EFI>\OC\Kexts\itlmt7925.kext -Ssid 'TenWifi'` (tối đa 4 mạng, thứ tự = ưu tiên).
    Mật khẩu nằm **dạng chữ thường** trong kext trên USB — đừng chia sẻ USB hay file đó.
-4. boot-args: `itlmt_m1=75 itlmt_m2=1 itlmt_m3=1`.
+4. boot-args: `itlmt_m1=0 itlmt_m2=1 itlmt_m3=1`.
 5. Boot, chờ 2–3 phút, đọc log bằng `scripts/read-nvram.ps1` (xem `docs/DEBUGGING.md`). Log chứa MAC và tên các mạng xung quanh —
    hãy che trước khi đăng.
 

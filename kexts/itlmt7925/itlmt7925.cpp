@@ -175,6 +175,8 @@ bool itlmt7925::start(IOService *provider)
     if (!super::start(provider)) return false;
     uint32_t m1 = 0;
     txLock = IOLockAlloc();
+    cmdLock = IOLockAlloc();
+    setProperty("wifi-state", "off");                         // until M3 runs (boot-arg itlmt_m3=1)
 
     pci = OSDynamicCast(IOPCIDevice, provider);
     if (!pci) { IOLog("itlmt7925: provider is not IOPCIDevice\n"); return false; }

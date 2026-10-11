@@ -169,6 +169,18 @@ void itlmt7925::rxParseFrame(const uint8_t *p, uint32_t len)
     if (m3dataOn && m3RxData(p, len)) return;
     if (m3dataOn && lvl >= 1 && m3RxCtl(p, len)) return;                                     // Block Ack action frame / BlockAckReq
     if (m3wantFc && m3RxMgmt(p, len)) return;
+    if (m3linkUp && len >= 32 + 26) {                  // deauthentication / disassociation from our AP: the link is gone
+        for (uint32_t off = 32; off + 26 <= len && off < 160; off++) {
+            uint8_t fc = p[off];
+            if ((fc != 0xc0 && fc != 0xa0) || p[off + 1] != 0) continue;
+            if (memcmp(p + off + 10, tgtBssid, 6) != 0 || memcmp(p + off + 16, tgtBssid, 6) != 0) continue;
+            if (memcmp(p + off + 4, mac, 6) != 0 && !(p[off + 4] & 1)) continue;
+            snprintf(m3lostWhy, sizeof(m3lostWhy), "%s from the AP, reason %u", fc == 0xc0 ? "deauthentication" : "disassociation",
+                     (unsigned)(p[off + 24] | (p[off + 25] << 8)));
+            m3lost = true;
+            return;
+        }
+    }
     // 802.11 mgmt header (24) + beacon fixed fields (12) + at least one IE; the frame sits after the RXD groups,
     // so look for "FC=beacon/probe-resp, addr2 == addr3" instead of decoding the group flags.
     if (len < 32 + 36 + 2) return;
@@ -197,14 +209,7 @@ void itlmt7925::rxParseFrame(const uint8_t *p, uint32_t len)
         rxBeacons++;
         if (ch < sizeof(chHist)) chHist[ch]++;
         m3Capture(p + off, len - off, ssid, ch);
-        for (int i = 0; i < nAps; i++)
-            if (!memcmp(aps[i].bssid, p + off + 16, 6)) return;       // already known
-        if (nAps < (int)(sizeof(aps) / sizeof(aps[0]))) {
-            memcpy(aps[nAps].bssid, p + off + 16, 6);
-            aps[nAps].ch = ch;
-            memcpy(aps[nAps].ssid, ssid, sizeof(ssid));
-            nAps++;
-        }
+        apSeen(p, len, off, ssid, ch);
         return;
     }
     rxOther++;
@@ -310,11 +315,11 @@ int itlmt7925::m2Scan(const char *ssidArg)
         if (scanDone && !scanMs) scanMs = ms;
         if (scanDone) {
             // a little extra time for beacons still in flight
-            for (int i = 0; i < 300; i++) { rxDataPoll(); IODelay(1000); }
+            for (int i = 0; i < 300; i++) { rxDataPoll(); if (m3sleepy) IOSleep(1); else IODelay(1000); }
             break;
         }
         if ((ms % 1000) == 999) m2Publish();
-        IODelay(1000);
+        if (m3sleepy) IOSleep(1); else IODelay(1000);  // after the first link: sleep, do not spin a CPU for the whole scan
     }
     m2Publish();
     m2log("scan finished done=%d@%ums rx=%u bcn=%u aps=%d", scanDone ? 1 : 0, scanMs, rxPkts, rxBeacons, nAps);

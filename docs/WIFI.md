@@ -18,8 +18,8 @@ Not done, in rough order of importance:
 | Gap | Consequence |
 |---|---|
 | fixed transmit rate: legacy OFDM 6 Mb/s, no HT/VHT/HE, no aggregation, no QoS | low throughput. No benchmark has been run; do not expect more than a few Mb/s |
-| no Wi-Fi UI, no runtime network switching (no IO80211) | shows up as Ethernet; networks are chosen from the kext plist |
-| no reconnect after the AP drops the link, no re-key, no power save | after a drop reboot or reload; battery use is not optimised |
+| no IO80211 integration | shows up as Ethernet in System Settings; the [ItlWiFi menu bar app](#runtime-control-itlwifi-menu-bar-app) gives the scan list, join and disconnect (untested on hardware yet) |
+| no group re-key, no power save | battery use is not optimised (reconnect after a drop: implemented with the runtime control, untested) |
 | WPA2-PSK/CCMP only | no open networks, no WPA3/SAE, no enterprise, no 6 GHz scan |
 | regulatory domain is a fixed world domain (`00`: 2.4 GHz ch 1-11, 5 GHz ch 36-165); MAC address is the one stored in the card | |
 | only the Recovery environment was exercised | behaviour of a full install (sleep, wake, power) is unknown |
@@ -87,7 +87,7 @@ Off by default, so the verified legacy path is untouched. It is selected with th
 2.4 GHz is not a separate level: it is used whenever the chosen AP is on 2.4 GHz and `itlmt_fast` is at least 1. There it is HT 20/40 only (VHT is cleared),
 CCK/ERP basic rates and short preamble are announced, and levels 4 and 6 apply (HE on 2.4 GHz uses `AX_24G`).
 
-Recommended for the first test, boot-args `itlmt_m1=75 itlmt_m2=1 itlmt_m3=1 itlmt_fast=6` (build the kext from this branch with
+Recommended for the first test, boot-args `itlmt_m1=0 itlmt_m2=1 itlmt_m3=1 itlmt_fast=6` (build the kext from this branch with
 `scripts/build.sh itlmt7925` or the `build-kexts` workflow, inject the credentials as usual). The driver tries level 6 and **steps down by itself**: if the association or the
 4-way handshake fails, if 25 s after link-up it has transmitted but never received a unicast frame from the AP, if A-MSDUs cannot be unpacked
 (packets seen but no valid subframe, or most subframes malformed), or if the firmware reports at least 80 % of the transmitted frames as failed in two consecutive 5 s windows (level 3 and up), it
@@ -151,7 +151,7 @@ The driver is split by milestone, each file a port of the matching part of the L
 | `itl_caps.cpp` | HT/VHT element parsing, channel width choice, our advertised HT/VHT elements (host-testable) | `mac80211` capability handling |
 | `fw_blob.c` | embeds `fw/*.bin` with `.incbin` | n/a |
 
-The driver runs on its own thread, polled (it does not use interrupts), started after the delay given by `itlmt_m1`.
+The driver runs on its own thread, polled (it does not use interrupts), started once the root filesystem is mounted plus the extra delay given by `itlmt_m1`.
 It has no dependency on IO80211Family; `IONetworkingFamily` provides the Ethernet interface.
 
 Connection sequence (`m3Run`): hardware prep (domain info, firmware log, eeprom=efuse, RTS threshold), wildcard scan,
@@ -165,7 +165,7 @@ BSS enable and STA state 2, 4-way handshake, PTK/GTK install, interface creation
 
 | Boot-arg | Effect |
 |---|---|
-| `itlmt_m1=<seconds>` | **required** to do anything beyond probing: wait that long, then download firmware. The reference machine uses `75` |
+| `itlmt_m1=<seconds>` | **required** to do anything beyond probing. The worker waits until the system is ready (the `IOBSD` resource, published when the root filesystem is mounted), then this many extra seconds, then downloads the firmware. Use `0` (until 2026-10-11 it was a fixed delay from kext start and the reference machine used `75`) |
 | `itlmt_m2=1` | after the firmware is running: bring up the interface and scan |
 | `itlmt_m3=1` | also connect (implies `itlmt_m2=1`) |
 | `itlmt_fast=<1..6>` | **experimental, untested on hardware**: HT/VHT rates (1), + receive Block Ack (2), + transmit Block Ack (3), + A-MSDU receive (4), + 160 MHz (5), + HE (6). Falls back one level at a time if a level does not work. See [HT/VHT mode](#htvhthe-mode-block-ack-a-msdu-and-wide-channels-itlmt_fast16) |
@@ -192,7 +192,39 @@ The repository ships these keys **empty**. Fill them locally and never commit th
 The script prints only name and passphrase lengths. The passphrase ends up in plain text inside the kext on your boot
 medium: treat that medium like a password file. On macOS, edit the plist by hand or with `plutil -replace`.
 
-A matching network is chosen automatically; there is no way to switch while running.
+A matching network is chosen automatically at boot. To switch while running, use ItlWiFi (below); the plist networks
+are then only the boot-time default.
+
+### Runtime control (ItlWiFi menu bar app)
+
+Since 2026-10-11 the kext has a user client (`itlmt7925_uc.cpp`, ABI in `kexts/itlmt7925/itl_uc_abi.h`) and a supervisor
+loop that owns the connection after the first scan. **Not yet run on hardware.**
+
+* Commands: scan (at most one per 10 s), join `{ssid, passphrase}`, disconnect. Allowed for root and for the user logged in
+  at the console. The worker thread takes them between steps; a join or disconnect while connected leaves the AP first
+  (deauthentication, BSS record off, interface link down).
+* Reconnect: deauthentication / disassociation from the AP, or 15 s with neither beacons nor data, ends the link; the
+  supervisor connects again with back-off (1, 3, 5, 10, then every 30 s). A network picked from the app that never connects is
+  given up after 3 attempts (`wifi-state` = `failed`, reason in `wifi-error`).
+* Status, readable without privileges: `ioreg -rc itlmt7925 -d1 | grep wifi-` (`wifi-state`, `wifi-error`, `wifi-ssid`,
+  `wifi-channel`, `wifi-rssi`, `wifi-rate`, `wifi-scan-gen`, `wifi-networks` with SSID, channel, signal, security, age).
+* Signal: taken from the RX vector (RXD group 3, RCPI). The group layout is only trusted when it ends exactly where the
+  802.11 header was found, otherwise the signal is reported as unknown (0).
+* Scanning while connected uses the firmware scan with split dwell; the radio leaves the AP's channel briefly.
+
+The app (`macos/ItlWiFi/`, Swift, no Xcode project): Wi-Fi icon in the menu bar (bars from the signal), network list
+(strongest BSS per SSID, security, channel), password prompt, "Remember" stores the passphrase in the login keychain
+(service `com.itlmt7925.wifi`), auto-join of saved networks when not connected, Disconnect, Forget, Open at Login
+(a user LaunchAgent).
+
+```bash
+bash scripts/build.sh itlmt7925 && bash scripts/macos-install-kext.sh itlmt7925   # ESP; keeps your plist credentials
+# with ItlDiag loaded macOS cannot mount the ESP (ItlDiag holds it for ITLLOG.BIN): then, from Linux,
+#   bash /mnt/macos-vol0/Users/<you>/develop/projects/ga403wm-hackintosh/scripts/linux-install-kext.sh itlmt7925
+bash scripts/build-itlwifi.sh --install                                           # /Applications/ItlWiFi.app
+```
+
+`scripts/macos-install-kext.sh --undo itlmt7925` puts the previous kext back (backups in `EFI/OC/Kexts-backup/`).
 
 ### Build
 

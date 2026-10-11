@@ -53,6 +53,9 @@ work queue and the Skywalk interface, so a half implementation risks panics.
 ## Status (2026-10-11)
 
 * Step 1 done: vtable of `IO80211Controller` for Darwin 24.6.0 and the 12 pure virtual slots are in `IO80211-ABI.md`.
-* Next: map `IO80211SkywalkInterface`, the work queue/command gate and the `apple80211_*_data` structs the same way, then a
+* Option B done in code (2026-10-11, untested on hardware): runtime scan/join/disconnect through a user client and the
+  ItlWiFi menu bar app (see `WIFI.md`, "Runtime control"). It also removes the "credentials only in the plist" blocker
+  listed above. System Settings still says Ethernet.
+* Next for option C: map `IO80211SkywalkInterface`, the work queue/command gate and the `apple80211_*_data` structs the same way, then a
   stub kext that registers a bare controller on the existing `itlmt7925` data path. Not started.
 

@@ -61,6 +61,7 @@ Optional kext, boot-args:
 | `itlfile=0` | the raw-file log path is on by default: ItlDiag looks for `ITLLOG.BIN` in the root of every FAT32 partition (the ESP OpenCore booted from, the stick) and writes the text log into its clusters, so no stick is needed. `scripts/usblog.ps1 -Esp -Prepare` creates the file on the ESP (elevated shell), `-Esp -Read` shows it. `itlfile=0` turns it off |
 | `itlpanic=<s>` | after that many seconds call `panic()` with the digest as the message, to get a log out of a machine you cannot otherwise reach |
 | `itloff=1` | stay completely passive (to check whether the diagnostics themselves disturb something) |
+| (ESP log) | ItlDiag opens the partition holding `ITLLOG.BIN` only while it writes, and skips writing while the partition is mounted or open elsewhere, so `diskutil mount` works while ItlDiag runs (since 2026-10-11) |
 | `itlkbd=<ms>` | fallback: initial key-repeat delay in milliseconds, `0` = off |
 
 `scripts/recovery-dump.sh [mountpoint]` collects `ioreg`, `system_profiler`, `kextstat`, `dmesg` and a 25-second typing
