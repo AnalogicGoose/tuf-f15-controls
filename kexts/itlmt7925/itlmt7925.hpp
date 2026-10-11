@@ -221,6 +221,7 @@ private:
     uint8_t lvl = 0;                         // level of the current attempt, 0 = legacy 6 Mb/s
     uint8_t lvlCap = 255;                    // highest level not given up on the current network (reset when the network changes)
     bool m3stepDown = false;                 // set when the attempt at `lvl` failed; m3Run() then retries one level lower
+    bool m3stepRadio = false;                // ... because of radio conditions (tx failing), not because the AP rejects the level
     bool m3reachedAssoc = false;
     struct RxBaSess { itl_reorder r; itl_ba_slot *mem; uint32_t memBytes; };
     RxBaSess rxBa[8] = {};                      // receive sessions by TID (the AP is the originator)
@@ -325,6 +326,9 @@ private:
     uint32_t scanGen = 0;
     volatile bool m3lost = false;            // the AP sent deauthentication / disassociation, or went silent
     char m3lostWhy[48] = {0};
+    char evbuf[1500] = {0};                  // wifi-events: the last link events of this boot, one per line, oldest first
+    size_t evlen = 0;
+    void evLog(const char *fmt, ...) __attribute__((format(printf, 2, 3)));
     uint32_t tgtLastBcnMs = 0, lastRxDataMs = 0;
     int8_t tgtRssi = 0;
     void ethLink(bool up);
