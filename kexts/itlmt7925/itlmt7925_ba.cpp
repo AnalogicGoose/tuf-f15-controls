@@ -341,7 +341,7 @@ bool itlmt7925::txSlotAlloc(uint32_t *slot, uint16_t *tok)
         txSlotT[s] = now;
         txGen[s] = (uint8_t)((txGen[s] % 31) + 1);           // 1..31, so a late TXFREE of an earlier use does not free this one
         *slot = s;
-        *tok = (uint16_t)((txGen[s] << 8) | s);              // 13 bits: generation(5) | slot(8)
+        *tok = (uint16_t)(((uint32_t)txGen[s] << 8) | s);              // 13 bits: generation(5) | slot(8)
         txNext = (uint8_t)((s + 1) & (kTxSlots - 1));
         return true;
     }

@@ -9,6 +9,13 @@
 #include <string.h>
 #include <pexpert/pexpert.h>
 
+// IOCreateThread() is deprecated: a detached kernel thread through the KPI does the same.
+static void startThread(void (*fn)(void *), void *arg)
+{
+    thread_t th = nullptr;
+    if (kernel_thread_start((thread_continue_t)fn, arg, &th) == KERN_SUCCESS) thread_deallocate(th);
+}
+
 #define super IOService
 OSDefineMetaClassAndStructors(itlmt7925, IOService)
 
@@ -222,7 +229,7 @@ bool itlmt7925::start(IOService *provider)
     // M1 only runs when asked for: boot-arg itlmt_m1=<seconds to wait before touching DMA/firmware>
     if (PE_parse_boot_argn("itlmt_m1", &m1, sizeof(m1)) && !m1Started) {
         m1Started = true;
-        IOCreateThread(m1Thread, this);
+        startThread(m1Thread, this);
     }
     return true;
 

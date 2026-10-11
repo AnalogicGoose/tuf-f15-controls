@@ -28,6 +28,13 @@
 #include <libkern/libkern.h>
 #include <libkern/OSAtomic.h>
 
+// IOCreateThread() is deprecated: a detached kernel thread through the KPI does the same.
+static void startThread(void (*fn)(void *), void *arg)
+{
+    thread_t th = nullptr;
+    if (kernel_thread_start((thread_continue_t)fn, arg, &th) == KERN_SUCCESS) thread_deallocate(th);
+}
+
 class ItlDiag : public IOService {
     OSDeclareDefaultStructors(ItlDiag)
 public:
@@ -69,7 +76,7 @@ static void fileLine(const char *fmt, ...)
     va_end(ap);
     if (n < 0) return;
     if (n >= (int)sizeof(b)) n = sizeof(b) - 1;
-    rawAppend(b, n);
+    rawAppend(b, (size_t)n);
     rawAppend("\n", 1);
 }
 
@@ -85,7 +92,7 @@ static void outLine(const char *fmt, ...)
     if (n < 0) return;
     if (n >= (int)sizeof(b)) n = sizeof(b) - 1;
     IOLog("%s\n", b);
-    rawAppend(b, n);
+    rawAppend(b, (size_t)n);
     rawAppend("\n", 1);
 }
 
@@ -140,8 +147,8 @@ static int nLogs;
 static IOService *logClient;         // the client that opened them
 static char attachMsg[120] = "not tried";
 
-static unsigned le16(const uint8_t *p) { return p[0] | (p[1] << 8); }
-static unsigned le32(const uint8_t *p) { return p[0] | (p[1] << 8) | (p[2] << 16) | ((unsigned)p[3] << 24); }
+static unsigned le16(const uint8_t *p) { return (unsigned)p[0] | ((unsigned)p[1] << 8); }
+static unsigned le32(const uint8_t *p) { return (unsigned)p[0] | ((unsigned)p[1] << 8) | ((unsigned)p[2] << 16) | ((unsigned)p[3] << 24); }
 
 static bool probeMedia(IOMedia *m, IOService *me, UInt64 *fileOff, UInt64 *fileSize, char *why, size_t whySz)
 {
@@ -548,7 +555,7 @@ static void timerProbe(void)
     outLine("ItlDiag: probe sleep100: mach=%llums cal=%llums tsc=%lluMHz", (a1 - a0) / 1000000ull, dc, dc ? (t1 - t0) / (dc * 1000ull) : 0ull);
     snprintf(lastProbe, sizeof(lastProbe), "probe sleep100: mach=%llums cal=%llums tsc=%lluMHz", (a1 - a0) / 1000000ull, dc, dc ? (t1 - t0) / (dc * 1000ull) : 0ull);
     if (probeHistLen + 24 < sizeof(probeHist))
-        probeHistLen += snprintf(probeHist + probeHistLen, sizeof(probeHist) - probeHistLen, "%llu/%llu/%llu ", (a1 - a0) / 1000000ull, dc,
+        probeHistLen += (size_t)snprintf(probeHist + probeHistLen, sizeof(probeHist) - probeHistLen, "%llu/%llu/%llu ", (a1 - a0) / 1000000ull, dc,
                                  dc ? (t1 - t0) / (dc * 1000ull) : 0ull);
 }
 
@@ -818,7 +825,7 @@ static void xrPoll(int i, uint64_t now, uint64_t start)
 }
 
 // one text line per xHCI, written to NVRAM as itlx<i>
-#define ADV(...) do { o += snprintf(out + o, cap - o, __VA_ARGS__); if (o >= cap) o = cap - 1; } while (0)
+#define ADV(...) do { o += (size_t)snprintf(out + o, cap - o, __VA_ARGS__); if (o >= cap) o = cap - 1; } while (0)
 static void xrReport(int i, char *out, size_t cap, uint64_t start)
 {
     Xhc &x = xh[i];
@@ -842,7 +849,7 @@ static void xrReport(int i, char *out, size_t cap, uint64_t start)
                 if (!ctx) continue;
                 ADV(" s%d:", s);
                 for (int d = 1; d <= 9; d++)
-                    ADV("%u", *(volatile uint32_t *)(ctx + d * csz) & 7);
+                    ADV("%u", *(volatile uint32_t *)(ctx + (uint32_t)d * csz) & 7);
             }
         }
     }
@@ -1016,7 +1023,7 @@ static void skewThread(void *)
 static void skewTest(int nthreads, unsigned ms)
 {
     skStop = 0;
-    for (int i = 0; i < nthreads; i++) IOCreateThread(skewThread, nullptr);
+    for (int i = 0; i < nthreads; i++) startThread(skewThread, nullptr);
     IOSleep(ms);
     skStop = 1;
     IOSleep(50);
@@ -1028,10 +1035,10 @@ static void buildDigest()
     char *b = digestBuf;
     int o = 0;
     uint64_t dCal = (calUs() - cal0us) / 1000, dAbs = (absNs() - abs0ns) / 1000000ull;
-    o += snprintf(b + o, sizeof(digestBuf) - o, "ITLDIAG cal=%llums mach=%llums tsc=%lluMHz | ", dCal, dAbs,
+    o += snprintf(b + o, sizeof(digestBuf) - (size_t)o, "ITLDIAG cal=%llums mach=%llums tsc=%lluMHz | ", dCal, dAbs,
                   dCal ? (rdtsc_() - tsc0) / (dCal * 1000ull) : 0ull);
-    o += snprintf(b + o, sizeof(digestBuf) - o, "nxh=%d ", nxh);
-    o += snprintf(b + o, sizeof(digestBuf) - o, "SKEW back=%lluns n=%u pub%u>rd%u cpus=%x/%x/%x/%x | ", (unsigned long long)skMaxBack,
+    o += snprintf(b + o, sizeof(digestBuf) - (size_t)o, "nxh=%d ", nxh);
+    o += snprintf(b + o, sizeof(digestBuf) - (size_t)o, "SKEW back=%lluns n=%u pub%u>rd%u cpus=%x/%x/%x/%x | ", (unsigned long long)skMaxBack,
                   (unsigned)skCount, (unsigned)(skBackAt >> 16), (unsigned)(skBackAt & 0xffff), (unsigned)skSeen[0], (unsigned)skSeen[1],
                   (unsigned)skSeen[2], (unsigned)skSeen[3]);
     for (int i = 0; i < nxh && o < 800; i++) {
@@ -1051,7 +1058,7 @@ static void buildDigest()
         if (ca && ca->getCount()) { OSString *os = OSDynamicCast(OSString, ca->getObject(0)); if (os) ic = os->getCStringNoCopy(); }
         OSArray *sa = OSDynamicCast(OSArray, p->getProperty("IOInterruptSpecifiers"));
         if (sa) nspec = sa->getCount();
-        o += snprintf(b + o, sizeof(digestBuf) - o, "X%d:%04x ucmd=%x cmd=%x msi=%x msix=%x irq=%.16s n=%u sts=%x im=%x sam=%u rise=%u max=%ums slow=%u cur=%ums erdp=%u dead=%u | ",
+        o += snprintf(b + o, sizeof(digestBuf) - (size_t)o, "X%d:%04x ucmd=%x cmd=%x msi=%x msix=%x irq=%.16s n=%u sts=%x im=%x sam=%u rise=%u max=%ums slow=%u cur=%ums erdp=%u dead=%u | ",
                       i, x.did, x.lastCmd, p->configRead16(kIOPCIConfigCommand), msi, msix, ic, nspec, x.lastSts, x.lastIman, x.samples,
                       x.rises, x.maxMs, x.slow, x.curMs, x.erdpCh, x.dead);
     }
@@ -1063,14 +1070,14 @@ static void buildDigest()
             const char *cls = e->getMetaClass()->getClassName();
             if (!strcmp(cls, "IOUSBHostDevice")) {
                 if (nu++ < 8 && o < 1000)
-                    o += snprintf(b + o, sizeof(digestBuf) - o, "U%04x:%04x/%x/s%u ", num(e, "idVendor") & 0xffff, num(e, "idProduct") & 0xffff,
+                    o += snprintf(b + o, sizeof(digestBuf) - (size_t)o, "U%04x:%04x/%x/s%u ", num(e, "idVendor") & 0xffff, num(e, "idProduct") & 0xffff,
                                   (unsigned)num(e, "locationID") >> 20, (unsigned)num(e, "Device Speed"));
             } else if (hasStr(cls, "HIDDevice") || hasStr(cls, "HIDKeyboard")) {
                 nh++;
             }
         }
         it->release();
-        o += snprintf(b + o, sizeof(digestBuf) - o, "usb=%d hid=%d", nu, nh);
+        o += snprintf(b + o, sizeof(digestBuf) - (size_t)o, "usb=%d hid=%d", nu, nh);
     }
 }
 
@@ -1183,7 +1190,7 @@ static void hidKids(IORegistryEntry *e, char *out, size_t cap, size_t &o, int de
     int n = 0;
     while (n < 3 && (c = OSDynamicCast(IORegistryEntry, ci->getNextObject()))) {
         const char *cls = c->getMetaClass()->getClassName();
-        if (o + 40 < cap) o += snprintf(out + o, cap - o, depth ? ">%.22s" : "{%.22s", cls);
+        if (o + 40 < cap) o += (size_t)snprintf(out + o, cap - o, depth ? ">%.22s" : "{%.22s", cls);
         if (depth < 2) hidKids(c, out, cap, o, depth + 1);
         n++;
     }
@@ -1203,7 +1210,7 @@ static void nvramHid()
         const char *cls = e->getMetaClass()->getClassName();
         if (!hasStr(cls, "HIDDevice")) continue;
         k++;
-        o += snprintf(buf + o, sizeof(buf) - o, "%.22s %04x:%04x %.6s pu=%x/%x ri=%d", cls, num(e, "VendorID") & 0xffff,
+        o += (size_t)snprintf(buf + o, sizeof(buf) - o, "%.22s %04x:%04x %.6s pu=%x/%x ri=%d", cls, num(e, "VendorID") & 0xffff,
                       num(e, "ProductID") & 0xffff, str(e, "Transport"), num(e, "PrimaryUsagePage") & 0xffff,
                       num(e, "PrimaryUsage") & 0xffff, (int)num(e, "ReportInterval"));
         hidKids(e, buf, sizeof(buf), o, 0);
@@ -1226,12 +1233,12 @@ static void nvramIntr()
     for (int i = 0; i < nxh && o + 110 < (int)sizeof(b); i++) {
         Xhc &x = xh[i];
         if (!x.b) continue;
-        o += snprintf(b + o, sizeof(b) - o, "X%d mi=%u", i, x.maxIntr);
+        o += snprintf(b + o, sizeof(b) - (size_t)o, "X%d mi=%u", i, x.maxIntr);
         for (uint32_t k = 1; k < 4 && k < x.maxIntr; k++) {
             Xhc::Intr &s = x.in[k];
-            o += snprintf(b + o, sizeof(b) - o, " %u:z%u,im%x,eh%u,c%u,r%u,m%u", k, s.erstsz, s.iman, s.ehb, s.chg, s.rises, s.maxMs);
+            o += snprintf(b + o, sizeof(b) - (size_t)o, " %u:z%u,im%x,eh%u,c%u,r%u,m%u", k, s.erstsz, s.iman, s.ehb, s.chg, s.rises, s.maxMs);
         }
-        o += snprintf(b + o, sizeof(b) - o, " | ");
+        o += snprintf(b + o, sizeof(b) - (size_t)o, " | ");
     }
     nvramPut("itli0", b, strlen(b));
 }
@@ -1273,7 +1280,7 @@ static void worker(void *arg)
     nvramPut("itlx0", "worker up", 9);
     xhcInit();
     { char hb[64]; snprintf(hb, sizeof(hb), "xhcInit nxh=%d physOk=%d", nxh, physOk ? 1 : 0); nvramPut("itlx0", hb, strlen(hb)); }
-    IOCreateThread(sampler, nullptr);
+    startThread(sampler, nullptr);
     uint32_t panicSec = 0;
     PE_parse_boot_argn("itlpanic", &panicSec, sizeof(panicSec));
     for (int n = 0; n < 12; n++) {
@@ -1326,7 +1333,7 @@ bool ItlDiag::start(IOService *provider)
         txt = (char *)IOMalloc(TXT_MAX);
         if (txt) bzero(txt, TXT_MAX);
     }
-    IOCreateThread(kbWorker, this);
+    startThread(kbWorker, this);
     if (!hold) return true;
 
     tsc0 = rdtsc_();
@@ -1334,6 +1341,6 @@ bool ItlDiag::start(IOService *provider)
     cal0us = calUs();
     fileLine("ItlDiag log, itldiag=%u", hold);
 
-    IOCreateThread(worker, this);
+    startThread(worker, this);
     return true;
 }

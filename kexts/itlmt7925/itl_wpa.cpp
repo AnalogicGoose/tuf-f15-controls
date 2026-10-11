@@ -218,7 +218,7 @@ int itl_aes128_unwrap(const uint8_t kek[16], const uint8_t *in, size_t inlen, ui
     memcpy(out, in + 8, 8 * n);
     for (int j = 5; j >= 0; j--) {
         for (size_t i = n; i >= 1; i--) {
-            uint32_t t = (uint32_t)(n * j + i);
+            uint32_t t = (uint32_t)(n * (size_t)j + i);
             uint8_t b[16];
             memcpy(b, a, 8);
             b[7] ^= (uint8_t)t; b[6] ^= (uint8_t)(t >> 8); b[5] ^= (uint8_t)(t >> 16); b[4] ^= (uint8_t)(t >> 24);

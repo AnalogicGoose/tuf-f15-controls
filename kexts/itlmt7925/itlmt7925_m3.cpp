@@ -267,7 +267,7 @@ int itlmt7925::m3HwPrep()
     for (int i = 0; i < 12; i++) {
         wrA(MT_WTBL_ITDR0, rates[i]);
         wrA(MT_WTBL_ITDR1, 1u << 6);                         // MT_WTBL_SPE_IDX_SEL
-        wrA(MT_WTBL_ITCR, (1u << 16) | (1u << 31) | (14 + i));
+        wrA(MT_WTBL_ITCR, (1u << 16) | (1u << 31) | (uint32_t)(14 + i));
     }
     // clear the admission counters of the two wcids we use
     static const uint16_t wcids[2] = { M3_BMC_WCID, M3_AP_WCID };
@@ -563,7 +563,7 @@ bool itlmt7925::m3Tx(const uint8_t *frame, uint32_t len, uint8_t type, uint8_t s
     put32(d + 4, MT_DMA_CTL_SD_LEN0(64) | MT_DMA_CTL_LAST_SEC0);
     txData.head = (txData.head + 1) % txData.n;
     membar();
-    wr(txData.regs + Q_CPU_IDX, txData.head);
+    wr(txData.regs + Q_CPU_IDX, (uint32_t)txData.head);
     if (txPool) return true;
     for (int us = 0; us < 200000; us += 20) {
         if ((int)(rd(txData.regs + Q_DMA_IDX) & 0xffff) == txData.head) return true;

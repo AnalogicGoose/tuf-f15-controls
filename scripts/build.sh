@@ -18,8 +18,13 @@ if [ ! -d "$SDK_DIR" ]; then
   git clone --depth 1 https://github.com/acidanthera/MacKernelSDK "$SDK_DIR"
 fi
 
-COMMON="-arch x86_64 -mmacosx-version-min=12.0 -O2 -g -mkernel -fapple-kext -fno-builtin -fno-stack-protector -nostdlib -ffreestanding -DKERNEL -DKERNEL_PRIVATE -DDRIVER_PRIVATE -DAPPLE -DNeXT -I$SDK_DIR/Headers"
-CXXFLAGS="-std=c++17 -fno-exceptions -fno-rtti"
+COMMON="-arch x86_64 -mmacosx-version-min=12.0 -O2 -g -mkernel -fno-builtin -fno-stack-protector -nostdlib -ffreestanding -DKERNEL -DKERNEL_PRIVATE -DDRIVER_PRIVATE -DAPPLE -DNeXT -I$SDK_DIR/Headers"
+CXXFLAGS="-std=c++17 -fapple-kext -fno-exceptions -fno-rtti"     # -fapple-kext is C++ only
+# libkmodc++/libcc_kext come from the installed SDK (MacKernelSDK has only libkmod) and are built for that SDK's macOS.
+# Linking with a lower deployment target makes ld warn "built for newer macOS version"; link with the library's own
+# minimum instead (the kernel does not check a kext's minos). Compilation stays at 12.0.
+LINK_MIN=$(otool -l "$(xcrun --show-sdk-path)/usr/lib/libkmodc++.a" 2>/dev/null | awk '/minos/ {print $2; exit}')
+LINK_MIN=${LINK_MIN:-12.0}
 OBJ=build/obj
 mkdir -p "$OBJ"
 
@@ -38,7 +43,7 @@ build_kext() {
     esac
     objs+=("$o")
   done
-  clang++ -arch x86_64 -mmacosx-version-min=12.0 -nostdlib -Xlinker -kext -Xlinker -no_data_const \
+  clang++ -arch x86_64 -mmacosx-version-min="$LINK_MIN" -nostdlib -Xlinker -kext -Xlinker -no_data_const \
     -L"$SDK_DIR/Library/x86_64" -lkmodc++ -lkmod -lcc_kext "${objs[@]}" -o "$out/Contents/MacOS/$name"
   echo "built $out"
   file "$out/Contents/MacOS/$name"
