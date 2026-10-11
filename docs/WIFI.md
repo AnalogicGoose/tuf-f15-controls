@@ -107,7 +107,7 @@ After the boot, read the NVRAM from Windows (`scripts/read-nvram.ps1`, see `docs
 | Variable | Content |
 |---|---|
 | `itlb0`..`itlb2` | the fast-mode log: `fast on lvl=6 ch=.. bw=.. c=.. nss=2 ...` negotiated; `fast feat amsdu=1 he=1(ap 1) 160=0 heph=.. hemac=.. map=..` which features were actually offered; `rxd len=.. d1=.. d2=.. d4=.. hdr@.. fc=.. qc=..` raw RX descriptor words of the first three data frames; `amsdu ok ai=.. len=.. hdr@.. hl=.. sn=.. sub=..` / `amsdu BAD ... d=<hex>` the first good and the first malformed A-MSDU (with a hex dump); `lvl N: A-MSDUs cannot be unpacked`, `lvl N: tx failing`; `rx addba tid=0 ssn=.. -> accept win=64`; `sta_rec_ba rx on ... rc=0 st=0`; `tx addba req`; `tx ba on`; `delba`; `lvl 3 given up, connecting again at 2` |
-| `itls0` | counters every 5 s: `up=..s L3 ... uni=<rx>/<tx> ba=<rx sessions>/<tx sessions> reo=<in>/<direct>/<buffered>/<dup>/<old>/<flushed>/<timeouts> txf=<freed>/<reclaimed>/<no slot>/<fw failed>/<fw retries>` |
+| `itls0` | counters every 5 s: `up=..s L3 ... uni=<rx>/<tx> ba=<rx sessions>/<tx sessions> reo=<in>/<direct>/<buffered>/<dup>/<old>/<flushed>/<timeouts>/<late> txf=<freed>/<reclaimed>/<no slot>/<fw failed>/<fw retries>` |
 | `itlk0`..`itlk7` | the usual connect log (`fast: on ...` or `fast: off ...`) |
 
 How to tell what worked: `L6` (or whatever number) in `itls0` is the level that stayed; `am=` with the second number growing means A-MSDUs are being unpacked; `ba=N/1` means N receive sessions and the transmit session are up;

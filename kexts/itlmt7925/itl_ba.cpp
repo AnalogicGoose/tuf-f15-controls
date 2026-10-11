@@ -28,6 +28,14 @@ void itl_reorder_start(itl_reorder *r, itl_ba_slot *slots, uint16_t ssn, uint16_
     r->active = true;
 }
 
+static inline void missed_set(itl_reorder *r, uint16_t sn, bool on)
+{
+    uint8_t bit = (uint8_t)(1u << (sn & 7));
+    if (on) r->missed[sn >> 3] |= bit;
+    else r->missed[sn >> 3] &= (uint8_t)~bit;
+}
+static inline bool missed_get(const itl_reorder *r, uint16_t sn) { return (r->missed[sn >> 3] >> (sn & 7)) & 1; }
+
 static void release_one(itl_reorder *r, uint16_t idx, itl_ba_deliver_fn fn, void *ctx)
 {
     itl_ba_slot *s = &r->slot[idx];
@@ -42,10 +50,10 @@ static void release_frames(itl_reorder *r, uint16_t to, itl_ba_deliver_fn fn, vo
 {
     uint16_t sn = r->head;
     while (itl_sn_less(sn, to)) {
-        if (!r->nframes) { sn = to; break; }
         uint16_t before = r->nframes;
-        release_one(r, (uint16_t)(sn % r->size), fn, ctx);
-        if (r->nframes != before) r->nFlushed++;
+        if (before) release_one(r, (uint16_t)(sn % r->size), fn, ctx);
+        if (r->nframes != before) { r->nFlushed++; missed_set(r, sn, false); }
+        else missed_set(r, sn, true);                                  // passed over without the frame
         sn = itl_sn_inc(sn);
     }
     r->head = to;
@@ -56,6 +64,7 @@ static void release_head(itl_reorder *r, itl_ba_deliver_fn fn, void *ctx)
 {
     while (r->slot[r->head % r->size].used) {
         release_one(r, (uint16_t)(r->head % r->size), fn, ctx);
+        missed_set(r, r->head, false);
         r->head = itl_sn_inc(r->head);
     }
 }
@@ -68,9 +77,19 @@ void itl_reorder_rx(itl_reorder *r, uint16_t sn, const uint8_t *frame, uint32_t 
         if (len) fn(ctx, frame, len);
         return;
     }
-    if (itl_sn_less(sn, r->head)) { r->nOld++; return; }              // already seen / behind the window
+    if (itl_sn_less(sn, r->head)) {                                    // behind the window
+        if (missed_get(r, sn)) {                                       // a hole we gave up on: late, but still the only copy
+            missed_set(r, sn, false);
+            r->nLate++;
+            if (len) fn(ctx, frame, len);
+        } else {
+            r->nOld++;                                                 // already delivered: a duplicate
+        }
+        return;
+    }
 
     if (sn == r->head) {                                               // the one we are waiting for
+        missed_set(r, sn, false);
         r->head = itl_sn_inc(r->head);
         r->nDirect++;
         if (len) fn(ctx, frame, len);

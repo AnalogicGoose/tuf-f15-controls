@@ -4,6 +4,13 @@ The Bluetooth half of the MT7925 is a USB device (`Wireless_Device`, class ef, i
 standard HCI controller, but only after its RAM code has been downloaded; macOS has no loader for MediaTek parts, so
 `bluetoothd` finds no controller (System Information shows a placeholder "BCM_4350C2, Address NULL, State Off").
 
+## Status (2026-10-11, first boot with it)
+
+Works as a controller: `bt-state` = ready after 5.2 s (sections 0-2 downloaded: 74 176 + 332 224 + 41 472 bytes, 0 dropped
+interrupt packets), System Information shows `State: On`, `Chipset: THIRD_PARTY_DONGLE`, firmware `v9736 c4881` and a real
+address. `bluetoothd` logs `addScanFilterByUUID failed 0x1812` (Apple's LE scan-filter offload, not present on non-Apple
+controllers; the same message appears with Intel + BlueToolFixup). Pairing headphones / mouse / keyboard: not tested yet.
+
 ## Pieces
 
 | Piece | What it does |
