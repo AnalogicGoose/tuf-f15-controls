@@ -57,7 +57,7 @@ projects; the versions are listed in `KEXTS.md`, the OpenCore patch is built by 
 
 ```
 -v debug=0x100 keepsyms=1 -vi2c-force-polling nvfb=1 nvaccel=1 nvfbheads=4 -nvkmsnosmooth
-amfi_get_out_of_my_way=0x1 amfi=0x80 itldiag=90 itlxr=2 itlmt_m1=75 itlmt_m2=1 itlmt_m3=1 msgbuf=1048576
+amfi_get_out_of_my_way=0x1 amfi=0x80 ipc_control_port_options=0 itldiag=90 itlxr=2 itlmt_m1=75 itlmt_m2=1 itlmt_m3=1 msgbuf=1048576
 ```
 
 | Argument | Meaning |
@@ -65,7 +65,8 @@ amfi_get_out_of_my_way=0x1 amfi=0x80 itldiag=90 itlxr=2 itlmt_m1=75 itlmt_m2=1 i
 | `-v`, `debug=0x100`, `keepsyms=1` | verbose boot; keep panic text on screen; keep kernel symbols in panic logs |
 | `-vi2c-force-polling` | VoodooI2C polls the trackpad instead of using GPIO interrupts |
 | `nvfb=1 nvaccel=1 nvfbheads=4 -nvkmsnosmooth` | NullMoth NVIDIA driver: framebuffer, accelerator, 4 display heads (see below) |
-| `amfi_get_out_of_my_way=0x1 amfi=0x80` | disables AMFI so WindowServer can load the NVIDIA driver bundle (NullMoth driver requirement) |
+| `amfi_get_out_of_my_way=0x1 amfi=0x80` | disables AMFI so WindowServer can load the NVIDIA driver bundle (NullMoth driver requirement; AMFIPass.kext must also be on) |
+| `ipc_control_port_options=0` | with AMFI relaxed, hardened apps such as Firefox crash at launch on their task control port; NullMoth setup 1.11 adds it |
 | `itlmt_m1=75 itlmt_m2=1 itlmt_m3=1` | itlmt7925: start after 75 s, scan, connect (`docs/WIFI.md`) |
 | `itldiag=90 itlxr=2` | ItlDiag diagnostics and xHCI event-ring sampler (`docs/DEBUGGING.md`); not needed for normal use |
 | `msgbuf=1048576` | larger kernel message buffer, so the kext logs are not truncated |
@@ -95,7 +96,7 @@ only carries what that driver asks of OpenCore:
 | Setting | Value here | Driver's installed-system value |
 |---|---|---|
 | `NVRAM > csr-active-config` | `43 0A 00 00` (0x0A43) | same |
-| boot-args `nvfb=1 nvaccel=1 nvfbheads=4 -nvkmsnosmooth amfi_get_out_of_my_way=0x1 amfi=0x80` | set | same |
+| boot-args `nvfb=1 nvaccel=1 nvfbheads=4 -nvkmsnosmooth amfi_get_out_of_my_way=0x1 amfi=0x80 ipc_control_port_options=0` | set | same |
 | `Misc > Security > SecureBootModel` | `Disabled` | same |
 | `Booter > Quirks > ResizeAppleGpuBars` | `0` | `-1` |
 | `UEFI > Quirks > ResizeGpuBars` | `-1` | `13` (8 GB BAR) |

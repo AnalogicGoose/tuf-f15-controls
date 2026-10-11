@@ -9,7 +9,7 @@
 #                       but your user (and Claude running as you) can read/write it directly.
 #   /mnt/macos-vol0     new "noauto,user,ro" APFS entry: `mount /mnt/macos-vol0` works as a normal user,
 #                       read-only, Data volume (vol=0). Writing to APFS stays a root job
-#                       (scripts/install-display-override.sh), by design.
+#                       (scripts/remove-display-override.sh), by design.
 # Not done on purpose: no NOPASSWD sudoers rule (anything that can write a script under your home would be root),
 # no "disk" group (raw write access to every disk).
 set -eu
