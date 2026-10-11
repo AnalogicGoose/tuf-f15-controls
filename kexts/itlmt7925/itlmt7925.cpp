@@ -83,8 +83,18 @@ void itlmt7925::note(const char *fmt, uint32_t a, uint32_t b, uint32_t c)
 
 // Same recipe as ItlDiag: the value must be OSData, and the sync has to be forced or it never reaches the firmware variable store
 // (string properties were silently dropped: itlmt7925-log never showed up in Windows).
+// NVRAM logging is for bring-up without a working macOS (read from Windows/Linux after a hang). Each write forces a flash
+// update through the firmware, so it is off unless the boot-arg itlmt_nvlog=1 is set; the same text is always in the registry
+// (ioreg -rc itlmt7925: m0-log .. m3-log, stat-log, ba-log).
+static int gNvlog = -1;
+static bool nvlogOn()
+{
+    if (gNvlog < 0) { uint32_t v = 0; gNvlog = (PE_parse_boot_argn("itlmt_nvlog", &v, sizeof(v)) && v) ? 1 : 0; }
+    return gNvlog == 1;
+}
 static void nvramSet(IORegistryEntry *opt, const char *name, const char *s, size_t n)
 {
+    if (!nvlogOn()) return;
     OSData *d = OSData::withBytes(s, (unsigned)n);
     if (d) { opt->setProperty(name, d); d->release(); }
     opt->setProperty("IONVRAM-FORCESYNCNOW-PROPERTY", name);

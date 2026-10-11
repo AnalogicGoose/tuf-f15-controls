@@ -5,7 +5,12 @@
 #   1. ESP: mount it from macOS (tests the ItlDiag fix), list the kexts, copy the newest OpenCore logs to ~/efi-audit
 #   2. NVRMFB patch: VRAM grant timing after the patch (was 0.7-1.1 s per 8 MB)
 #   3. itlmt7925: reorder timeout 30 ms (was 100 ms, 23 % of the time stalled), signal decoder + rssi-probe   -> ESP
-#   4. boot-arg -nvrmnobootscreen: NullMoth's boot-screen copy read 28 MB of VRAM uncached, 15-19 s per boot -> ESP config
+#   4. ESP config.plist cleanup (one backup config.plist.cleanup-<time> first):
+#        -nvrmnobootscreen          NullMoth's boot-screen copy read 28 MB of VRAM uncached: 15-19 s per boot
+#        Misc/Debug/Target 0        was 0x43: OpenCore log on screen + to a file on the ESP, flushed per line (slow boot)
+#        Misc/Debug/AppleDebug off  boot.efi's log went into that file too
+#        PollAppleHotKeys on        so Cmd+V in the picker still gives a verbose boot when needed
+#        drop -v, itldiag=90, itlxr=2 and disable ItlDiag.kext: bring-up diagnostics, macOS has its own logs now
 #   5. remove the HiDPI override: NullMoth offers no HiDPI modes and every scaled mode (1440x900 etc.) goes black
 set -u
 cd "$(dirname "$0")/.."
@@ -38,10 +43,23 @@ if [ -n "$MP" ]; then
   echo "== 3/5 itlmt7925 -> ESP =="
   bash scripts/build.sh itlmt7925 > "$OUT/build.txt" 2>&1 || { echo "build failed, see $OUT/build.txt"; exit 1; }
   bash scripts/macos-install-kext.sh itlmt7925 2>&1 | tee "$OUT/kext.txt"
-  echo "== 4/5 boot-arg -nvrmnobootscreen =="
-  sudo /usr/bin/python3 tools/occonfig.py -c "$MP/EFI/OC/config.plist" args --tag "nobootscreen-$(date +%Y%m%d-%H%M%S)" add -- -nvrmnobootscreen 2>&1 |
-    tee "$OUT/bootargs.txt"
-  /usr/bin/python3 tools/occonfig.py -c "$MP/EFI/OC/config.plist" args show | tr '\n' ' ' | tee -a "$OUT/bootargs.txt"; echo
+  echo "== 4/5 config.plist cleanup =="
+  C="$MP/EFI/OC/config.plist"; TS=$(date +%Y%m%d-%H%M%S)
+  sudo cp -p "$C" "$C.cleanup-$TS"
+  O() { sudo /usr/bin/python3 tools/occonfig.py -c "$C" "$@" 2>&1 | tail -1; }
+  ok=1
+  O args --tag c1-$TS add -- -nvrmnobootscreen || ok=0
+  O set --tag c2-$TS Misc/Debug/Target 0 || ok=0
+  O set --tag c3-$TS Misc/Debug/AppleDebug false || ok=0
+  O set --tag c4-$TS Misc/Boot/PollAppleHotKeys true || ok=0
+  O set --tag c5-$TS "Kernel/Add/[BundlePath=ItlDiag.kext]/Enabled" false || ok=0
+  O args --tag c6-$TS del -- itldiag itlxr -v || ok=0
+  sudo rm -f "$C".c[1-6]-$TS
+  /usr/bin/python3 tools/occonfig.py -c "$C" check 2>&1 | head -2 | tee "$OUT/config-check.txt"
+  /usr/bin/python3 tools/occonfig.py -c "$C" args show | tr '\n' ' ' | tee "$OUT/bootargs.txt"; echo
+  for k in Misc/Debug/Target Misc/Debug/AppleDebug Misc/Boot/PollAppleHotKeys "Kernel/Add/[BundlePath=ItlDiag.kext]/Enabled"; do
+    printf "%s = %s\n" "$k" "$(/usr/bin/python3 tools/occonfig.py -c "$C" get "$k" 2>&1 | tail -1)"; done | tee -a "$OUT/bootargs.txt"
+  echo "config backup: $C.cleanup-$TS"
 fi
 
 echo "== 5/5 remove the HiDPI override =="
@@ -50,4 +68,4 @@ bash scripts/macos-install-hidpi.sh --undo
 echo
 echo "Done ($OUT). Reboot now (sudo shutdown -r now). Afterwards: ItlWiFi > Speed Test, and keep the resolution at 2880 x 1800."
 echo "Undo: kext  bash scripts/macos-install-kext.sh --undo itlmt7925"
-echo "      boot-arg  the config backup config.plist.nobootscreen-<time> sits next to EFI/OC/config.plist"
+echo "      config    copy EFI/OC/config.plist.cleanup-<time> back over EFI/OC/config.plist"

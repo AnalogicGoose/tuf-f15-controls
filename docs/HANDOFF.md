@@ -96,7 +96,10 @@ No SMBIOS values, passphrases, MACs or neighbour SSIDs belong in this file.
    else has it open (mounted, fsck, diskutil; counted as "flush(es) skipped while in use" in the log). Until the fixed
    ItlDiag is on the ESP, install from Linux: `scripts/linux-apply-2026-10-11.sh`.
 
-9. **Boot time.** Unified log of the 01:15 boot: kernel 01:15:07, WindowServer 01:15:55, NVRM "boot screen: copied 2880x1800
+9. **Boot time.** Root causes found: (a) OpenCore `Misc/Debug/Target` 0x43 (log on screen and to a file on the ESP, flushed
+   per line) plus `AppleDebug`; (b) NullMoth's boot-screen copy, below; (c) bring-up diagnostics (ItlDiag, `-v`). The round-b
+   script sets Target 0, AppleDebug off, PollAppleHotKeys on (Cmd+V = verbose on demand), disables ItlDiag, drops `-v itldiag
+   itlxr`, adds `-nvrmnobootscreen`. Before (01:15 boot): kernel -> WindowServer 48 s, display armed after 115 s. Unified log of the 01:15 boot: kernel 01:15:07, WindowServer 01:15:55, NVRM "boot screen: copied 2880x1800
    ... in 15271 ms" (the boot before: 18674 ms), display armed 01:17:02. `NVRM::snapshotBootScreen` reads the 28 MB GOP console
    through an uncached mapping 8 bytes at a time. Fix: boot-arg `-nvrmnobootscreen` (vendor switch; the takeover shows black
    instead of the copied console, which is verbose text with `-v` anyway). Also seen: an 11 s gap after the APFS root graft and

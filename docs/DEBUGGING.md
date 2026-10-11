@@ -1,5 +1,12 @@
 # Debugging without a working screen, keyboard or network
 
+> **Since 2026-10-11 this is bring-up tooling only.** macOS boots and keeps its own logs, so the reference config disables
+> `ItlDiag.kext`, drops `itldiag`/`itlxr`, and `itlmt7925` writes NVRAM only with the boot-arg `itlmt_nvlog=1`. On a working
+> install use: `log show --last boot` (or `log collect`), `ioreg -rc itlmt7925 -d1` (all driver logs and counters),
+> `/Library/Logs/DiagnosticReports` for panics, OpenCore's own log only to time the boot loader (`Misc/Debug/Target` 0x41 =
+> file only, then back to 0: the file is flushed per line and slows the boot). Re-enable ItlDiag only when macOS cannot get
+> far enough to keep a log (Recovery, no display).
+
 On a Hackintosh in the Recovery environment there is nothing to `scp` and the screen may be gone after a panic. The kexts
 here therefore log into **firmware NVRAM** under the Apple GUID `7C436110-AB2A-4BBB-A880-FE41995C9F82`. NVRAM survives
 hangs, panics and power cycles, and can be read from Windows on the same machine.
