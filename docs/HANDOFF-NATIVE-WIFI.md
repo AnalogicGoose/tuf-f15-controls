@@ -70,8 +70,13 @@ list of knowing gaps: IO80211-ABI-2.md "Native stub, stage 2". New tools: `tools
 Header generator gained non-virtual member declarations (`STATICS`): `setInterfaceRole/Id`, `getWorkQueue`, `initRegistrationInfo`,
 `registerInfraEthernetInterface`.
 
-**First things to do on the Mac**: `scripts/build.sh io80211check itlmt7925Native`, then `tools/check_kext_links.py` (new
-undefined symbols, esp. `IO80211InfraProtocolD2Ev`); fix whatever the link check rejects. Known gaps that a load may expose: all
+**Build and link check on the Mac (done, commit 66092dd)**: `bash scripts/build.sh io80211check itlmt7925Native` (call it through `bash`:
+the script has no execute bit) gives `io80211check: ok` and `build/itlmt7925Native.kext` (Mach-O x86_64). `KC=/System/Library/KernelCollections/BootKernelExtensions.kc
+python3 tools/check_kext_links.py build/itlmt7925Native.kext build/itlmt7925.kext` exits 0. The only unresolved symbols are 6
+`IONetworkController` ones that the KC does not export; they are missing in the baseline `itlmt7925.kext` as well (the checker reports
+them as baseline-missing), so they are not new. `__ZN20IO80211InfraProtocolD2Ev`, the one suspect symbol, is exported by
+`com.apple.iokit.IO80211Family` in the KC (0xffffff8002257bc8). It is absent from the round-5 dumps only because they list vtable and
+method symbols, not the KC's full symbol table, so it is **no longer a blocker**. Next: the first load. Known gaps that a load may expose: all
 four Tx queues have the default service class (no subclass to pass the AC table), queue callbacks do nothing, the common Rx
 submission queue is not registered, the `createSkywalkInterface` caller / the primary interface's id are not known (id 0, role 2 used).
 

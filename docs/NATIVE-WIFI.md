@@ -122,6 +122,6 @@ large; commit the distilled tables.
   [IO80211-ABI-2.md](IO80211-ABI-2.md#native-stub-stage-1-mac-2026-10-12-controller-only-built-and-link-checked-never-loaded).
 
 * 2026-10-12 (cloud, stub stage 2): `itlmt7925WifiInterface : IO80211InfraProtocol` with pool and queues, created behind
-  `itlmt_native_if=1`; compiled with the kext flags and slot-checked against Apple's vtables (209 + 19 overrides, 0 wrong), not
-  linked, not loaded. Next: build and `check_kext_links.py` on the Mac, first load. Details:
+  `itlmt_native_if=1`; compiled with the kext flags and slot-checked against Apple's vtables (209 + 19 overrides, 0 wrong), then
+  built and link-checked on the Mac (exit 0; only the 6 baseline-missing `IONetworkController` symbols), not loaded. Next: first load. Details:
   [IO80211-ABI-2.md](IO80211-ABI-2.md#native-stub-stage-2-cloud-session-2026-10-12-interface--pool--queues-compiled-and-slot-checked-never-loaded).
