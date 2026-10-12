@@ -95,7 +95,9 @@ swiftc -O tools/hidpi-try.swift -o /tmp/hidpi-try
 
 * Không bấm Return trong 15 giây (màn hình đen, không gõ được) thì công cụ tự đổi về mode cũ. Nó chỉ nhận mode có kích thước điểm ảnh
   đúng 2880x1800 nên không bao giờ kích hoạt mode co giãn.
-* `list` phải có dòng kiểu `looks like 1440x900  pixels 2880x1800  120 Hz ... HiDPI`. Nếu chỉ báo `no HiDPI mode is offered` thì thiếu pref
+* `list` in trước dòng `current: ... looks like 1440x900  pixels 2880x1800  120 Hz  flags 0x00800003  HiDPI` (mode đang dùng); trong bảng,
+  cùng mode đó hiện là `id 0x80001001 ... pixels 2880x1800 ... flags 0x00800003` (kiểm tra trên máy tham chiếu 2026-10-12, sau khi reboot;
+  `system_profiler` báo `UI Looks like: 1440 x 900 @ 120.00Hz`). Dòng HiDPI là dòng có cờ `0x00800000`. Nếu chỉ báo `no HiDPI mode is offered` thì thiếu pref
   (bước 1) hoặc override (bước 2), hoặc chưa reboot.
 * Sau khi xác nhận (`--keep` hoặc đã thấy chạy tốt), **System Settings → Displays → "1440 x 900"** cũng dùng được trên máy tham chiếu và
   tần số quét vẫn 120 Hz. Đừng chọn 1680x1050 hay 1280x800, và đừng chọn "1440 x 900" loại độ-phân-giải-thấp (mode id `0x80001000` trong

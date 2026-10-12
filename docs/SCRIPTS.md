@@ -113,7 +113,9 @@ swiftc -O tools/hidpi-try.swift -o /tmp/hidpi-try
 
 * If you do not press Return within 15 s (black screen, nothing typed) the tool switches back by itself. It only accepts a
   mode whose pixel size equals the native 2880x1800, so it never triggers a scaled mode set.
-* `list` should show a row like `looks like 1440x900  pixels 2880x1800  120 Hz ... HiDPI`. If it only says
+* `list` first prints `current: ... looks like 1440x900  pixels 2880x1800  120 Hz  flags 0x00800003  HiDPI` (the mode in use), and in the
+  table the same mode appears as `id 0x80001001 ... pixels 2880x1800 ... flags 0x00800003` (checked on the reference unit, 2026-10-12, after
+  a reboot; `system_profiler` then says `UI Looks like: 1440 x 900 @ 120.00Hz`). The HiDPI row is the one with flag `0x00800000`. If it only says
   `no HiDPI mode is offered`, the pref (step 1) or the override (step 2) is missing, or you did not reboot.
 * After a confirmed `--keep` (or once you have seen it work) **System Settings → Displays → "1440 x 900"** also works on the
   reference unit and the refresh rate stays 120 Hz. Do not pick 1680x1050 or 1280x800, and do not pick a "1440 x 900" that is

@@ -9,12 +9,12 @@ The numbered "Open issues" below are the 2026-10-11 investigation log. As of 202
 
 | Item | Now | Where the details are / what is still missing from the notes |
 |---|---|---|
-| 1. Trackpad (I2C `ASUP1208`) | **works** | the log below says the cause was unknown. **The cause and the fix are not recorded: add them here** |
+| 1. Trackpad (I2C `ASUP1208`) | **works** | cause (owner-reported 2026-10-12): it is dead after a **warm reboot from Windows into macOS**; a **full shutdown and cold power on** fixes it. Boot macOS from cold, or shut down after Windows |
 | 7. HiDPI | **works, 2x** ("looks like 1440 x 900", like Windows 200 % scaling) | [SCRIPTS.md §4](SCRIPTS.md#4-hidpi-looks-like-1440-x-900-step-by-step); fractional scales are not supported |
-| 10. Wi-Fi throughput (`itlmt7925`) | **full link speed** (HE, 160 MHz) | the final counters / `iperf3` numbers are **not recorded**: add them to [WIFI.md](WIFI.md) |
+| 10. Wi-Fi throughput (`itlmt7925`) | **full link speed** (HE, 160 MHz) | the owner measured it at the maximum speed; the numbers (`iperf3`, AP model, band, distance) will be supplied by the owner later for comparison: [WIFI.md](WIFI.md). Not measured by the agent |
 | 13. Bluetooth, BLE mouse | **works** (`MtkBtFw` + `BtLeDlFix`) | [BLUETOOTH.md](BLUETOOTH.md) |
 | ROG controls | **all working**: profiles, power limits, fan curves/speeds, charge limit, keyboard light, Slash, RogControl | section "ASUS controls" below |
-| OLED brightness | **works** (`NVRMEdpBL`, DPCD AUX) | [OLED-BRIGHTNESS-DPCD.md](OLED-BRIGHTNESS-DPCD.md); checklist results not recorded; the software dimmer in RogControl is redundant now |
+| OLED brightness | **works** (`NVRMEdpBL`, DPCD AUX) | [OLED-BRIGHTNESS-DPCD.md](OLED-BRIGHTNESS-DPCD.md) (checklist results recorded 2026-10-12); the software dimmer in RogControl is redundant now, but its default in the code is still **on** |
 | 4. Wi-Fi shows as Ethernet | **native port in progress** | [WIFI-AS-WIFI.md](WIFI-AS-WIFI.md); `itlmt7925` stays as the fallback |
 
 Still open: sleep/wake (broad testing), audio, SD reader, battery %, a second owner reproducing the install, the USB map and the
@@ -80,7 +80,7 @@ Details live in [ASUSCTL-MACOS.md](ASUSCTL-MACOS.md), [CPU-POWER.md](CPU-POWER.m
 
 ## Open issues (highest value first)
 
-1. **[RESOLVED 2026-10-12, cause not recorded] Trackpad dead on Windows and macOS.** Windows: `I2C HID Device ACPI\ASUP1208` problem 10, status `0xC000009E`
+1. **[RESOLVED 2026-10-12; cause: warm reboot from Windows into macOS, fix: full shutdown and power on (owner-reported)] Trackpad dead on Windows and macOS.** Windows: `I2C HID Device ACPI\ASUP1208` problem 10, status `0xC000009E`
    (device not ready); AMD I2C and GPIO controllers are OK. macOS: `TPD1` has a `VoodooI2CDeviceNub` but no HID child.
    Windows logged "Touchpad QA verification succeeded" on every boot until 2026-10-10 19:51 local; it was missing from
    the 19:59 boot on. That is after the macOS session of 12:55 UTC (the first with `itlmt7925` enabled since a bisect)
