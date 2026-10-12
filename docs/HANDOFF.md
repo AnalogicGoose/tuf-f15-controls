@@ -151,6 +151,9 @@ No SMBIOS values, passphrases, MACs or neighbour SSIDs belong in this file.
    DeviceProperties also get `class-code` FFFFFFFF, `name`/`IOName` `#display` (Dortania's GPU-disable values) so no driver,
    IONDRVFramebuffer or the wrangler takes it as a display device (ESP backup `config.plist.noigpu-20261011-190545`).
    Check after the next boot: no "GPUWranglerWaitForPublish: timed out" from WindowServer, one entry in `debug-gpus`.
+   **19:13 boot: confirmed.** One GPU in `debug-gpus`, WindowServer registered the GPU at 13.4 s, login window shown at
+   34 s (was 140-180 s before the `-v` and 890M fixes). HiDPI 1440 x 900 at 120 Hz works from System Settings with the
+   round-f override (user report). Side effect to watch: brightness and lock-screen display sleep (docs/ASUSCTL-MACOS.md).
 
 10a. **Saved networks out of range (2026-10-11):** the supervisor retried itl_ssid..itl_ssid4 forever (3 rounds of directed
    probes for every network, then 30 s back-off), so away from them the menu stayed "connecting"/"failed" and a join from the
