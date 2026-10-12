@@ -82,6 +82,15 @@ early log (`scripts/usblog.ps1 -Esp -Read` on Windows).
   fault reporter built before it did not fault; `IONetworkController::start` locks a lock inside an object it holds as NULL
   (`lock = NULL + 0x648`). Which pointer is NULL is **chưa xác định** (candidates: a field `IONetworkController::init` fills, the
   provider being the core driver and not a PCI device, a global of IONetworkingFamily not ready at 0.47 s). Rolled back by the
-  user (native `Enabled=False`, `itlmt_native*` removed). Next: round 6 dump (`tools/dump_native_wifi_round6.py`) of
-  `IONetworkController::start`/`init`, `IOEthernetController::start`, `IO80211Controller::init` and Apple's `AppleBCMWLANCore`
-  start/init to see what the BCM driver sets up before the base `start`.
+  user (native `Enabled=False`, `itlmt_native*` removed). **Cause found from the round-6 dump** (`abi/native-wifi/24H32/round6/`):
+  the `IOLockLock` is inside `ml_thread_policy(thread, 1, 0x10000001)`, and `thread` is NULL. `IONetworkController::start`
+  (+0x1a0..0x1d4) compares `this->getWorkLoop()` with `provider->getWorkLoop()`; when they differ it calls
+  `ml_thread_policy(workLoop->getThread(), ...)`. Our `getWorkLoop()` was `IO80211Controller`'s, which returns something other than
+  the provider's loop, and `IO80211WorkQueue::getThread` (0xffffff80022591fa, 8 bytes between two method addresses) is a stub that
+  returns NULL, so the call faulted at `thread+0x648`. Why Apple's BCM driver does not hit it is **chưa xác định**
+  (`IO80211Controller::getWorkLoop` at 0xffffff800222aec0 is not disassembled yet; the BCM driver's own queue comes from the bus
+  layer unless boot-arg `wlan.workQueue.create` is set). Fix (commit after 4435061): `itlmt7925Wifi::getWorkLoop()` returns the
+  provider's work loop (fallback: an own `IOWorkLoop`), so the compare matches and `ml_thread_policy` is skipped. Slots 20/0 and
+  compile check pass. **Not run on hardware.** Residual risk: code in the IO80211 family that casts `getWorkLoop()` to an
+  `IO80211WorkQueue` (none seen in the dumps read so far) and any further fault later in `IONetworkController::start` (the part after
+  +0x1d4 was read; it only sets properties and calls `IOService::registerService`-style setup).

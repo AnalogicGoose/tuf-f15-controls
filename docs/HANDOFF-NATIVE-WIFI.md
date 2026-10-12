@@ -104,6 +104,10 @@ submission queue is not registered, the `createSkywalkInterface` caller / the pr
 
 ## Before the first load
 
+Stage A already ran once (2026-10-12) and panicked in `IONetworkController::start` (`ml_thread_policy(NULL)`: our `getWorkLoop()`
+differed from the provider's and `IO80211WorkQueue::getThread` returns NULL); `itlmt7925Wifi::getWorkLoop()` now returns the
+provider's loop (docs/TEST-NATIVE-WIFI.md result log). That path is fixed on paper only; whatever comes after it in `start` is untested.
+
 Confidence for a first load (stage 1 + 2, honest estimate, nothing has run): the build, link check, vtable slots and symbol
 presence are verified, but object lifetime of Family internals (`IO80211InfraProtocol` start/stop, queue enable on
 `registerInfraEthernetInterface`, post office/peer manager) is only inferred from Apple's call order. Expect a clean failure

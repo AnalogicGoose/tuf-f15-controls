@@ -34,6 +34,7 @@ public:
     // IO80211Controller virtuals the base class needs from a subclass (see ABI-2: slots 397, 399 and the pure ones)
     bool createWorkQueue() override;
     IO80211WorkQueue *getWorkQueue() const override;
+    IOWorkLoop *getWorkLoop() const override;
     CCLogStream *getLogger() const override;
     IO80211FaultReporter *getFaultReporterFromDriver() override;
     IOReturn isCommandProhibited(int cmd) override;
@@ -54,6 +55,7 @@ private:
     void dropInterface();
 
     IO80211WorkQueue *wq = nullptr;
+    IOWorkLoop *loop = nullptr;             // fallback IOWorkLoop when the provider has none (a real thread, unlike wq)
     CCPipe *logPipe = nullptr;
     CCStream *logStream = nullptr;          // a CCLogStream (options type 0)
     CCPipe *dataPipe = nullptr;
@@ -297,6 +299,7 @@ void itlmt7925Wifi::free()
     rel(logStream);   logStream = nullptr;
     rel(logPipe);     logPipe = nullptr;
     rel(wq);          wq = nullptr;
+    rel(loop);        loop = nullptr;
     super::free();
 }
 
@@ -311,6 +314,21 @@ bool itlmt7925Wifi::createWorkQueue()
 IO80211WorkQueue *itlmt7925Wifi::getWorkQueue() const
 {
     return wq;
+}
+
+// IONetworkController::start (24H32, +0x1d4) compares this->getWorkLoop() with provider->getWorkLoop() and, when they
+// differ, calls ml_thread_policy(workLoop->getThread(), ...). IO80211WorkQueue::getThread is an 8-byte stub returning
+// NULL, so returning the queue (what IO80211Controller::getWorkLoop evidently does) panicked at 0.47 s in stage A.
+// Return the provider's real work loop, so the compare matches and the call is skipped; fall back to an own IOWorkLoop
+// (real thread) so the call would be harmless if it were reached.
+IOWorkLoop *itlmt7925Wifi::getWorkLoop() const
+{
+    IOService *p = getProvider();
+    IOWorkLoop *l = p ? p->getWorkLoop() : nullptr;
+    if (l) return l;
+    itlmt7925Wifi *self = const_cast<itlmt7925Wifi *>(this);
+    if (!self->loop) self->loop = IOWorkLoop::workLoop();
+    return self->loop;
 }
 
 CCLogStream *itlmt7925Wifi::getLogger() const
