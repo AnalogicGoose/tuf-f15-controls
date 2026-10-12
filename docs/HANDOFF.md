@@ -93,6 +93,14 @@ No SMBIOS values, passphrases, MACs or neighbour SSIDs belong in this file.
    on the native 2880x1800 mode (60 and 120 Hz), 1680x1050 and 1280x800. `CGDisplayCopyAllDisplayModes` leaves them out
    (NVRMFB's `getInformationForDisplayMode` reports its own flags, never HiRes). `hidpi-try 1440` now falls back to
    that table and switches with `CGSConfigureDisplayMode` (as displayplacer does), native backing only, 15 s auto-revert.
+   **Round f (2026-10-11):** that switch is refused: `CGCompleteDisplayConfiguration` returns 1007 and WindowServer logs
+   "CGXCompleteDisplayConfiguration: Monitor ...; Mode 65792 not available" (65792 = 0x10100, the native 120 Hz mode).
+   The density-2 copies of the native modes carry flag 0x80000000 (not available) because the native NVRMFB mode has no
+   HiRes flag. The override now holds one entry, `2880 1800 1 0x800000` (always, HiRes, not mirror-only, so it skips
+   IOGraphicsLib's duplicate check): a scaled mode whose desktop equals the raster (NVRMFB's `validateDetailedTiming`
+   accepts it: no downscale, EDID raster) with the HiRes flag. The 3360x2100 / 2560x1600 entries are gone (they need a real
+   scaled NVKMS commit). `hidpi-try` now ranks modes without 0x80000000 first and prints the CGError. Needs the script
+   (sudo) and a reboot; untested.
    **Keep 2880 x 1800 in System Settings.** Next try (round c): the override plus the WindowServer pref
    `DisplayResolutionEnabled` (what one-key-hidpi sets; there is no HiDPI kext, HiDPI is built by WindowServer on the native
    mode). A real HiDPI mode keeps the 2880x1800 framebuffer, so NVRMFB needs no scaled mode set. Switch only with
