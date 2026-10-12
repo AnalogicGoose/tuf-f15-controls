@@ -52,9 +52,9 @@ Muốn xóa mật khẩu: cài lại kext sạch từ release/CI (key để tr�
 
 ## 4. HiDPI ("looks like 1440 x 900"), từng bước
 
-**Kết quả.** OLED 2880x1800 giữ nguyên raster gốc 120 Hz; macOS vẽ desktop 1440x900 điểm ở tỉ lệ 2x. Đây là tỉ lệ **duy nhất** biết là chạy
-được. Không phải giải pháp HiDPI tổng quát: driver NullMoth không làm được mode co giãn. Trên máy tham chiếu: chạy được từ System
-Settings → Displays sau các bước dưới (báo cáo người dùng 2026-10-11, NullMoth 1.13/1.14). Chưa kiểm chứng trên máy khác.
+**Kết quả.** HiDPI **2x thật, giống scale 200 % trên Windows**: OLED 2880x1800 giữ nguyên raster gốc 120 Hz, macOS vẽ desktop 1440x900 điểm với mỗi
+điểm nhân đôi ("looks like 1440 x 900"). Hỗ trợ tỉ lệ 2x. Tỉ lệ lẻ (1680x1050, 1280x800, ...) không được hỗ trợ: driver NullMoth không làm được mode co giãn.
+Chạy được từ System Settings → Displays sau các bước dưới (chủ máy xác nhận 2026-10-11/12, NullMoth 1.13/1.14). Chưa kiểm chứng trên máy khác.
 
 **Vì sao cần mẹo.** macOS dựng mode HiDPI từ mode gốc, nhưng framebuffer NVIDIA (NVRMFB) không đánh dấu mode của nó "valid for HiRes", nên
 WindowServer từ chối bản mật độ-2 của mode gốc (`Mode 65792 not available`). File override thêm một mode co giãn có cờ HiRes và **cùng kích

@@ -16,7 +16,7 @@ Tiếng Việt: [INSTALL.vi.md](INSTALL.vi.md).
   apps; CI builds the kexts for you if you have no Mac, but not the apps.)
 * A USB stick (16 GB+) for OpenCore and, separately, a USB stick or disk (32 GB+) for the macOS installer.
 * A way to get online while installing: **USB Ethernet** or **Android USB tethering** (`HoRNDIS.kext` is in the EFI). Our Wi-Fi
-  works but is slow; do not rely on it for a 16 GB download.
+  works at full link speed but only through our own driver, which has no native Wi-Fi integration: for the 16 GB installer a wired / tethered link is still the safer choice.
 * Time. The first boot takes minutes, and you will reboot a lot.
 
 ### Dual-booting
@@ -141,7 +141,7 @@ Rules and limits:
 * After macOS is installed you can use the **ItlWiFi** menu bar app to scan and join further networks
   ([COMPONENTS.md](COMPONENTS.md#itlwifi-itlwifiapp-the-stop-gap-wi-fi-menu)); the first connection still comes from the
   injected credentials.
-* Speed is low (see [WIFI.md](WIFI.md)). For the macOS installer use USB Ethernet / tethering, or an offline installer.
+* The link runs at full speed (see [WIFI.md](WIFI.md)). For the 16 GB macOS installer prefer an offline installer or USB Ethernet / tethering anyway.
 
 ## 5. First boot and installing macOS
 
@@ -235,7 +235,7 @@ System Settings.
 | Kernel panic at boot | boot with `-v`, photograph the panic, remove the most recently changed kext from `config.plist` |
 | Keys repeat / release late | `ItlXhciKick.kext` missing or disabled ([USB-XHCI-LAG.md](USB-XHCI-LAG.md)) |
 | No Wi-Fi | credentials injected? `itlmt_m1/m2/m3` boot-args? `ioreg -rc itlmt7925 -d1 \| grep wifi-` |
-| Touchpad dead | known issue, use a USB mouse ([HANDOFF #1](HANDOFF.md)) |
+| Touchpad dead | it died once on the reference unit (2026-10-10) and works again since 2026-10-12; the cause is not documented yet. Try a full power drain (unplug AC, hold the power button 40 s) and open an issue ([HANDOFF](HANDOFF.md)) |
 | Linux/Windows entry gone | [DUAL-BOOT.md](DUAL-BOOT.md) |
 | Need logs | [DEBUGGING.md](DEBUGGING.md), `scripts/linux-collect-logs.sh`; redact serials, MACs, SSIDs before posting |
 

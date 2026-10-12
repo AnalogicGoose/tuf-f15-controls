@@ -14,7 +14,7 @@ First public build. "v1" is the version of this bundle; the kexts carry their ow
 | `AsusWmi.kext.zip` | ROG profiles, fans, charge limit, lights | ESP |
 | `AmdCppc.kext.zip` | Zen 5 CPPC / boost / EPP | ESP |
 | `MtkBtFw.kext.zip` | MT7925 Bluetooth firmware loader | ESP |
-| `BtLeDlFix.kext.zip` | BLE mouse fix (Lilu plugin, untested) | ESP |
+| `BtLeDlFix.kext.zip` | BLE mouse fix (Lilu plugin) | ESP |
 | `ItlDiag.kext.zip` | boot diagnostics (debug only) | ESP, optional |
 | `RogControl.app.zip` | ROG Control: menu bar + window | `/Applications` |
 | `ItlWiFi.app.zip` | Wi-Fi menu: scan, join, speed test | `/Applications` |
@@ -35,7 +35,6 @@ Third-party kexts (Lilu, VirtualSMC, VoodooI2C, ...) and the NVIDIA driver are *
    `xattr -dr com.apple.quarantine /Applications/RogControl.app` (same for the others): they are ad-hoc signed, not notarised.
 3. Inject your Wi-Fi network into `itlmt7925.kext` before copying it to the ESP.
 
-Known problems: touchpad dead on the reference unit, Wi-Fi is slow and shows up as Ethernet, BLE mice untested, OLED brightness
-under verification. Full list: [docs/ROADMAP.md](https://github.com/thanhnndev/ga403wm-hackintosh/blob/main/docs/ROADMAP.md).
+Known limits: Wi-Fi shows up as Ethernet (native Wi-Fi is being ported), WPA2-PSK only; sleep/wake, audio, SD reader and battery % are not verified. Full list: [docs/ROADMAP.md](https://github.com/thanhnndev/ga403wm-hackintosh/blob/main/docs/ROADMAP.md).
 
 ---

@@ -16,7 +16,7 @@ English: [INSTALL.md](INSTALL.md).
   kext giúp bạn, còn app thì không.)
 * Một USB (16 GB+) cho OpenCore và một USB hoặc ổ (32 GB+) riêng cho bộ cài macOS.
 * Cách có mạng khi cài: **USB Ethernet** hoặc **USB tethering Android** (`HoRNDIS.kext` có trong EFI). Wi-Fi của dự án chạy nhưng
-  chậm, đừng trông vào nó để tải 16 GB.
+  chạy ở tốc độ tối đa của link nhưng chỉ qua driver riêng, chưa tích hợp Wi-Fi native: để tải bộ cài 16 GB, mạng dây / tethering vẫn an toàn hơn.
 * Thời gian. Lần boot đầu mất vài phút và bạn sẽ reboot nhiều lần.
 
 ### Dual boot
@@ -139,7 +139,7 @@ Quy tắc và giới hạn:
 * Wi-Fi hiện trong System Settings → Network là **Ethernet**, không phải Wi-Fi. Đó là bình thường.
 * Sau khi cài macOS có thể dùng app **ItlWiFi** trên thanh menu để quét và kết nối thêm mạng
   ([COMPONENTS.md](COMPONENTS.md#itlwifi-itlwifiapp-the-stop-gap-wi-fi-menu)); kết nối đầu tiên vẫn đến từ thông tin đã inject.
-* Tốc độ thấp (xem [WIFI.md](WIFI.md)). Với bộ cài macOS hãy dùng USB Ethernet / tethering hoặc bộ cài offline.
+* Link chạy ở tốc độ tối đa (xem [WIFI.md](WIFI.md)). Với bộ cài macOS 16 GB vẫn nên dùng bộ cài offline hoặc USB Ethernet / tethering.
 
 ## 5. Boot lần đầu và cài macOS
 
@@ -227,7 +227,7 @@ System Settings.
 | Kernel panic lúc boot | boot với `-v`, chụp màn hình panic, bỏ kext vừa đổi gần nhất khỏi `config.plist` |
 | Phím lặp / nhả trễ | thiếu hoặc tắt `ItlXhciKick.kext` ([USB-XHCI-LAG.md](USB-XHCI-LAG.md)) |
 | Không có Wi-Fi | đã inject mật khẩu chưa? boot-args `itlmt_m1/m2/m3`? `ioreg -rc itlmt7925 -d1 \| grep wifi-` |
-| Touchpad chết | lỗi đã biết, dùng chuột USB ([HANDOFF #1](HANDOFF.md)) |
+| Touchpad chết | từng chết một lần trên máy tham chiếu (2026-10-10) và hoạt động lại từ 2026-10-12; chưa ghi lại nguyên nhân. Thử xả hết điện (rút sạc, giữ nút nguồn 40 giây) và mở issue ([HANDOFF](HANDOFF.md)) |
 | Mất entry Linux/Windows | [DUAL-BOOT.md](DUAL-BOOT.md) |
 | Cần log | [DEBUGGING.md](DEBUGGING.md), `scripts/linux-collect-logs.sh`; che serial, MAC, SSID trước khi đăng |
 

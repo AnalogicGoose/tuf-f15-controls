@@ -33,8 +33,8 @@ OpenCore EFI, kernel extensions, menu bar apps and research notes. Tiếng Việ
 | Machine | ASUS ROG Zephyrus G14 **GA403WM**, BIOS GA403WM.310, 2880x1800 OLED. Other GA403 variants are untested |
 | Boot | OpenCore 1.0.9 + a Zen 5 patch, from the internal ESP; Windows/Linux stay in the OpenCore picker |
 | Graphics | RTX 5060 through the third-party [NullMoth driver](https://github.com/nullmoth/nvidia-macos-driver); **GPU mode must be "Ultimate" (MUX)**, the iGPU is not usable |
-| Wi-Fi | Own driver, shows up as **Ethernet** (en*), slow; no native Wi-Fi menu yet. You must **inject your SSID/password** ([guide](docs/INSTALL.md#4-wi-fi-inject-your-network)) |
-| Known broken | I2C touchpad (dead on the reference unit, cause unknown), BLE mouse (fix untested). HiDPI works for one size only |
+| Wi-Fi | Own driver (`itlmt7925`), reaches the full link speed (HE, 160 MHz). Shows up as **Ethernet** (en*) until the native port lands. You must **inject your SSID/password** ([guide](docs/INSTALL.md#4-wi-fi-inject-your-network)) |
+| Known issues | The earlier headline bugs (touchpad, BLE mouse, Wi-Fi speed, brightness, ROG controls, HiDPI) are **fixed** as of 2026-10-12. Left: Wi-Fi is not native yet (shows as Ethernet), sleep/wake, audio, SD reader and battery % are not verified |
 
 Legend used everywhere: ✅ verified on the reference unit · 🟡 implemented, needs more testing · 🔧 in progress ·
 ❌ not working · ⚪ not started / not verified.
@@ -47,15 +47,15 @@ Legend used everywhere: ✅ verified on the reference unit · 🟡 implemented, 
 | CPU (12 cores / 24 threads) | ✅ | `AmdCppc` + `AmdCppcPolicy` enable CPPC; Zen 5 cores reach ~4.9 GHz under load (were stuck at 2 GHz) | [docs/CPU-POWER.md](docs/CPU-POWER.md) |
 | NVIDIA RTX 5060 + 2880x1800 OLED @ 120 Hz | ✅ | Third-party NullMoth driver 1.14.2 + two local patches. Needs MUX = dGPU only. External monitor works | [docs/NULLMOTH.md](docs/NULLMOTH.md) |
 | USB keyboard / mouse / webcam | ✅ | `ItlXhciKick` fixes the 2 s key-release lag; the USB port map ships with the standard EFI (coming, see Install) | [docs/USB-XHCI-LAG.md](docs/USB-XHCI-LAG.md) |
-| Wi-Fi MT7925 | 🟡 | WPA2-PSK, DHCP, HE/160 MHz link. Measured only **~5-40 Mb/s**; no WPA3, no 6 GHz; appears as Ethernet | [docs/WIFI.md](docs/WIFI.md) |
-| Bluetooth MT7925 | 🟡 | `MtkBtFw` loads the firmware; classic devices (headphones) connect. BLE mouse: fix written, untested | [docs/BLUETOOTH.md](docs/BLUETOOTH.md) |
-| ROG performance profiles, fans, charge limit | 🟡 | `AsusWmi` + RogControl app. Silent/Performance/Turbo change real clocks and fan speed | [docs/ASUSCTL-MACOS.md](docs/ASUSCTL-MACOS.md) |
-| Keyboard backlight, Slash lighting | 🟡 | Via `AsusWmi` (HID reports from the kernel) | [docs/ASUSCTL-MACOS.md](docs/ASUSCTL-MACOS.md) |
-| OLED brightness | 🔧 | Panel is AUX-only; `NVRMEdpBL` (DPCD) installed, verification pending. Software dimming overlay as fallback | [docs/OLED-BRIGHTNESS-DPCD.md](docs/OLED-BRIGHTNESS-DPCD.md) |
+| Wi-Fi MT7925 | ✅ | `itlmt7925`: WPA2-PSK, DHCP, HE / 160 MHz at full link speed. Appears as Ethernet, no WPA3 / 6 GHz yet. **Native Wi-Fi port in progress** | [docs/WIFI.md](docs/WIFI.md) |
+| Bluetooth MT7925 | ✅ | `MtkBtFw` loads the firmware; headphones (classic) and BLE mice connect (`BtLeDlFix`) | [docs/BLUETOOTH.md](docs/BLUETOOTH.md) |
+| ROG performance profiles, fans, charge limit | ✅ | `AsusWmi` + RogControl. Silent/Performance/Turbo change real clocks and fan speed | [docs/ASUSCTL-MACOS.md](docs/ASUSCTL-MACOS.md) |
+| Keyboard backlight, Slash lighting | ✅ | Via `AsusWmi` (HID reports sent from the kernel) | [docs/ASUSCTL-MACOS.md](docs/ASUSCTL-MACOS.md) |
+| OLED brightness | ✅ | The panel is AUX-only; `NVRMEdpBL` (DPCD) drives it. The slider and the brightness keys dim the OLED itself | [docs/OLED-BRIGHTNESS-DPCD.md](docs/OLED-BRIGHTNESS-DPCD.md) |
 | Sleep / wake | 🟡 | A sleep/wake cycle restores CPU policy; not tested broadly | |
 | Dual boot Windows / Linux | ✅ | Chosen from the OpenCore picker; repair notes for lost UEFI entries | [docs/DUAL-BOOT.md](docs/DUAL-BOOT.md) |
-| Touchpad (I2C `093a:3011`) | ❌ | Dead on the reference unit (Windows too) since 2026-10-10; cause not found. A USB mouse works | [HANDOFF #1](docs/HANDOFF.md) |
-| HiDPI "looks like 1440 x 900" @ 120 Hz | 🟡 | Works on the reference unit with a display override; **other scales go black** (the driver cannot do scaled modes) | [docs/SCRIPTS.md §4](docs/SCRIPTS.md#4-hidpi-looks-like-1440-x-900-step-by-step) |
+| Touchpad (I2C `093a:3011`) | ✅ | Works (was dead 2026-10-10, fixed 2026-10-12) | [HANDOFF](docs/HANDOFF.md) |
+| HiDPI **2x** (like Windows scale 200 %) | ✅ | "looks like 1440 x 900" on the 2880x1800 OLED at 120 Hz via a display override. 2x is the supported scale; fractional scales are not | [docs/SCRIPTS.md §4](docs/SCRIPTS.md#4-hidpi-looks-like-1440-x-900-step-by-step) |
 | Audio, SD-card reader, battery %, Fn keys other than brightness | ⚪ | Kexts are in the EFI (AppleALC layout 33, Sinetek-rtsx, SMCBatteryManager) but **not verified** | |
 | Native Wi-Fi in System Settings / AirDrop / Continuity | ⚪ | Needs an `IO80211Controller` port; research only | [docs/WIFI-AS-WIFI.md](docs/WIFI-AS-WIFI.md) |
 | iGPU Radeon 890M | ❌ | Hidden from macOS on purpose; no driver | |
@@ -89,7 +89,7 @@ Full guide: **[docs/INSTALL.md](docs/INSTALL.md)** (Tiếng Việt: [docs/INSTAL
    every script: **[docs/SCRIPTS.md](docs/SCRIPTS.md)** (Tiếng Việt: [SCRIPTS.vi.md](docs/SCRIPTS.vi.md)).
 3. Assemble the EFI from [efi/](efi/README.md), generate **your own SMBIOS**, add the patched OpenCore.
 4. **Inject your Wi-Fi network** into `itlmt7925.kext` (there is no native Wi-Fi UI yet) or use USB tethering.
-5. Install macOS 15 (offline installer recommended: the online installer is 16 GB and our Wi-Fi is slow), then install the
+5. Install macOS 15 (offline installer recommended: the online installer is 16 GB and the Wi-Fi path is not meant for it), then install the
    NVIDIA driver, the apps and the policy daemon.
 
 ## Components
@@ -98,25 +98,25 @@ Every kext and app, what it does and how far along it is: **[docs/COMPONENTS.md]
 
 | Component | One line | State |
 |---|---|---|
-| `itlmt7925.kext` | MT7925 Wi-Fi driver | 🟡 works, slow, shows as Ethernet |
+| `itlmt7925.kext` | MT7925 Wi-Fi driver | ✅ full link speed, shows as Ethernet (native port in progress) |
 | `ItlXhciKick.kext` | USB lag fix for AMD xHCI | ✅ |
-| `AsusWmi.kext` | ASUS WMI/EC/HID: profiles, fans, charge limit, backlight, Slash | 🟡 |
-| `AmdCppc.kext` + `AmdCppcPolicy` | CPU boost/EPP control + daemon | ✅ / 🟡 |
-| `MtkBtFw.kext` | MT7925 Bluetooth firmware loader | 🟡 |
-| `BtLeDlFix.kext` | Lilu plugin for BLE mice | 🟡 untested |
-| `NVRMEdpBL.kext` (in a NullMoth fork) | OLED brightness over eDP AUX | 🔧 |
+| `AsusWmi.kext` | ASUS WMI/EC/HID: profiles, fans, charge limit, backlight, Slash | ✅ |
+| `AmdCppc.kext` + `AmdCppcPolicy` | CPU boost/EPP control + daemon | ✅ |
+| `MtkBtFw.kext` | MT7925 Bluetooth firmware loader | ✅ |
+| `BtLeDlFix.kext` | Lilu plugin for BLE mice | ✅ |
+| `NVRMEdpBL.kext` (in a NullMoth fork) | OLED brightness over eDP AUX | ✅ (upstream PR pending) |
 | `ItlDiag.kext` | boot diagnostics | debug tool |
-| **ROG Control** (`RogControl.app`) | menu bar + window: profiles, fans, charge, lighting, dimming | 🟡 |
-| **ItlWiFi** (`ItlWiFi.app`) | menu bar Wi-Fi: scan, join, speed test | 🟡 |
-| **TapGuard** (`TapGuard.app`) | ignore touchpad taps while typing | 🟡 (touchpad itself is ❌) |
+| **ROG Control** (`RogControl.app`) | menu bar + window: profiles, fans, charge, lighting, dimming | ✅ |
+| **ItlWiFi** (`ItlWiFi.app`) | menu bar Wi-Fi: scan, join, speed test | ✅ |
+| **TapGuard** (`TapGuard.app`) | ignore touchpad taps while typing | ✅ |
 
 ## Roadmap
 
 **[docs/ROADMAP.md](docs/ROADMAP.md)** lists every workstream with its state, branch and next step. Headlines:
 
-* 🔧 Wi-Fi throughput, then a **native Wi-Fi** (`IO80211Controller`) so the menu bar and System Settings work
-* 🔧 OLED brightness via DPCD, desktop smoothness (WindowServer CPU, VRAM clear)
-* ❌ → ⚪ touchpad, BLE mouse; HiDPI other than 1440 x 900
+* 🔧 **Native Wi-Fi** (`IO80211Controller` port, in progress) so the menu bar and System Settings work; the `itlmt7925` driver stays as the fallback
+* 🔧 desktop smoothness (WindowServer CPU), sending the NVIDIA patches (VRAM clear, OLED brightness) upstream
+* ⚪ verify sleep/wake, audio, SD reader, battery %; a second owner reproducing the install
 * ⚪ audio / SD / battery verification, first tagged release with CI-built kexts
 * ⚪ **Codebase standardisation** (shared helpers, cleanup of debug code, scripts): component by component, only after each is proven stable
 * ⚪ **macOS 26**: only after 15 is stable. Not planned before that.

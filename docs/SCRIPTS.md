@@ -67,10 +67,10 @@ To remove credentials: re-install the clean kext from the release/CI artifact (e
 
 ## 4. HiDPI ("looks like 1440 x 900"), step by step
 
-**What you get.** The 2880x1800 OLED stays at its native 120 Hz raster; macOS renders a 1440x900-point desktop at 2x. That is the
-only scale that is known to work. It is **not** a general HiDPI solution: the NullMoth driver cannot do scaled modes (below).
-State on the reference unit: works from System Settings → Displays after the steps below (user report, 2026-10-11, NullMoth
-1.13/1.14, [HANDOFF](HANDOFF.md) notes 7 and 9). Not verified on any other unit.
+**What you get.** True **2x HiDPI, the same as 200 % scaling on Windows**: the 2880x1800 OLED stays at its native 120 Hz raster and macOS renders a
+1440x900-point desktop with every pixel doubled ("looks like 1440 x 900"). 2x is the supported scale. Fractional scales (1680x1050, 1280x800, ...) are
+not supported: the NullMoth driver cannot do scaled modes (below). Works from System Settings → Displays after the steps below (owner-confirmed
+2026-10-11/12, NullMoth 1.13/1.14, [HANDOFF](HANDOFF.md) notes 7 and 9). Not verified on any other unit.
 
 **Why it needs a trick.** macOS builds HiDPI modes on top of the native mode, but the NVIDIA framebuffer (NVRMFB) never marks its
 modes "valid for HiRes", so WindowServer refuses the density-2 copy of the native mode (`Mode 65792 not available`). A display

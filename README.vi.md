@@ -31,8 +31,8 @@ EFI OpenCore, kext, app thanh menu và ghi chú nghiên cứu. English: [README.
 | Máy | ASUS ROG Zephyrus G14 **GA403WM**, BIOS GA403WM.310, OLED 2880x1800. Biến thể GA403 khác: chưa test |
 | Boot | OpenCore 1.0.9 + bản vá Zen 5, từ ESP trong máy; Windows/Linux vẫn nằm trong picker OpenCore |
 | Đồ họa | RTX 5060 qua [driver NullMoth](https://github.com/nullmoth/nvidia-macos-driver); **bắt buộc chế độ GPU "Ultimate" (MUX)**, iGPU không dùng được |
-| Wi-Fi | Driver tự viết, hiện là **Ethernet** (en*), chậm; chưa có menu Wi-Fi gốc. Phải **inject SSID/mật khẩu** ([hướng dẫn](docs/INSTALL.vi.md#4-wi-fi-inject-mạng)) |
-| Đang hỏng | Touchpad I2C (chết trên máy tham chiếu, chưa rõ nguyên nhân), chuột BLE (bản sửa chưa test). HiDPI chỉ chạy một cỡ |
+| Wi-Fi | Driver tự viết (`itlmt7925`), đạt tốc độ tối đa của link (HE, 160 MHz). Hiện là **Ethernet** (en*) cho đến khi bản native xong. Phải **inject SSID/mật khẩu** ([hướng dẫn](docs/INSTALL.vi.md#4-wi-fi-inject-mạng)) |
+| Vấn đề còn lại | Các lỗi lớn trước đây (touchpad, chuột BLE, tốc độ Wi-Fi, độ sáng, điều khiển ROG, HiDPI) đã **sửa xong** tính đến 2026-10-12. Còn: Wi-Fi chưa native (hiện là Ethernet), chưa kiểm chứng sleep/wake, âm thanh, đầu đọc SD, % pin |
 
 Chú giải dùng xuyên suốt: ✅ đã kiểm chứng trên máy tham chiếu · 🟡 đã viết, cần test thêm · 🔧 đang làm ·
 ❌ không chạy · ⚪ chưa làm / chưa kiểm chứng.
@@ -45,15 +45,15 @@ Chú giải dùng xuyên suốt: ✅ đã kiểm chứng trên máy tham chiếu
 | CPU (12 nhân / 24 luồng) | ✅ | `AmdCppc` + `AmdCppcPolicy` bật CPPC; nhân Zen 5 lên ~4,9 GHz khi tải (trước đó kẹt 2 GHz) | [docs/CPU-POWER.md](docs/CPU-POWER.md) |
 | NVIDIA RTX 5060 + OLED 2880x1800 @ 120 Hz | ✅ | Driver bên thứ ba NullMoth 1.14.2 + hai bản vá cục bộ. Cần MUX = chỉ dGPU. Màn ngoài chạy được | [docs/NULLMOTH.md](docs/NULLMOTH.md) |
 | Phím / chuột USB / webcam | ✅ | `ItlXhciKick` sửa lỗi nhả phím trễ 2 giây; port map USB nằm trong EFI chuẩn (sắp có, xem mục Cài đặt) | [docs/USB-XHCI-LAG.md](docs/USB-XHCI-LAG.md) |
-| Wi-Fi MT7925 | 🟡 | WPA2-PSK, DHCP, link HE/160 MHz. Đo được chỉ **~5-40 Mb/s**; chưa có WPA3, 6 GHz; hiện là Ethernet | [docs/WIFI.md](docs/WIFI.md) |
-| Bluetooth MT7925 | 🟡 | `MtkBtFw` nạp firmware; thiết bị classic (tai nghe) kết nối được. Chuột BLE: đã viết bản sửa, chưa test | [docs/BLUETOOTH.md](docs/BLUETOOTH.md) |
-| Chế độ hiệu năng ROG, quạt, giới hạn sạc | 🟡 | `AsusWmi` + app RogControl. Silent/Performance/Turbo đổi xung nhịp và tốc độ quạt thật | [docs/ASUSCTL-MACOS.md](docs/ASUSCTL-MACOS.md) |
-| Đèn bàn phím, đèn Slash | 🟡 | Qua `AsusWmi` (HID report gửi từ kernel) | [docs/ASUSCTL-MACOS.md](docs/ASUSCTL-MACOS.md) |
-| Độ sáng OLED | 🔧 | Panel chỉ điều khiển qua AUX; `NVRMEdpBL` (DPCD) đã cài, chờ kiểm chứng. Có lớp phủ làm tối bằng phần mềm làm tạm | [docs/OLED-BRIGHTNESS-DPCD.md](docs/OLED-BRIGHTNESS-DPCD.md) |
+| Wi-Fi MT7925 | ✅ | `itlmt7925`: WPA2-PSK, DHCP, HE / 160 MHz đạt tốc độ tối đa của link. Hiện là Ethernet, chưa WPA3 / 6 GHz. **Đang port Wi-Fi native** | [docs/WIFI.md](docs/WIFI.md) |
+| Bluetooth MT7925 | ✅ | `MtkBtFw` nạp firmware; tai nghe (classic) và chuột BLE kết nối được (`BtLeDlFix`) | [docs/BLUETOOTH.md](docs/BLUETOOTH.md) |
+| Chế độ hiệu năng ROG, quạt, giới hạn sạc | ✅ | `AsusWmi` + app RogControl. Silent/Performance/Turbo đổi xung nhịp và tốc độ quạt thật | [docs/ASUSCTL-MACOS.md](docs/ASUSCTL-MACOS.md) |
+| Đèn bàn phím, đèn Slash | ✅ | Qua `AsusWmi` (HID report gửi từ kernel) | [docs/ASUSCTL-MACOS.md](docs/ASUSCTL-MACOS.md) |
+| Độ sáng OLED | ✅ | Panel chỉ điều khiển qua AUX; `NVRMEdpBL` (DPCD) điều khiển nó. Thanh trượt và phím độ sáng làm tối chính OLED | [docs/OLED-BRIGHTNESS-DPCD.md](docs/OLED-BRIGHTNESS-DPCD.md) |
 | Sleep / wake | 🟡 | Một chu kỳ sleep/wake khôi phục được chính sách CPU; chưa test rộng | |
 | Dual boot Windows / Linux | ✅ | Chọn từ picker OpenCore; có ghi chú sửa entry UEFI bị mất | [docs/DUAL-BOOT.md](docs/DUAL-BOOT.md) |
-| Touchpad (I2C `093a:3011`) | ❌ | Chết trên máy tham chiếu (cả Windows) từ 2026-10-10; chưa tìm ra nguyên nhân. Chuột USB dùng được | [HANDOFF #1](docs/HANDOFF.md) |
-| HiDPI "looks like 1440 x 900" @ 120 Hz | 🟡 | Chạy được trên máy tham chiếu nhờ file override màn hình; **các tỉ lệ khác bị đen màn hình** (driver không làm được mode co giãn) | [docs/SCRIPTS.vi.md §4](docs/SCRIPTS.vi.md#4-hidpi-looks-like-1440-x-900-từng-bước) |
+| Touchpad (I2C `093a:3011`) | ✅ | Hoạt động (chết ngày 2026-10-10, đã sửa 2026-10-12) | [HANDOFF](docs/HANDOFF.md) |
+| HiDPI **2x** (như scale 200 % của Windows) | ✅ | "looks like 1440 x 900" trên OLED 2880x1800 ở 120 Hz nhờ file override màn hình. Hỗ trợ tỉ lệ 2x; không hỗ trợ tỉ lệ lẻ | [docs/SCRIPTS.vi.md §4](docs/SCRIPTS.vi.md#4-hidpi-looks-like-1440-x-900-từng-bước) |
 | Âm thanh, đầu đọc thẻ SD, % pin, phím Fn khác ngoài độ sáng | ⚪ | Kext đã có trong EFI (AppleALC layout 33, Sinetek-rtsx, SMCBatteryManager) nhưng **chưa kiểm chứng** | |
 | Wi-Fi gốc trong System Settings / AirDrop / Continuity | ⚪ | Cần port `IO80211Controller`; mới ở mức nghiên cứu | [docs/WIFI-AS-WIFI.md](docs/WIFI-AS-WIFI.md) |
 | iGPU Radeon 890M | ❌ | Cố ý ẩn khỏi macOS; không có driver | |
@@ -86,7 +86,7 @@ Hướng dẫn đầy đủ: **[docs/INSTALL.vi.md](docs/INSTALL.vi.md)** (Engli
    **[docs/SCRIPTS.vi.md](docs/SCRIPTS.vi.md)** (English: [SCRIPTS.md](docs/SCRIPTS.md)).
 3. Ghép EFI từ [efi/](efi/README.md), **tự tạo SMBIOS**, thêm OpenCore đã vá.
 4. **Inject mạng Wi-Fi** vào `itlmt7925.kext` (chưa có UI Wi-Fi gốc) hoặc dùng USB tethering.
-5. Cài macOS 15 (nên dùng bộ cài offline: bộ cài online nặng 16 GB mà Wi-Fi của mình chậm), rồi cài driver NVIDIA, các app và daemon CPU.
+5. Cài macOS 15 (nên dùng bộ cài offline: bộ cài online nặng 16 GB nhưng đường Wi-Fi không dành cho việc đó), rồi cài driver NVIDIA, các app và daemon CPU.
 
 ## Thành phần
 
@@ -94,17 +94,17 @@ Từng kext, app: làm gì, đến đâu rồi: **[docs/COMPONENTS.md](docs/COMP
 
 | Thành phần | Một dòng | Trạng thái |
 |---|---|---|
-| `itlmt7925.kext` | Driver Wi-Fi MT7925 | 🟡 chạy, chậm, hiện là Ethernet |
+| `itlmt7925.kext` | Driver Wi-Fi MT7925 | ✅ tốc độ tối đa của link, hiện là Ethernet (đang port native) |
 | `ItlXhciKick.kext` | Sửa lỗi USB trễ trên xHCI AMD | ✅ |
-| `AsusWmi.kext` | ASUS WMI/EC/HID: profile, quạt, giới hạn sạc, đèn nền, Slash | 🟡 |
-| `AmdCppc.kext` + `AmdCppcPolicy` | Điều khiển boost/EPP CPU + daemon | ✅ / 🟡 |
-| `MtkBtFw.kext` | Nạp firmware Bluetooth MT7925 | 🟡 |
-| `BtLeDlFix.kext` | Plugin Lilu cho chuột BLE | 🟡 chưa test |
-| `NVRMEdpBL.kext` (trong fork NullMoth) | Độ sáng OLED qua eDP AUX | 🔧 |
+| `AsusWmi.kext` | ASUS WMI/EC/HID: profile, quạt, giới hạn sạc, đèn nền, Slash | ✅ |
+| `AmdCppc.kext` + `AmdCppcPolicy` | Điều khiển boost/EPP CPU + daemon | ✅ |
+| `MtkBtFw.kext` | Nạp firmware Bluetooth MT7925 | ✅ |
+| `BtLeDlFix.kext` | Plugin Lilu cho chuột BLE | ✅ |
+| `NVRMEdpBL.kext` (trong fork NullMoth) | Độ sáng OLED qua eDP AUX | ✅ (PR upstream đang chờ) |
 | `ItlDiag.kext` | chẩn đoán lúc boot | công cụ debug |
-| **ROG Control** (`RogControl.app`) | thanh menu + cửa sổ: profile, quạt, sạc, đèn, làm tối | 🟡 |
-| **ItlWiFi** (`ItlWiFi.app`) | Wi-Fi trên thanh menu: quét, kết nối, speed test | 🟡 |
-| **TapGuard** (`TapGuard.app`) | bỏ qua tap touchpad khi đang gõ | 🟡 (touchpad thì ❌) |
+| **ROG Control** (`RogControl.app`) | thanh menu + cửa sổ: profile, quạt, sạc, đèn, làm tối | ✅ |
+| **ItlWiFi** (`ItlWiFi.app`) | Wi-Fi trên thanh menu: quét, kết nối, speed test | ✅ |
+| **TapGuard** (`TapGuard.app`) | bỏ qua tap touchpad khi đang gõ | ✅ |
 
 ### ROG Control làm được gì
 
@@ -119,9 +119,9 @@ Từng kext, app: làm gì, đến đâu rồi: **[docs/COMPONENTS.md](docs/COMP
 
 **[docs/ROADMAP.md](docs/ROADMAP.md)** liệt kê từng hạng mục: đang làm gì, ở nhánh nào, bước kế tiếp. Điểm chính:
 
-* 🔧 Tăng tốc Wi-Fi, sau đó **Wi-Fi gốc** (`IO80211Controller`) để menu bar và System Settings hoạt động
-* 🔧 Độ sáng OLED qua DPCD, mượt hơn cho desktop (WindowServer CPU, VRAM clear)
-* ❌ → ⚪ touchpad, chuột BLE; HiDPI ngoài 1440 x 900
+* 🔧 **Wi-Fi native** (port `IO80211Controller`, đang làm) để menu bar và System Settings hoạt động; driver `itlmt7925` vẫn giữ làm phương án dự phòng
+* 🔧 mượt hơn cho desktop (WindowServer CPU), đẩy các bản vá NVIDIA (VRAM clear, độ sáng OLED) lên upstream
+* ⚪ kiểm chứng sleep/wake, âm thanh, đầu đọc SD, % pin; một chủ máy thứ hai cài lại được từ repo
 * ⚪ kiểm chứng âm thanh / SD / pin, bản release đầu tiên có kext build bằng CI
 * ⚪ **Chuẩn hoá codebase** (hàm dùng chung, dọn code debug, script): từng thành phần một, chỉ sau khi thành phần đó chứng minh ổn định
 * ⚪ **macOS 26**: chỉ sau khi 15 ổn định. Chưa lên kế hoạch.

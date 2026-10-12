@@ -4,6 +4,10 @@ The Bluetooth half of the MT7925 is a USB device (`Wireless_Device`, class ef, i
 standard HCI controller, but only after its RAM code has been downloaded; macOS has no loader for MediaTek parts, so
 `bluetoothd` finds no controller (System Information shows a placeholder "BCM_4350C2, Address NULL, State Off").
 
+> **Update 2026-10-12 (owner-confirmed):** the BLE mouse connects now, the `BtLeDlFix` plugin works; classic devices (headphones) work too.
+> The sections below are the investigation in order. Still open: keyboard pairing was not recorded, and a warm reboot sets `bt-state` to
+> `error` although the controller works.
+
 ## Status (2026-10-11, first boot with it)
 
 Works as a controller: `bt-state` = ready after 5.2 s (sections 0-2 downloaded: 74 176 + 332 224 + 41 472 bytes, 0 dropped
