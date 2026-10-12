@@ -302,11 +302,21 @@ int itlmt7925::m3HwPrep()
         sarInit();
         uint8_t encap = 0;
         rc = efuseRead(0xa71, &encap);
-        if (rc) { m3log("efuse hw type failed rc=%d", rc); return rc; }
+        if (rc) {
+            // the power tables are an optimisation: the firmware ran without them before (they were added without a hardware
+            // run and the efuse query failed on every join of the first one), so a failure must not abort the connection
+            m3log("efuse hw type failed rc=%d, joining without power tables", rc);
+            clcCc[0] = 0;
+            return 0;
+        }
         hwEncap = encap & 3;
         rc = m3Clc("00", 1);                               // world, indoor; same domain as set_domain
         if (!rc) rc = m3TxPower();
-        if (rc) clcCc[0] = 0;                               // retry the complete setup on the next join
+        if (rc) {
+            clcCc[0] = 0;                                   // retry the complete setup on the next join
+            m3log("power tables failed rc=%d, joining without them", rc);
+            rc = 0;
+        }
     }
     return rc;
 }

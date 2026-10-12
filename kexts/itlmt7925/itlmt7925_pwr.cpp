@@ -97,7 +97,12 @@ int itlmt7925::efuseRead(uint32_t off, uint8_t *val)
     int rc = uniSend(UNI_EFUSE_CTRL, req, sizeof(req), true, ev, sizeof(ev), &evl, 3000);
     if (rc) return rc;
     if (evl < 44 + 48 + 16 || ev[44 + 4] != 1 || ev[44 + 5] != 0 || le32(ev + 44 + 12) != a ||
-        !le32(ev + 44 + 16)) return ITL_EIO;                  // rxd, then rsv, tag, len, ver, addr, valid, size, magic, type, rsv1[4]
+        !le32(ev + 44 + 16)) {
+        // first hardware run (2026-10-12): every join failed here with -5; keep what the event looked like
+        m3log("efuse event rejected: len=%u tag=%02x%02x addr=%08x want=%08x valid=%08x", evl, evl > 49 ? ev[44 + 5] : 0,
+              evl > 48 ? ev[44 + 4] : 0, evl >= 60 ? le32(ev + 44 + 12) : 0, a, evl >= 64 ? le32(ev + 44 + 16) : 0);
+        return ITL_EIO;
+    }                  // rxd, then rsv, tag, len, ver, addr, valid, size, magic, type, rsv1[4]
     *val = ev[44 + 48 + (off & 15)];
     return 0;
 }

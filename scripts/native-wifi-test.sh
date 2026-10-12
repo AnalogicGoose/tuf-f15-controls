@@ -29,6 +29,17 @@ install)
   k=${2:?path to itlmt7925Native.kext}
   [ -f "$k/Contents/Info.plist" ] || { echo "not a kext: $k"; exit 1; }
   d=$(backup); echo "backup: $d"
+  # The core kext must be a library kext (OSBundleCompatibleVersion) or the native kext fails with 0xdc00800e. Patch the ESP copy
+  # in place (keeps the injected Wi-Fi credentials; the binary is unchanged).
+  /usr/bin/python3 -I - "$ESP/EFI/OC/Kexts/itlmt7925.kext/Contents/Info.plist" <<'PY'
+import plistlib, sys
+p = sys.argv[1]
+c = plistlib.load(open(p, 'rb'))
+if 'OSBundleCompatibleVersion' not in c:
+    c['OSBundleCompatibleVersion'] = c['CFBundleVersion']
+    plistlib.dump(c, open(p, 'wb'))
+    print('core Info.plist: added OSBundleCompatibleVersion', c['CFBundleVersion'])
+PY
   rm -rf "$ESP/EFI/OC/Kexts/itlmt7925Native.kext"
   cp -Rp "$k" "$ESP/EFI/OC/Kexts/"
   /usr/bin/python3 -I - "$ESP/EFI/OC/config.plist" <<'PY'

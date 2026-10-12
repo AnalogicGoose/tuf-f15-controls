@@ -62,3 +62,16 @@ A missing `boot-args` token alone makes the native kext inert (its `start` retur
 `scripts/native-wifi-test.sh logs` output (kextstat, ioreg, `log show --last boot`, dmesg; remove SSIDs/MACs), the stage reached
 (A/B/5), and for a panic the first 30 lines of the panic text (photo is fine). The ItlDiag `ITLLOG.BIN` on the ESP also has the
 early log (`scripts/usblog.ps1 -Esp -Read` on Windows).
+
+## Result log
+
+* 2026-10-12, stage A, commit 5dca5d5: native kext did not load. Kernel: `library kext com.itlmt7925.kext not compatible with
+  requested version 0.1.0` (0xdc00800e), because the core Info.plist had no `OSBundleCompatibleVersion`, so it was not a library
+  kext. Native `start` was never reached; the Wi-Fi loss in that boot was **not** caused by the native code (cause not established;
+  `itlmt_fast=6` and `nvrmacpibl=1` were also new in boot-args). Fix: core Info.plist now has `OSBundleCompatibleVersion`; `install`
+  patches the ESP copy of the core Info.plist in place (credentials stay), no need to replace the core kext.
+* Same boot, the Wi-Fi loss itself (core driver, native never loaded): scan works, then every join dies with
+  `efuse hw type failed rc=-5` -> `hw-prep-fail` (`itlmt7925_pwr.cpp` efuseRead, the power-table code of a45e8c1 had never run on
+  hardware). Fix: power tables are best effort (failure is logged and the join continues), and the rejected efuse event is logged
+  (`efuse event rejected: len= tag= addr= want= valid=`) so the parser can be corrected from a real event. This needs a rebuilt
+  **core** kext (replace it on the ESP, then re-inject the credentials with `scripts/inject-creds.ps1`).
