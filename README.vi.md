@@ -44,7 +44,7 @@ Chú giải dùng xuyên suốt: ✅ đã kiểm chứng trên máy tham chiếu
 | Boot macOS 15 từ ổ trong | ✅ | OpenCore 1.0.9 + `fix-zen5-fsb.diff` (timer chạy sớm ~10 lần trên Zen 5) | [efi/README.md](efi/README.md) |
 | CPU (12 nhân / 24 luồng) | ✅ | `AmdCppc` + `AmdCppcPolicy` bật CPPC; nhân Zen 5 lên ~4,9 GHz khi tải (trước đó kẹt 2 GHz) | [docs/CPU-POWER.md](docs/CPU-POWER.md) |
 | NVIDIA RTX 5060 + OLED 2880x1800 @ 120 Hz | ✅ | Driver bên thứ ba NullMoth 1.14.2 + hai bản vá cục bộ. Cần MUX = chỉ dGPU. Màn ngoài chạy được | [docs/NULLMOTH.md](docs/NULLMOTH.md) |
-| Phím / chuột USB / webcam | ✅ | `ItlXhciKick` sửa lỗi nhả phím trễ 2 giây; port map USB có trong EFI tham khảo | [docs/USB-XHCI-LAG.md](docs/USB-XHCI-LAG.md) |
+| Phím / chuột USB / webcam | ✅ | `ItlXhciKick` sửa lỗi nhả phím trễ 2 giây; port map USB nằm trong EFI chuẩn (sắp có, xem mục Cài đặt) | [docs/USB-XHCI-LAG.md](docs/USB-XHCI-LAG.md) |
 | Wi-Fi MT7925 | 🟡 | WPA2-PSK, DHCP, link HE/160 MHz. Đo được chỉ **~5-40 Mb/s**; chưa có WPA3, 6 GHz; hiện là Ethernet | [docs/WIFI.md](docs/WIFI.md) |
 | Bluetooth MT7925 | 🟡 | `MtkBtFw` nạp firmware; thiết bị classic (tai nghe) kết nối được. Chuột BLE: đã viết bản sửa, chưa test | [docs/BLUETOOTH.md](docs/BLUETOOTH.md) |
 | Chế độ hiệu năng ROG, quạt, giới hạn sạc | 🟡 | `AsusWmi` + app RogControl. Silent/Performance/Turbo đổi xung nhịp và tốc độ quạt thật | [docs/ASUSCTL-MACOS.md](docs/ASUSCTL-MACOS.md) |
@@ -73,6 +73,10 @@ Mọi dòng trong bảng đều có ngày tháng và bằng chứng trong [docs/
 | ![OpenCore picker (giữ chỗ)](docs/images/opencore-picker.svg) | ![About This Mac (giữ chỗ)](docs/images/about-this-mac.svg) | ![Fan curves (giữ chỗ)](docs/images/fan-curves.svg) |
 
 ## Cài đặt
+
+> 📦 **EFI chuẩn: sắp có.** EFI hoàn chỉnh đang chạy của tác giả (kèm USB port map thật và các thiết lập đã test) sẽ được **upload sau
+> thành asset của GitHub release**, README này sẽ được cập nhật khi có. Trước đó, thư mục `efi/` và `EFI-reference.zip` trong release chỉ là
+> bản *tham khảo đã làm sạch* (SMBIOS giữ chỗ, USB map giữ chỗ, boot-args debug): đủ để tự ghép EFI theo hướng dẫn, nhưng không phải bản đã test.
 
 Hướng dẫn đầy đủ: **[docs/INSTALL.vi.md](docs/INSTALL.vi.md)** (English: [docs/INSTALL.md](docs/INSTALL.md)). Tóm tắt:
 

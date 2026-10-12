@@ -21,7 +21,7 @@ First public build. "v1" is the version of this bundle; the kexts carry their ow
 | `TapGuard.app.zip` | ignore touchpad taps while typing | `/Applications` |
 | `AmdCppcPolicy.zip` | CPU policy launch daemon (binary) | `scripts/macos-amdcppc-policy-install.sh` |
 | `OpenCore-1.0.9-zen5-fsb.zip` | OpenCore 1.0.9 with the Zen 5 timer patch (if the build step succeeded) | ESP |
-| `EFI-reference.zip` | sanitized `config.plist` + SSDTs + kext list. **PolyForm Noncommercial**, SMBIOS placeholders: generate your own | see INSTALL |
+| `EFI-reference.zip` | *sanitized reference*: `config.plist` + SSDTs + kext list, placeholder SMBIOS and USB map. **PolyForm Noncommercial**. The tested **standard EFI will be added to this release later** | see INSTALL |
 | `SHA256SUMS.txt`, `LICENSE`, `LICENCE.mediatek` | checksums, licenses | |
 
 Third-party kexts (Lilu, VirtualSMC, VoodooI2C, ...) and the NVIDIA driver are **not** included: see `efi/KEXTS.md`.

@@ -73,6 +73,9 @@ OpenCore 1.0.9 gốc tính sai tần số bus trên Zen 5 (timer chạy sớm ~1
 
 ## 3. Ghép EFI
 
+> 📦 **EFI chuẩn** đã test của tác giả sẽ được upload lên release sau (hướng dẫn này sẽ được cập nhật). Trước đó, hãy tự ghép từ bản tham khảo
+> đã làm sạch dưới đây.
+
 Bố cục trên USB OpenCore (FAT32/GPT, ESP):
 
 ```

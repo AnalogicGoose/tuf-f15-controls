@@ -33,7 +33,7 @@ States: ✅ done · 🔧 in progress (someone is on it now) · 🟡 implemented,
 | # | Workstream | State | Where | Doing now / next step | Doc |
 |---|---|---|---|---|---|
 | 1 | **Install experience** (README, INSTALL, release assets, issue templates) | 🔧 | `main` | this page, publish first release (kexts + apps zip) | [INSTALL.md](INSTALL.md) |
-| 2 | **EFI hygiene**: published USB map, drop debug boot-args / `IOPCIMSIMode` leftovers / ItlDiag, verbose off | ⚪ | `main` (`efi/`) | USBToolBox map for the GA403WM replacing the `UTBDefault` placeholder, keep keyboard `0b05:19b6` internal | [efi/README.md](../efi/README.md) |
+| 2 | **Standard EFI**: the author's tested EFI uploaded to the release (**coming**); **EFI hygiene**: published USB map, drop debug boot-args / `IOPCIMSIMode` leftovers / ItlDiag, verbose off | ⚪ | `main` (`efi/`) | USBToolBox map for the GA403WM replacing the `UTBDefault` placeholder, keep keyboard `0b05:19b6` internal | [efi/README.md](../efi/README.md) |
 | 3 | **Touchpad** (I2C-HID `ASUP1208`, `093a:3011`) | ❌ | `main` | dead on the reference unit in Windows too since 2026-10-10. Next: full power drain (unplug AC, hold power 40 s), re-check Windows; if it returns, bisect `itlmt7925` / VoodooI2C / VoodooGPIO | [HANDOFF #1](HANDOFF.md) |
 | 4 | **Wi-Fi throughput** (`itlmt7925`) | 🔧 | `main` (`kexts/itlmt7925`) | measured ~8 Mb/s down / 4-6 up at HE 160 MHz (PHY ~2.4 Gb/s): RX reorder timeouts and 30 % TX retries. Next: RX ring drops, TX retry rate, LAN `iperf3` baseline | [WIFI.md](WIFI.md) |
 | 5 | **Wi-Fi app** (ItlWiFi) and runtime control | 🟡 | `main` (`macos/ItlWiFi`) | scan/join/reconnect/speed test; hardening, keychain-free storage | [WIFI.md](WIFI.md#runtime-control-itlwifi-menu-bar-app) |

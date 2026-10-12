@@ -46,7 +46,7 @@ Legend used everywhere: ✅ verified on the reference unit · 🟡 implemented, 
 | Boot macOS 15 from the internal disk | ✅ | OpenCore 1.0.9 + `fix-zen5-fsb.diff` (timers fired ~10x early on Zen 5) | [efi/README.md](efi/README.md) |
 | CPU (12 cores / 24 threads) | ✅ | `AmdCppc` + `AmdCppcPolicy` enable CPPC; Zen 5 cores reach ~4.9 GHz under load (were stuck at 2 GHz) | [docs/CPU-POWER.md](docs/CPU-POWER.md) |
 | NVIDIA RTX 5060 + 2880x1800 OLED @ 120 Hz | ✅ | Third-party NullMoth driver 1.14.2 + two local patches. Needs MUX = dGPU only. External monitor works | [docs/NULLMOTH.md](docs/NULLMOTH.md) |
-| USB keyboard / mouse / webcam | ✅ | `ItlXhciKick` fixes the 2 s key-release lag; USB port map is in the reference EFI | [docs/USB-XHCI-LAG.md](docs/USB-XHCI-LAG.md) |
+| USB keyboard / mouse / webcam | ✅ | `ItlXhciKick` fixes the 2 s key-release lag; the USB port map ships with the standard EFI (coming, see Install) | [docs/USB-XHCI-LAG.md](docs/USB-XHCI-LAG.md) |
 | Wi-Fi MT7925 | 🟡 | WPA2-PSK, DHCP, HE/160 MHz link. Measured only **~5-40 Mb/s**; no WPA3, no 6 GHz; appears as Ethernet | [docs/WIFI.md](docs/WIFI.md) |
 | Bluetooth MT7925 | 🟡 | `MtkBtFw` loads the firmware; classic devices (headphones) connect. BLE mouse: fix written, untested | [docs/BLUETOOTH.md](docs/BLUETOOTH.md) |
 | ROG performance profiles, fans, charge limit | 🟡 | `AsusWmi` + RogControl app. Silent/Performance/Turbo change real clocks and fan speed | [docs/ASUSCTL-MACOS.md](docs/ASUSCTL-MACOS.md) |
@@ -75,6 +75,11 @@ Placeholders; real screenshots will replace them. See [docs/images/README.md](do
 | ![OpenCore picker (placeholder)](docs/images/opencore-picker.svg) | ![About This Mac (placeholder)](docs/images/about-this-mac.svg) | ![Fan curves (placeholder)](docs/images/fan-curves.svg) |
 
 ## Install
+
+> 📦 **Standard EFI: coming soon.** The author's complete, working EFI (with the real USB port map and the tested settings) will be
+> **uploaded later as an asset of the GitHub release**, and this README will be updated when it is there. Until then the
+> `efi/` folder and `EFI-reference.zip` in the release are only a *sanitized reference* (placeholder SMBIOS, placeholder USB map,
+> debug boot-args): usable to assemble your own EFI by following the guide, but not the tested one.
 
 Full guide: **[docs/INSTALL.md](docs/INSTALL.md)** (Tiếng Việt: [docs/INSTALL.vi.md](docs/INSTALL.vi.md)). Short version:
 

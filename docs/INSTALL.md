@@ -73,6 +73,9 @@ Stock OpenCore 1.0.9 computes the wrong bus frequency on Zen 5 (timers fire ~10x
 
 ## 3. Assemble the EFI
 
+> 📦 The author's tested **standard EFI** will be uploaded to the release later (this guide will be updated). Until then, assemble your own from
+> the sanitized reference below.
+
 Layout on the OpenCore USB stick (FAT32/GPT, ESP):
 
 ```
