@@ -93,3 +93,8 @@ large; commit the distilled tables.
 
 * The 24H32 extraction bundle is committed in `abi/native-wifi/24H32/` at the user's request
   so the cloud session can continue from the same evidence. No kernel collection binary is included.
+
+* 2026-10-12 (cloud): round-2 analysis of the 24H32 dump in [IO80211-ABI-2.md](IO80211-ABI-2.md#analysis-round-2-cloud-session-from-the-committed-dump-only):
+  the controller needs a real `CCLogStream` logger and an existing work queue before the base `start`; the data path is
+  IOSkywalkFamily packet queues/pools registered through `registerInfraEthernetInterface`; instance sizes and the
+  IOSkywalk/CoreCapture layouts are the blockers. `tools/annotate_vcalls.py` added. Next extraction batch is listed at the end of that page.
