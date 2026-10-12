@@ -104,3 +104,7 @@ large; commit the distilled tables.
   call sites, and GET/SET dispatch tables are now extracted. WCL request IDs 441/442
   route through interface virtuals / AppleBCMWLANInfraProtocol; see the round-3 ABI note.
   Struct layouts, protocol forwarding and ownership remain open before a native stub.
+
+* 2026-10-12 (cloud, round 3): `kexts/itlmt7925/io80211/IO80211Controller.h` is generated from the vtable dump and checked
+  against it (`tools/gen_io80211_header.py`, `tools/check_io80211_header.py`: 463 slots, 0 mismatches). Not part of the kext
+  build yet. Open: `CCPipeOptions`/`CCStreamOptions` for the logger, the interface-side headers, RegistrationInfo.
