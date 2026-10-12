@@ -1,6 +1,6 @@
 # Handoff: native Wi-Fi (`IO80211Controller`) work, cloud session -> local macOS (2026-10-12; updated after round 4)
 
-Branch **`wifi-native-80211`** (based on `main` 7635608, contains all of main; round 4 is the newest commit). Continue on the Mac with
+Branch **`wifi-native-80211`** (based on `main` 7635608, contains all of main; newest work: round 4 + native stub stage 1). Continue on the Mac with
 the installed macOS 15.8.1 (24H32, Darwin 24.6.0); the cloud session has no access to the kernel collection or the hardware.
 No SMBIOS values, passphrases, MACs or neighbour SSIDs belong in this file or in `abi/`.
 
@@ -11,8 +11,8 @@ System Settings shows the MT7925 as **Wi-Fi** (menu bar, scan/join from the UI) 
 
 * **Clean room.** `itlwm` / `AirportItlwm` are GPL-2.0 (this repo is Clear BSD): do not read, copy or paraphrase them. Evidence comes
   from Apple's binaries (symbols, vtables, disassembly) via `tools/kc.py` and friends.
-* **Behind a switch.** The proven data path stays untouched; the native class replaces `itlmt7925Eth` only with boot-arg
-  `itlmt_native=1`. A panic on the native path must never cost a working machine; test on the installed system with the old kext on a
+* **Behind a switch.** The proven data path stays untouched; the native class is a *separate kext* (`itlmt7925Native`, matches the
+  core driver) and does anything only with boot-arg `itlmt_native=1`; the core kext's Info.plist and binary are not changed. A panic on the native path must never cost a working machine; test on the installed system with the old kext on a
   stick as the way back.
 * **Every ABI fact is per macOS build** (hash of the KC in `abi/native-wifi/24H32/source.json`). New macOS update = new dump.
 * Read-only extraction: no `sudo`, no kext load, no NVRAM changes while collecting. Do not commit the `.kc`.
@@ -28,6 +28,9 @@ System Settings shows the MT7925 as **Wi-Fi** (menu bar, scan/join from the UI) 
 | `tools/collect_native_wifi_abi.py`, `dump_native_wifi_dispatch.py`, `dump_native_wifi_round4.py` | the collectors (the last two only accept the recorded KC hash) |
 | `tools/annotate_vcalls.py` | names virtual calls (`call [reg+0xN]` -> slot) in a dump; the receiver class is not known, choose by what the object is |
 | `tools/gen_io80211_header.py`, `check_io80211_header.py` (+ `io80211_abi.py`, `io80211_check.py`) | generate the headers and **verify** them: clang's vtable layout of a probe subclass equals Apple's. Default = Controller (463 slots, 0 mismatches); `--all` = the seven interface-side classes (0 mismatches each) |
+| `kexts/itlmt7925Native/` | **stage-1 stub kext** `com.itlmt7925.native` (`itlmt7925Wifi : IO80211Controller`, idle unless `itlmt_native=1`, no interface yet); `corecapture_min.h` = the four factory functions it calls |
+| `kexts/itlmt7925/io80211_compile_check.cpp`, `scripts/build.sh io80211check` / `itlmt7925Native` | compile-only header test with the kext flags; build target of the stub |
+| `tools/check_kext_links.py` | read-only link check: every undefined symbol of a built kext must be exported by the KC from a declared library (a known-good kext as baseline) |
 | `kexts/itlmt7925/io80211/*.h` | `IO80211Controller`, `IO80211WorkQueue` 0x50, `IO80211CommandGate` 0x18, `IOSkywalkInterface` (0xb0, SDK value), `IOSkywalkNetworkInterface` 0xd0, `IOSkywalkEthernetInterface` 0x110, `IO80211SkywalkInterface` 0x118, `IO80211InfraInterface` 0x120; generated, **not compiled into the kext yet** |
 
 ## Established (with evidence in the dumps)
@@ -53,6 +56,10 @@ System Settings shows the MT7925 as **Wi-Fi** (menu bar, scan/join from the UI) 
   and logical link): one pool, `TxSubmission` x4 (ACs 0..3), `TxCompletion`, `RxCompletion`, common `RxSubmission`, optional multicast;
   default capacities `a=0x200, b=0x400, c=0x400`, pool 0x1300 packets of 0x800 bytes. Headers for the whole interface chain verify.
 
+* **Stub stage 1** (IO80211-ABI-2.md "Native stub, stage 1"): built, slot-checked and link-checked, never loaded. New facts: a null
+  fault reporter panics `IO80211Controller::start` just like a null logger; the object is an `IO80211FaultReporter` wrapping a
+  `CCFaultReporter` on a `CCDataStream`; `isCommandProhibited` returns 0 = allowed.
+
 ## Open (what blocks milestone 2, the stub that loads)
 
 1. ~~Logger options~~, ~~RegistrationInfo + queue/pool contract~~, ~~interface-side headers~~: closed in round 4. What remains of them:
@@ -69,27 +76,35 @@ System Settings shows the MT7925 as **Wi-Fi** (menu bar, scan/join from the UI) 
 ## Next steps, in order
 
 1. ~~Extraction round 4~~ and ~~interface-side headers~~ are done (see IO80211-ABI-2.md).
-2. Build the headers into the kext (`io80211/` include path, `OSBundleLibraries`: `com.apple.iokit.IO80211Family`, IOSkywalkFamily,
-   corecapture) as a compile-only step first, behind the existing build.
-3. Milestone 2: stub class `itlmt7925Wifi : IO80211Controller` that registers, builds the work queue and logger, creates the interface, no radio,
-   guarded by `itlmt_native=1`. Add `io80211/` to `scripts/build.sh` / `Info.plist` dependencies. Test on the installed system; success =
-   loads, shows under the IO80211 plane, System Settings lists a Wi-Fi service, no panic on load/unload/sleep.
+2. ~~Headers compile with the kext flags~~ and ~~controller stub (work queue, logger, fault reporter) builds and links~~ are done.
+3. **Stage 2 of milestone 2**: `IO80211InfraInterface` subclass + queues/pools of section 2 (no radio), created from the stub's
+   `start` after the base `start`; then the first load (see "Before the first load"). Success = loads, shows under the IO80211 plane,
+   System Settings lists a Wi-Fi service, no panic on load/unload/sleep.
 4. Milestones 3-7 in NATIVE-WIFI.md.
 
-## Round 4 (done) and the next prompt
+## Before the first load
+
+* Keep `itlmt7925Native.kext` out of `config.plist` until stage 2 is done; when testing, put it **after** `itlmt7925.kext` in
+  `Kernel/Add` (it depends on it) and set `itlmt_native=1` only for that boot. Without the boot-arg it is inert (start returns false).
+* Run `KC=... python3 tools/check_kext_links.py build/itlmt7925Native.kext build/itlmt7925.kext` after every build; a symbol that
+  is not exported means a link failure when OpenCore rebuilds the collection.
+* Test with a way back (the previous kext set on a stick); a panic on a daily driver is the cost of a wrong guess.
+
+## Round 4 (done), stub stage 1 (done) and the next prompt
 
 Round 4 ran as specified (`abi/native-wifi/24H32/round4/`, `IO80211-ABI-2.md` "Extraction round 4"). Not done: task 4, payload sizes
 of the scan/associate requests (the wrappers only forward pointers; only `apple80211_capability_data` shows an extent, >= 0x18 bytes).
-Suggested prompt for the next local session (milestone 2, compile-only first):
+Stub stage 1 followed the same day (controller + logger + fault reporter, see ABI-2 "Native stub, stage 1").
+Suggested prompt for the next session (stage 2, still without loading):
 
 ```text
-Nhánh wifi-native-80211, làm trong worktree riêng (không đụng main). Đọc docs/HANDOFF-NATIVE-WIFI.md và docs/IO80211-ABI-2.md
-("Extraction round 4"). Việc: (1) đưa kexts/itlmt7925/io80211/*.h vào build như bước compile-only (thêm include path, một .cpp
-rỗng include tất cả, static_assert sizeof) - không đổi hành vi kext; (2) viết lớp itlmt7925Wifi : IO80211Controller (stub,
-chưa nạp): createWorkQueue trước start, getLogger trả CCLogStream dựng bằng CCPipeOptions/CCStreamOptions với đúng giá trị
-Apple trong ABI-2 §1, CreatePostOffice, createInterface qua IO80211InfraInterface, đăng ký 4 TxSubmission + TxCompletion +
-RxCompletion + RxSubmission + 1 pool theo §2; (3) bật bằng boot-arg itlmt_native=1, mặc định giữ itlmt7925Eth.
-KHÔNG nạp kext, không sudo. Dừng và báo nếu clang không biên dịch được header hoặc build cần SDK ngoài repo.
+Nhánh wifi-native-80211, worktree riêng. Đọc docs/HANDOFF-NATIVE-WIFI.md và docs/IO80211-ABI-2.md (round 4 + "Native stub,
+stage 1"). Việc: trong kexts/itlmt7925Native thêm lớp itlmt7925WifiInterface : IO80211InfraInterface và tạo nó từ
+itlmt7925Wifi::start (sau super::start): RegistrationInfo 0x130 byte theo ABI-2 §2 (MAC từ core driver, version 1, size 0x130),
+1 pool + 4 TxSubmission + TxCompletion + RxCompletion + RxSubmission chung theo bảng queue §2, đăng ký bằng
+registerInfraEthernetInterface, tear-down đúng thứ tự stop() của BCM. Mỗi virtual phải override đều kiểm slot như stage 1 (clang
+-fdump-vtable-layouts so với vtable BCM). Chạy tools/check_kext_links.py. KHÔNG nạp kext, không sudo. Dừng và báo nếu một hàm
+của interface cần kiểu/layout chưa có bằng chứng (ghi 'chưa xác định', đừng đoán).
 ```
 
 ## Housekeeping

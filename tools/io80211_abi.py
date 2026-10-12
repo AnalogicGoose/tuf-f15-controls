@@ -35,6 +35,15 @@ CLASSES = {
 ORDER = ['IOSkywalkInterface', 'IO80211WorkQueue', 'IO80211CommandGate', 'IOSkywalkNetworkInterface', 'IOSkywalkEthernetInterface',
          'IO80211SkywalkInterface', 'IO80211InfraInterface']
 
+# exported non-virtual members the stub calls (they do not change the layout): class -> [(mangled symbol, declaration, evidence)].
+# The mangled symbol must be in <Class>.methods.txt of the dump or generation stops.
+STATICS = {
+    'IO80211WorkQueue': [
+        ('__ZN16IO80211WorkQueue9workQueueEv', 'static IO80211WorkQueue *workQueue();',
+         'AppleBCMWLANCore::createWorkQueue calls it when boot-arg wlan.workQueue.create is set'),
+    ],
+}
+
 # overrides whose declaring class is outside the SDK subset we check or not unique in it: name -> return type
 RET_OVERRIDE = {
     'init': 'bool', 'free': 'void', 'start': 'bool', 'stop': 'void', 'joinPMtree': 'void', 'setAggressiveness': 'IOReturn',
@@ -365,6 +374,12 @@ def render(d, cls, sdk=None, known_rets=None):
     hdr.append('    // new virtuals, slots %d..%d' % (a['parent_last'] + 1, a['last']))
     hdr.extend(g['new'])
     hdr.append('')
+    for sym, decl, why in STATICS.get(cls, ()):
+        if sym not in open(os.path.join(d, cls + '.methods.txt')).read():
+            raise SystemExit('%s: %s is not in the method dump' % (cls, sym))
+        hdr.append('    %s   // exported: %s; %s' % (decl, sym, why))
+    if STATICS.get(cls):
+        hdr.append('')
     hdr.append('protected:')
     hdr.append('    uint8_t %sOpaque[0x%x - sizeof(%s)];   // ivars of Apple\'s class: layout not determined' % (
         cls[0].lower() + cls[1:], conf['size'], conf['parent']))

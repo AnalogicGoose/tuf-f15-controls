@@ -32,7 +32,8 @@ RET = {
     'getIO80211CommandGate': ('IO80211CommandGate *', 'guess from name'),
     'getPrimarySkywalkInterface': ('IO80211SkywalkInterface *', 'guess from name'),
     'getLogger': ('CCLogStream *', 'result stored and used with CCLogStream::shouldLog'),
-    'getFaultReporterFromDriver': ('CCFaultReporter *', 'guess from name'),
+    'getFaultReporterFromDriver': ('IO80211FaultReporter *', 'BCM returns BusInterface::getIO80211FaultReporter() (state+0x28); '
+                                   'start() retains it (slot 6) and panics if it is null (findAndAttachToFaultReporter)'),
     'attachInterface': ('bool', 'base returns setne al'),
     'CreatePostOffice': ('IO80211PostOffice *', 'result stored in ivars, null-checked'),
     'getPostOffice': ('IO80211PostOffice *', 'guess from name'),

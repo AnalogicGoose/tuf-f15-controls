@@ -28,6 +28,8 @@ public:
     /* 65 */ virtual IOReturn commandSleep(void* a1, uint64_t a2);   // ret: guess
     /* 66 */ virtual IOReturn commandWakeup(void* a1);   // ret: guess
 
+    static IO80211WorkQueue *workQueue();   // exported: __ZN16IO80211WorkQueue9workQueueEv; AppleBCMWLANCore::createWorkQueue calls it when boot-arg wlan.workQueue.create is set
+
 protected:
     uint8_t iO80211WorkQueueOpaque[0x50 - sizeof(IOWorkLoop)];   // ivars of Apple's class: layout not determined
 };

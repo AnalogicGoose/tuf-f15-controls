@@ -11,11 +11,11 @@
 
 struct ether_addr;
 struct __mbuf;
-class CCFaultReporter;
 class CCLogStream;
 class CCPipe;
 class FlowIdMetadata;
 class IO80211CommandGate;
+class IO80211FaultReporter;
 class IO80211FlowQueue;
 class IO80211InterfaceAVCAdvisory;
 class IO80211PostOffice;
@@ -87,7 +87,7 @@ public:
     /* 431 */ virtual IOReturn getPacketTSCounter();   // ret: guess
     /* 432 */ virtual IOReturn getDriverTextLog();   // ret: guess
     /* 433 */ virtual IOReturn selfDiagnosticsReport(int a1, char const* a2, uint32_t a3);   // ret: guess
-    /* 434 */ virtual CCFaultReporter * getFaultReporterFromDriver() = 0;   // ret: guess from name
+    /* 434 */ virtual IO80211FaultReporter * getFaultReporterFromDriver() = 0;   // ret: BCM returns BusInterface::getIO80211FaultReporter() (state+0x28); start() retains it (slot 6) and panics if it is null (findAndAttachToFaultReporter)
     /* 435 */ virtual IOReturn allocIO80211RecursiveLock();   // ret: guess
     /* 436 */ virtual IOReturn getDataQueueDepth(OSObject* a1);   // ret: guess
     /* 437 */ virtual IOReturn wasDynSARInFailSafeMode();   // ret: guess

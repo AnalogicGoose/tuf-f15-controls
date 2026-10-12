@@ -114,3 +114,10 @@ large; commit the distilled tables.
   numeric defaults, ownership at stop) and seven verified interface-side headers (`kexts/itlmt7925/io80211/`, 0 mismatches each)
   are in [IO80211-ABI-2.md](IO80211-ABI-2.md#extraction-round-4-mac-2026-10-12-read-only). Raw: `abi/native-wifi/24H32/round4/`.
   Milestone 1 is complete except request payload layouts; milestone 2 (stub) is unblocked. Nothing has been loaded.
+
+* 2026-10-12 (Mac, stub stage 1): `kexts/itlmt7925Native` (`itlmt7925Wifi : IO80211Controller`, separate kext, idle without
+  `itlmt_native=1`) builds with the kext flags; every override sits on Apple's slot, all 481 undefined symbols resolve against the
+  collection (`tools/check_kext_links.py`). Found on the way: a null fault reporter panics `start` (like a null logger), the object
+  is an `IO80211FaultReporter`. Never loaded. Next: the interface and queues (stage 2). Details:
+  [IO80211-ABI-2.md](IO80211-ABI-2.md#native-stub-stage-1-mac-2026-10-12-controller-only-built-and-link-checked-never-loaded).
+

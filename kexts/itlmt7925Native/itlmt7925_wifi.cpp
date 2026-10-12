@@ -1,0 +1,278 @@
+// SPDX-License-Identifier: BSD-3-Clause-Clear
+// Copyright (c) 2026 thanhnndev and contributors
+// itlmt7925Wifi - native IO80211Controller front end for the MT7925 (macOS 15.8.1 / 24H32 ABI), stage 1: controller only.
+//
+// Matches the core driver (`itlmt7925`) as its provider and does nothing unless boot-arg itlmt_native=1 is set. What it does
+// today is exactly what IO80211Controller::start() demands of a subclass (docs/IO80211-ABI-2.md, "Controller startup" and
+// "Native stub"): a work queue before start, a real CCLogStream from getLogger(), a non-null fault reporter from
+// getFaultReporterFromDriver() (a null one panics in findAndAttachToFaultReporter). It creates no interface, no queues, and
+// answers every request as prohibited; the data path stays on the Ethernet front end in the core kext.
+#include "../itlmt7925/io80211/IO80211Controller.h"
+#include "../itlmt7925/io80211/IO80211WorkQueue.h"
+#include "corecapture_min.h"
+
+#include <IOKit/IOLib.h>
+#include <pexpert/pexpert.h>
+#include <string.h>
+
+#define LOGT "itlmt7925Wifi: "
+
+class itlmt7925Wifi : public IO80211Controller {
+    OSDeclareDefaultStructors(itlmt7925Wifi)
+
+public:
+    bool init(OSDictionary *properties = nullptr) override;
+    bool start(IOService *provider) override;
+    void stop(IOService *provider) override;
+    void free() override;
+
+    // IO80211Controller virtuals the base class needs from a subclass (see ABI-2: slots 397, 399 and the pure ones)
+    bool createWorkQueue() override;
+    IO80211WorkQueue *getWorkQueue() const override;
+    CCLogStream *getLogger() const override;
+    IO80211FaultReporter *getFaultReporterFromDriver() override;
+    IOReturn isCommandProhibited(int cmd) override;
+    IOReturn handleCardSpecific(IO80211SkywalkInterface *i, unsigned long cmd, void *data, bool set) override;
+    IOReturn getDRIVER_VERSION(IO80211SkywalkInterface *i, apple80211_version_data *d) override;
+    IOReturn getHARDWARE_VERSION(IO80211SkywalkInterface *i, apple80211_version_data *d) override;
+    IOReturn getCARD_CAPABILITIES(IO80211SkywalkInterface *i, apple80211_capability_data *d) override;
+    IOReturn getPOWER(IO80211SkywalkInterface *i, apple80211_power_data *d) override;
+    IOReturn setPOWER(IO80211SkywalkInterface *i, apple80211_power_data *d) override;
+    IOReturn getCOUNTRY_CODE(IO80211SkywalkInterface *i, apple80211_country_code_data *d) override;
+    IOReturn setCOUNTRY_CODE(IO80211SkywalkInterface *i, apple80211_country_code_data *d) override;
+    IOReturn setGET_DEBUG_INFO(IO80211SkywalkInterface *i, apple80211_debug_command *d) override;
+
+private:
+    bool makeLogger(IOService *owner);
+    bool makeFaultReporter(IOService *owner);
+
+    IO80211WorkQueue *wq = nullptr;
+    CCPipe *logPipe = nullptr;
+    CCStream *logStream = nullptr;          // a CCLogStream (options type 0)
+    CCPipe *dataPipe = nullptr;
+    CCStream *dataStream = nullptr;         // a CCDataStream (options type 1)
+    CCFaultReporter *ccFault = nullptr;
+    IO80211FaultReporter *fault = nullptr;
+};
+
+#define super IO80211Controller
+OSDefineMetaClassAndStructors(itlmt7925Wifi, IO80211Controller)
+
+namespace {
+
+const char kOwnerId[] = "com.itlmt7925.native";
+
+template <typename T>
+inline void put(uint8_t *block, size_t off, T v)
+{
+    memcpy(block + off, &v, sizeof(v));
+}
+
+inline void rel(void *o)
+{
+    if (o) ((OSObject *)o)->release();
+}
+
+// errno-style value Apple's BCM driver returns from isCommandProhibited() when it rejects commands (ENOTSUP)
+const IOReturn kProhibited = 0x3a;
+
+}
+
+bool itlmt7925Wifi::init(OSDictionary *properties)
+{
+    return super::init(properties);
+}
+
+// CCPipeOptions / CCStreamOptions as Apple fills them (ABI-2 section 1; keys of the CoreCapture registry entry in brackets).
+// Pipe options (zeroed, 0x350 bytes): +0 [PipeType], +0x10 [PipeSize], +0x18 [MinLogSizeToNotify], +0x20 [NotifyThreshold],
+// +0x24 [Filename], +0x124 [LogIdentifier], +0x224 [FileSize], +0x228 [NumberOfFiles], +0x244 [DirectoryName].
+bool itlmt7925Wifi::makeLogger(IOService *owner)
+{
+    uint8_t *po = (uint8_t *)IOMalloc(kCCPipeOptionsSize);
+    uint8_t *so = (uint8_t *)IOMalloc(kCCStreamOptionsSize);
+    bool ok = false;
+    if (po && so) {
+        bzero(po, kCCPipeOptionsSize);
+        bzero(so, kCCStreamOptionsSize);
+        // The values of Apple's ControlPath pipe (IO80211Controller::setupControlPathLogging)
+        put<uint32_t>(po, 0x000, 0);                    // CCLogPipe
+        put<uint64_t>(po, 0x010, 0x10000);
+        put<uint64_t>(po, 0x018, 0x6666);
+        put<uint32_t>(po, 0x020, 0x3e8);
+        strlcpy((char *)po + 0x024, "itlmt7925Wifi", 0x100);
+        strlcpy((char *)po + 0x124, "itlmt7925Wifi", 0x100);
+        put<uint32_t>(po, 0x224, 0x200000);
+        put<uint32_t>(po, 0x228, 2);
+        strlcpy((char *)po + 0x244, "WiFi", 0x100);
+        // Stream: class CCLogStream, level -1 (Apple's default, 5 only when io80211isDebuggable())
+        put<uint32_t>(so, 0x000, 0);
+        put<uint32_t>(so, 0x008, 0xffffffffu);
+        put<uint32_t>(so, 0x00c, 0xffffffffu);
+        strlcpy((char *)so + 0x058, "itlmt7925Wifi", 0xf0);
+
+        logPipe = CCPipe::withOwnerNameCapacity(owner, kOwnerId, "itlmt7925Wifi", (const CCPipeOptions *)po);
+        // CCLogStream::initWithPipeAndName casts the pipe to CCLogPipe without a null check: never pass a null pipe
+        if (logPipe)
+            logStream = CCStream::withPipeAndName(logPipe, "itlmt7925Wifi", (const CCStreamOptions *)so);
+        ok = logPipe && logStream;
+    }
+    if (po) IOFree(po, kCCPipeOptionsSize);
+    if (so) IOFree(so, kCCStreamOptionsSize);
+    return ok;
+}
+
+// Fault reporter: IO80211FaultReporter(CCFaultReporter(CCDataStream(CCDataPipe))). The data pipe/stream take the option
+// values Apple uses for its crash-tracer log in AppleBCMWLANBusInterfacePCIe::createCrashTracerLogger (pipe type 1,
+// +4 = 2 [LogType], +8 = 6 [LogDataType], +0x10 = 0x40 [PipeSize], +0x230 = the owner; stream type 1, +8 = -1 as a qword).
+bool itlmt7925Wifi::makeFaultReporter(IOService *owner)
+{
+    uint8_t *po = (uint8_t *)IOMalloc(kCCPipeOptionsSize);
+    uint8_t *so = (uint8_t *)IOMalloc(kCCStreamOptionsSize);
+    bool ok = false;
+    if (po && so && wq) {
+        bzero(po, kCCPipeOptionsSize);
+        bzero(so, kCCStreamOptionsSize);
+        put<uint32_t>(po, 0x000, 1);                    // CCDataPipe
+        put<uint32_t>(po, 0x004, 2);
+        put<uint64_t>(po, 0x008, 6);
+        put<uint64_t>(po, 0x010, 0x40);
+        strlcpy((char *)po + 0x024, "itlmt7925WifiFault", 0x100);
+        strlcpy((char *)po + 0x124, "itlmt7925WifiFault", 0x100);
+        strlcpy((char *)po + 0x244, "WiFi", 0x100);
+        put<uint64_t>(po, 0x230, (uint64_t)(uintptr_t)owner);
+        put<uint32_t>(so, 0x000, 1);                    // CCDataStream
+        put<uint64_t>(so, 0x008, ~0ull);
+
+        dataPipe = CCPipe::withOwnerNameCapacity(owner, kOwnerId, "itlmt7925WifiFault", (const CCPipeOptions *)po);
+        if (dataPipe)
+            dataStream = CCStream::withPipeAndName(dataPipe, "itlmt7925WifiFault", (const CCStreamOptions *)so);
+        if (dataStream)
+            ccFault = CCFaultReporter::withStreamWorkloop((CCDataStream *)dataStream, (IOWorkLoop *)wq);
+        if (ccFault)
+            fault = IO80211FaultReporter::allocWithParams(ccFault);
+        ok = fault != nullptr;
+    }
+    if (po) IOFree(po, kCCPipeOptionsSize);
+    if (so) IOFree(so, kCCStreamOptionsSize);
+    return ok;
+}
+
+bool itlmt7925Wifi::start(IOService *provider)
+{
+    uint32_t on = 0;
+    if (!PE_parse_boot_argn("itlmt_native", &on, sizeof(on)) || !on) {
+        IOLog(LOGT "idle (boot-arg itlmt_native not set)\n");
+        return false;
+    }
+    if (!createWorkQueue()) {
+        IOLog(LOGT "no work queue\n");
+        return false;
+    }
+    if (!makeLogger(provider)) {
+        IOLog(LOGT "no logger\n");
+        return false;
+    }
+    if (!makeFaultReporter(provider)) {
+        IOLog(LOGT "no fault reporter\n");
+        return false;
+    }
+    if (!super::start(provider)) {
+        IOLog(LOGT "IO80211Controller::start failed\n");
+        return false;
+    }
+    registerService();
+    IOLog(LOGT "controller started (no interface yet)\n");
+    return true;
+}
+
+void itlmt7925Wifi::stop(IOService *provider)
+{
+    super::stop(provider);
+}
+
+void itlmt7925Wifi::free()
+{
+    // reverse order of creation; the reporter chain holds the stream and the work queue
+    rel(fault);       fault = nullptr;
+    rel(ccFault);     ccFault = nullptr;
+    rel(dataStream);  dataStream = nullptr;
+    rel(dataPipe);    dataPipe = nullptr;
+    rel(logStream);   logStream = nullptr;
+    rel(logPipe);     logPipe = nullptr;
+    rel(wq);          wq = nullptr;
+    super::free();
+}
+
+// The base class never calls createWorkQueue() from start(): getWorkQueue() must already return a queue (ABI-2 round 2).
+// Apple's own BCM driver takes IO80211WorkQueue::workQueue() when boot-arg wlan.workQueue.create is set.
+bool itlmt7925Wifi::createWorkQueue()
+{
+    if (!wq) wq = IO80211WorkQueue::workQueue();
+    return wq != nullptr;
+}
+
+IO80211WorkQueue *itlmt7925Wifi::getWorkQueue() const
+{
+    return wq;
+}
+
+CCLogStream *itlmt7925Wifi::getLogger() const
+{
+    return (CCLogStream *)logStream;
+}
+
+IO80211FaultReporter *itlmt7925Wifi::getFaultReporterFromDriver()
+{
+    return fault;
+}
+
+// Every request is refused until an interface exists.
+IOReturn itlmt7925Wifi::isCommandProhibited(int)
+{
+    return kProhibited;
+}
+
+IOReturn itlmt7925Wifi::handleCardSpecific(IO80211SkywalkInterface *, unsigned long, void *, bool)
+{
+    return kIOReturnUnsupported;
+}
+
+IOReturn itlmt7925Wifi::getDRIVER_VERSION(IO80211SkywalkInterface *, apple80211_version_data *)
+{
+    return kIOReturnUnsupported;
+}
+
+IOReturn itlmt7925Wifi::getHARDWARE_VERSION(IO80211SkywalkInterface *, apple80211_version_data *)
+{
+    return kIOReturnUnsupported;
+}
+
+IOReturn itlmt7925Wifi::getCARD_CAPABILITIES(IO80211SkywalkInterface *, apple80211_capability_data *)
+{
+    return kIOReturnUnsupported;
+}
+
+IOReturn itlmt7925Wifi::getPOWER(IO80211SkywalkInterface *, apple80211_power_data *)
+{
+    return kIOReturnUnsupported;
+}
+
+IOReturn itlmt7925Wifi::setPOWER(IO80211SkywalkInterface *, apple80211_power_data *)
+{
+    return kIOReturnUnsupported;
+}
+
+IOReturn itlmt7925Wifi::getCOUNTRY_CODE(IO80211SkywalkInterface *, apple80211_country_code_data *)
+{
+    return kIOReturnUnsupported;
+}
+
+IOReturn itlmt7925Wifi::setCOUNTRY_CODE(IO80211SkywalkInterface *, apple80211_country_code_data *)
+{
+    return kIOReturnUnsupported;
+}
+
+IOReturn itlmt7925Wifi::setGET_DEBUG_INFO(IO80211SkywalkInterface *, apple80211_debug_command *)
+{
+    return kIOReturnUnsupported;
+}
