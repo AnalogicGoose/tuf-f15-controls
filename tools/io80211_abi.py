@@ -30,10 +30,14 @@ CLASSES = {
     'IO80211SkywalkInterface': dict(parent='IOSkywalkEthernetInterface', include='"IOSkywalkEthernetInterface.h"', size=0x118,
                                     children=['IO80211InfraInterface', 'AppleBCMWLANSkywalkInterface']),
     'IO80211InfraInterface': dict(parent='IO80211SkywalkInterface', include='"IO80211SkywalkInterface.h"', size=0x120,
-                                  children=['AppleBCMWLANSkywalkInterface']),
+                                  children=['IO80211InfraProtocol', 'AppleBCMWLANSkywalkInterface']),
+    # the Family's protocol class: IO80211InfraInterface plus 190 pure virtuals (slots 467-656) that the Family's request
+    # routing calls; names come from AppleBCMWLANInfraProtocol (round 5). Same instance size as its parent (no ivars).
+    'IO80211InfraProtocol': dict(parent='IO80211InfraInterface', include='"IO80211InfraInterface.h"', size=0x120,
+                                 children=['AppleBCMWLANInfraProtocol', 'AppleBCMWLANSkywalkInterface']),   # 2nd: names slot 417 (setMacAddress)
 }
 ORDER = ['IOSkywalkInterface', 'IO80211WorkQueue', 'IO80211CommandGate', 'IOSkywalkNetworkInterface', 'IOSkywalkEthernetInterface',
-         'IO80211SkywalkInterface', 'IO80211InfraInterface']
+         'IO80211SkywalkInterface', 'IO80211InfraInterface', 'IO80211InfraProtocol']
 
 # exported non-virtual members the stub calls (they do not change the layout): class -> [(mangled symbol, declaration, evidence)].
 # The mangled symbol must be in <Class>.methods.txt of the dump or generation stops.
@@ -60,7 +64,12 @@ RET = {
     'getTxHeadroom': ('uint16_t', 'AppleBCMWLANSkywalkInterface::getTxHeadroom returns the word at state+0x28'),
     'getTxQueueDepth': ('uint32_t', 'AppleBCMWLANSkywalkInterface::getTxQueueDepth returns a dword'),
     'getRxQueueCapacity': ('uint32_t', 'AppleBCMWLANSkywalkInterface::getRxQueueCapacity returns a dword'),
+    'setMacAddress': ('IOReturn', 'AppleBCMWLANSkywalkInterface::setMacAddress returns the result of AppleBCMWLANCore::setCurEtheraddr in eax'),
 }
+# get/set handlers of IO80211InfraProtocol: tail calls into the core's own virtuals (AppleBCMWLANInfraProtocol::getCHANNEL is
+# `jmp [core vtable + 0xe98]`), so the type is the core handler's. IOReturn is assumed; a sibling in the Family,
+# IO80211InfraInterface::setWCL_ADVISORTY_INFO, returns a bool in al. Not verified per handler.
+PROTOCOL_HANDLER = re.compile(r'^(get|set)[A-Z0-9][A-Z0-9_]*$')
 PTR = {
     'createPeerManager': 'IO80211PeerManager *', 'createPeer': 'IO80211Peer *', 'getScanManager': 'IO80211ScanManager *',
     'getController': 'IO80211Controller *', 'getP2PSkywalkPeerMgr': 'IO80211PeerManager *', 'findPeer': 'IO80211Peer *',
@@ -85,9 +94,18 @@ SDK_TYPES = {'IOReportChannelList', 'OSObject', 'OSDictionary', 'OSString', 'OSS
              'IOWorkLoop', 'IORegistryEntry', 'IOSkywalkInterface', 'OSMetaClass'}
 
 
+def dump_path(d, fname):
+    """first existing <dir>/<fname> over the ':'-separated dump directories (round3 and later rounds hold different classes)"""
+    for one in d.split(os.pathsep):
+        p = os.path.join(one, fname)
+        if os.path.exists(p):
+            return p
+    return os.path.join(d.split(os.pathsep)[0], fname)
+
+
 def vt(d, cls):
     out = {}
-    path = os.path.join(d, cls + '.vtable.txt')
+    path = dump_path(d, cls + '.vtable.txt')
     for line in open(path):
         p = line.rstrip('\n').split('\t')
         if len(p) == 3 and p[0].isdigit():
@@ -154,9 +172,11 @@ def parse_method(dem):
     return owner, name, split_params(args), bool(const)
 
 
-def ret_for(name, params, const):
+def ret_for(name, params, const, cls=None):
     if name in RET:
         return RET[name][0], RET[name][1]
+    if cls == 'IO80211InfraProtocol' and PROTOCOL_HANDLER.match(name):
+        return 'IOReturn', 'guess: tail call into the core handler (see PROTOCOL_HANDLER)'
     if name in PTR:
         return PTR[name], 'guess from name'
     if name in UINT:
@@ -173,7 +193,7 @@ def analyse(d, cls):
     conf = CLASSES[cls]
     mine = class_vt(d, cls)
     last = max(s for s, v in mine.items() if v != '-')
-    kids = [vt(d, c) for c in conf['children'] if os.path.exists(os.path.join(d, c + '.vtable.txt'))]
+    kids = [vt(d, c) for c in conf['children'] if os.path.exists(dump_path(d, c + '.vtable.txt'))]
 
     def sym_at(slot):
         s = mine[slot]
@@ -214,7 +234,7 @@ def analyse(d, cls):
             continue                          # destructor pair, getMetaClass: OSDeclare*Structors
         rec = dict(slot=s, name=name, params=params, const=const, pure=pure)
         if s > parent_last:
-            rec['ret'], rec['why'] = ret_for(name, params, const)
+            rec['ret'], rec['why'] = ret_for(name, params, const, cls)
             new.append(rec)
         else:
             over.append(rec)
@@ -375,14 +395,15 @@ def render(d, cls, sdk=None, known_rets=None):
     hdr.extend(g['new'])
     hdr.append('')
     for sym, decl, why in STATICS.get(cls, ()):
-        if sym not in open(os.path.join(d, cls + '.methods.txt')).read():
+        if sym not in open(dump_path(d, cls + '.methods.txt')).read():
             raise SystemExit('%s: %s is not in the method dump' % (cls, sym))
         hdr.append('    %s   // exported: %s; %s' % (decl, sym, why))
     if STATICS.get(cls):
         hdr.append('')
-    hdr.append('protected:')
-    hdr.append('    uint8_t %sOpaque[0x%x - sizeof(%s)];   // ivars of Apple\'s class: layout not determined' % (
-        cls[0].lower() + cls[1:], conf['size'], conf['parent']))
+    if CLASSES.get(conf['parent'], {}).get('size') != conf['size']:
+        hdr.append('protected:')
+        hdr.append('    uint8_t %sOpaque[0x%x - sizeof(%s)];   // ivars of Apple\'s class: layout not determined' % (
+            cls[0].lower() + cls[1:], conf['size'], conf['parent']))
     hdr.append('};')
     hdr.append('static_assert(sizeof(%s) == 0x%x, "%s must be 0x%x bytes (24H32)");' % (cls, conf['size'], cls, conf['size']))
     return '\n'.join(hdr) + '\n', g

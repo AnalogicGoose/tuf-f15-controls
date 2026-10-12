@@ -158,7 +158,7 @@ public:
     /* 414 */ virtual IOReturn init(IOService* a1, ether_addr* a2);   // ret: guess
     /* 415 */ virtual bool isInterfaceEnabled();   // ret: guess from name
     /* 416 */ virtual ether_addr * getSelfMacAddr();   // ret: guess from name
-    /* 417 */ virtual void setMacAddress(ether_addr& a1) = 0;   // ret: guess from name
+    /* 417 */ virtual IOReturn setMacAddress(ether_addr& a1) = 0;   // ret: AppleBCMWLANSkywalkInterface::setMacAddress returns the result of AppleBCMWLANCore::setCurEtheraddr in eax
     /* 418 */ virtual IOSkywalkPacketBufferPool * getPacketPool(OSString* a1);   // ret: guess from name
     /* 419 */ virtual CCLogStream * getLogger() const;   // ret: result used with CCLogStream::shouldLog in AppleBCMWLANSkywalkInterface
     /* 420 */ virtual IOReturn handleSIOCSIFADDR();   // ret: guess

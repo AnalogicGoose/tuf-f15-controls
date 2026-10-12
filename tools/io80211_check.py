@@ -10,7 +10,8 @@ import re
 import subprocess
 import tempfile
 
-from io80211_abi import (CLASSES, ENUMS, ORDER, class_vt, declarator, demangle_all, parse_method, render, sdk_virtual_rets, vt)
+from io80211_abi import (CLASSES, ENUMS, ORDER, class_vt, declarator, demangle_all, dump_path, parse_method, render,
+                         sdk_virtual_rets, vt)
 
 # by-value parameters of virtuals: complete dummy definitions, only so that the probe can override a pure slot
 BYVALUE_STUBS = ['IO80211FlowQueueHash', 'apple80211_channel', 'nicproxy_limits_info_s']
@@ -26,7 +27,7 @@ def check_class(d, sdk, cls, tmp, texts):
     conf = CLASSES[cls]
     mine = class_vt(d, cls)
     last = max(s for s, v in mine.items() if v != '-')
-    kids = [vt(d, c) for c in conf['children'] if os.path.exists(os.path.join(d, c + '.vtable.txt'))]
+    kids = [vt(d, c) for c in conf['children'] if os.path.exists(dump_path(d, c + '.vtable.txt'))]
     dem = demangle_all({v for v in mine.values() if v.startswith('__Z')} |
                        {k[s] for k in kids for s in k if k[s].startswith('__Z')})
     sdkret = sdk_virtual_rets(sdk)
