@@ -720,7 +720,7 @@ int itlmt7925::m3Run1()
         }
     int sel = -1;
     for (int attempt = 1; attempt <= 3 && sel < 0; attempt++) {
-        for (int k = 0; k < no && sel < 0; k++) {
+        for (int k = 0; k < no && sel < 0 && !cmdPending(CMD_JOIN | CMD_DISCONNECT); k++) {
             int i = order[k];
             strlcpy(m3ssid, nets[i].ssid, sizeof(m3ssid));
             tgtFound = false;
