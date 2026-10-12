@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540" role="img" aria-label="Placeholder: OpenCore picker">
+  <title>Placeholder: OpenCore picker</title>
+  <rect width="960" height="540" fill="#f2f2f5"/>
+  <rect x="8" y="8" width="944" height="524" rx="14" fill="none" stroke="#9a9aa5" stroke-width="2" stroke-dasharray="10 8"/>
+  <g font-family="-apple-system, Helvetica, Arial, sans-serif" text-anchor="middle" fill="#55555f">
+    <text x="480.0" y="252.0" font-size="33" font-weight="600">OpenCore picker</text>
+    <text x="480.0" y="284.0" font-size="18">macOS, Windows, Linux entries</text>
+    <text x="480.0" y="316.0" font-size="15" fill="#8a8a95">screenshot placeholder, to be updated</text>
+  </g>
+</svg>

@@ -1,6 +1,6 @@
 name: build-kexts
 
-# Builds itlmt7925, ItlXhciKick and ItlDiag with empty Wi-Fi credentials (credentials are injected locally, never in CI).
+# Builds every kext (itlmt7925, ItlXhciKick, ItlDiag, AsusWmi, AmdCppc, MtkBtFw, BtLeDlFix) with empty Wi-Fi credentials (credentials are injected locally, never in CI).
 # A tag "v*" additionally publishes the zipped kexts as a GitHub release.
 on:
   push:
@@ -49,7 +49,7 @@ jobs:
       - name: Package
         run: |
           mkdir -p dist
-          for k in itlmt7925 ItlXhciKick ItlDiag; do
+          for k in itlmt7925 ItlXhciKick ItlDiag AsusWmi AmdCppc MtkBtFw BtLeDlFix; do
             ditto -c -k --keepParent "build/$k.kext" "dist/$k.kext.zip"
           done
           cp fw/LICENCE.mediatek dist/LICENCE.mediatek

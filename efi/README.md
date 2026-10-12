@@ -1,7 +1,8 @@
 # Reference EFI: ASUS ROG Zephyrus G14 (GA403WM), Ryzen AI 9 HX 370
 
-The OpenCore configuration this project was developed and tested with. It boots the **macOS 15.6.1 (24G90) Recovery** image
-from a USB stick with OpenCore 1.0.9. A full macOS install on the internal disk has not been tried with it.
+The OpenCore configuration this project was developed and tested with. On the reference machine it boots **macOS 15.8.1 (24H32)**
+from the internal disk (OpenCore 1.0.9 on the internal ESP; it was first brought up on the 15.6.1 Recovery image from a USB
+stick). macOS 26 is not supported. Install steps: [../docs/INSTALL.md](../docs/INSTALL.md).
 
 | | |
 |---|---|
@@ -122,8 +123,8 @@ builds OpenCore from the exact upstream commit with the patch applied (manual tr
 * **USB port mapping is not done.** `USBToolBox.kext` + `UTBDefault.kext` are present but there is no per-port map for this
   laptop yet; `XhciPortLimit` is off. Map the ports with the USBToolBox tool and replace `UTBDefault.kext`. The
   internal keyboard (`0b05:19b6`) must stay mapped as an internal port.
-* Only the Recovery environment has been exercised. Installed-system behaviour (sleep, audio, GPU, battery) is outside the
-  scope of what was verified here.
+* The installed system runs (see the README status table), but sleep/wake, audio, SD reader and battery readout are not
+  verified. The reference configuration still carries debug boot-args; the author's USB map is not published yet.
 
 ## Provenance
 

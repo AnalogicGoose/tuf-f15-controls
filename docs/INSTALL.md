@@ -1,0 +1,228 @@
+# Installing macOS 15 on the ASUS ROG Zephyrus G14 (GA403WM)
+
+Tiếng Việt: [INSTALL.vi.md](INSTALL.vi.md).
+
+> ⚠️ **Vibe-coded, one-laptop project.** Read the warning in the [README](../README.md). This guide is the path that worked on
+> the reference unit (BIOS GA403WM.310, 2880x1800 OLED, RTX 5060). It is not a polished installer. If a step surprises you,
+> stop and ask in an issue; do not improvise on the ESP.
+>
+> **macOS 15 (Sequoia) only.** macOS 26 is not supported and not tested; do not install it and do not accept a major update.
+
+## 0. What you need
+
+* A GA403WM (other GA403 variants: untested). Everything on the disk you install to will be reachable by experimental kexts:
+  **back up first**. Keep a Windows/Linux recovery USB.
+* A second computer, ideally a Mac, to make the installer and build the kexts. (A Mac is needed to build the kexts and the
+  apps; CI builds the kexts for you if you have no Mac, but not the apps.)
+* A USB stick (16 GB+) for OpenCore and, separately, a USB stick or disk (32 GB+) for the macOS installer.
+* A way to get online while installing: **USB Ethernet** or **Android USB tethering** (`HoRNDIS.kext` is in the EFI). Our Wi-Fi
+  works but is slow; do not rely on it for a 16 GB download.
+* Time. The first boot takes minutes, and you will reboot a lot.
+
+### Dual-booting
+
+Windows and Linux can stay: macOS gets its **own** partition/disk and everything is started from the OpenCore picker. Read
+[DUAL-BOOT.md](DUAL-BOOT.md) first (shrinking partitions is the risky step; UEFI entries can disappear after *Reset NVRAM*).
+The reference machine runs OpenCore from the internal ESP, shared with Windows and Limine.
+
+## 1. BIOS / firmware settings
+
+| Setting | Value | Why |
+|---|---|---|
+| GPU mode (Armoury Crate in Windows, or BIOS) | **Ultimate** (MUX: dGPU only) | In Hybrid mode the OLED is wired to the AMD iGPU, macOS has no driver for it and the NVIDIA driver finds `0 displays`. Set it from Windows, once. |
+| Above 4G Decoding | **ON** | the NVIDIA driver resizes the GPU BAR |
+| CSM | **OFF** | |
+| Secure Boot | **OFF** | OpenCore is not signed |
+| Fast Boot | OFF | |
+
+BIOS tested: `GA403WM.310`. Update or downgrade at your own risk; report what you tried.
+
+## 2. Get the kexts and tools
+
+You need two groups. Put them in a scratch folder, **not** on the ESP yet.
+
+### 2a. Kexts from this repository
+
+Pick one:
+
+* **Release** (when published): download the `.kext.zip` files from [Releases](https://github.com/thanhnndev/ga403wm-hackintosh/releases).
+* **CI artifact:** Actions → `build-kexts` → latest run → artifact `kexts`.
+* **Build on a Mac** (Xcode command line tools):
+  ```bash
+  git clone https://github.com/thanhnndev/ga403wm-hackintosh && cd ga403wm-hackintosh
+  bash scripts/build.sh            # builds every kext into build/*.kext
+  ```
+
+Which kexts: `itlmt7925` (Wi-Fi), `ItlXhciKick` (USB, **mandatory**), `AsusWmi`, `AmdCppc`, `MtkBtFw`, `BtLeDlFix`, optionally
+`ItlDiag`. What each does: [COMPONENTS.md](COMPONENTS.md).
+
+### 2b. Third-party kexts
+
+Download each from upstream; the list with versions and hashes is [../efi/KEXTS.md](../efi/KEXTS.md) and
+[../efi/kexts.json](../efi/kexts.json) (Lilu, VirtualSMC, AppleALC, VoodooI2C, USBToolBox, HoRNDIS, AMFIPass, BlueToolFixup,
+...). Newer releases are usually fine; the hashes are there to reproduce the exact setup.
+
+### 2c. Patched OpenCore
+
+Stock OpenCore 1.0.9 computes the wrong bus frequency on Zen 5 (timers fire ~10x early). Get the patched build from the
+`opencore` workflow (Actions → `opencore` → run it manually → artifact `opencore-zen5-fsb`) or build OpenCore yourself with
+[`patches/opencore/fix-zen5-fsb.diff`](../patches/opencore/fix-zen5-fsb.diff). Also download the OpenCore 1.0.9 drivers
+(`HfsPlus.efi`, `OpenRuntime.efi`, `ResetNvramEntry.efi`).
+
+## 3. Assemble the EFI
+
+Layout on the OpenCore USB stick (FAT32/GPT, ESP):
+
+```
+EFI/
+  BOOT/BOOTx64.efi
+  OC/
+    OpenCore.efi          <- the patched one
+    config.plist          <- from efi/OC/config.plist, edited below
+    ACPI/*.aml            <- from efi/OC/ACPI/
+    Drivers/              <- HfsPlus.efi OpenRuntime.efi ResetNvramEntry.efi
+    Kexts/                <- everything listed in config.plist > Kernel > Add
+```
+
+Then edit `config.plist` (with `tools/occonfig.py`, ProperTree or OpenCore Configurator; run `ocvalidate` from the same
+OpenCore release afterwards):
+
+1. **SMBIOS: generate your own** `PlatformInfo > Generic`: `SystemSerialNumber`, `MLB`, `SystemUUID`, `ROM`
+   (`macserial`/GenSMBIOS, model `MacBookPro16,2`). The repo has `CHANGE_ME_*` placeholders. Never publish yours.
+2. **Core count:** the four "Force cpuid_cores_per_package" patches carry `0x0c` (12 cores = HX 370). Keep it on a GA403WM
+   with that CPU.
+3. **Boot-args** (reference, trimmed for daily use):
+   ```
+   debug=0x100 keepsyms=1 -vi2c-force-polling nvfb=1 nvaccel=1 nvfbheads=4 -nvkmsnosmooth
+   amfi_get_out_of_my_way=0x1 amfi=0x80 ipc_control_port_options=0 -nvrmnobootscreen msgbuf=1048576
+   itlmt_m1=0 itlmt_m2=1 itlmt_m3=1 itlmt_fast=6
+   ```
+   Add `-v` while installing; drop it later (boot is faster without verbose output; Cmd+V in the picker gives verbose once).
+   Meaning of each: [../efi/README.md](../efi/README.md#boot-args-reference-machine).
+4. **USB map:** the reference `UTBDefault.kext` is a placeholder. The author's own map (UTBMap, XHC0 ports 1-7) is not
+   published yet. Until it is, USB works through the ports macOS finds; the internal keyboard `0b05:19b6` must stay mapped.
+   Making your own map is on the [roadmap](ROADMAP.md).
+5. `SSDT-Disable_Network_GPP5.aml` must stay **disabled** (otherwise macOS cannot see the Wi-Fi card).
+
+Do **not** run NullMoth's "1401 Build" on a config you edited by hand: it overwrites `config.plist`.
+
+## 4. Wi-Fi: inject your network
+
+There is no native Wi-Fi in macOS for this card yet: `itlmt7925.kext` has to be told the network. Until the
+[native Wi-Fi work](ROADMAP.md) lands, the SSID and password live in the kext's `Info.plist`, **in plain text**, and the driver
+connects by itself after boot (boot-args `itlmt_m2=1 itlmt_m3=1`). Up to **4 networks**, in priority order.
+
+**Windows (reads the profiles saved on the PC, elevated PowerShell):**
+
+```powershell
+.\scripts\inject-creds.ps1 -Kext 'E:\EFI\OC\Kexts\itlmt7925.kext' -Ssid 'HomeWifi','Phone-hotspot'
+```
+
+**macOS (PlistBuddy) or any editor:** the keys `itl_ssid`, `itl_psk`, `itl_ssid2`, `itl_psk2`, ..., `itl_ssid4`, `itl_psk4` sit in
+the `itlmt7925` personality of `itlmt7925.kext/Contents/Info.plist`:
+
+```bash
+P=itlmt7925.kext/Contents/Info.plist
+/usr/libexec/PlistBuddy -c "Set :IOKitPersonalities:itlmt7925:itl_ssid 'HomeWifi'" \
+                        -c "Set :IOKitPersonalities:itlmt7925:itl_psk  'my password'" "$P"
+```
+
+Rules and limits:
+
+* WPA2-PSK only (WPA2/WPA3 mixed networks work through the WPA2 side). No open networks, WPA3-only, enterprise or 6 GHz.
+  A phone hotspot set to WPA2, 2.4 or 5 GHz, is the easiest first network.
+* Never commit or share a kext you injected into. `*.kext` is in `.gitignore` for that reason.
+* The Wi-Fi shows up in System Settings → Network as **Ethernet**, not Wi-Fi. That is expected.
+* After macOS is installed you can use the **ItlWiFi** menu bar app to scan and join further networks
+  ([COMPONENTS.md](COMPONENTS.md#itlwifi-itlwifiapp-the-stop-gap-wi-fi-menu)); the first connection still comes from the
+  injected credentials.
+* Speed is low (see [WIFI.md](WIFI.md)). For the macOS installer use USB Ethernet / tethering, or an offline installer.
+
+## 5. First boot and installing macOS
+
+1. Copy the EFI to the OpenCore USB stick, boot it (ASUS: `Esc`/`F8` at the logo → the stick, UEFI entry).
+2. In the OpenCore picker choose the macOS installer (or **Recovery**).
+3. **Offline installer recommended.** On any Mac:
+   `sudo /Applications/Install\ macOS\ Sequoia.app/Contents/Resources/createinstallmedia --volume /Volumes/INSTALLER`
+   (download the 15.x installer from the Mac App Store or `softwareupdate --fetch-full-installer --full-installer-version 15.x`).
+   The online Recovery installer works too but downloads ~16 GB: use Ethernet/tethering.
+4. In the installer's Disk Utility: erase the **target disk/partition** to APFS (GUID). Do not touch the shared ESP, the Windows
+   or the Linux partitions.
+5. Install. The machine reboots several times: each time pick the macOS installer / "macOS Installer" entry, then finally the
+   new macOS volume. If it hangs at `-v`, photograph the last lines and open an issue (hint: `Cmd+V` for verbose in the picker).
+6. Finish the Setup Assistant (an Apple ID is not required; iMessage/FaceTime/Continuity are untested).
+
+## 6. After the first boot: put OpenCore on the internal disk (optional but recommended)
+
+The USB stick is only needed to start the installer. For daily use the reference machine boots OpenCore from the internal
+ESP:
+
+1. Back up the current ESP (`diskutil mount` it, copy the whole `EFI` folder).
+2. Copy your finished `EFI/OC` and `EFI/BOOT` next to the existing `EFI/Microsoft` and `EFI/limine`. Do not delete them.
+3. Add an entry (or make OpenCore the default) in the firmware boot menu; keep a way back (the previous entries and the
+   backup). If an entry disappears: [DUAL-BOOT.md](DUAL-BOOT.md).
+4. Windows and Linux are then started from the OpenCore picker (press `Space` for hidden/auxiliary entries).
+   Beware: OpenCore ACPI patches also apply to Windows.
+
+## 7. NVIDIA driver (RTX 5060 + the OLED)
+
+Without it macOS has **no framebuffer** on this laptop (black screen after the boot logo).
+
+* Install [NullMoth's driver](https://github.com/nullmoth/nvidia-macos-driver) *inside* macOS 15 with its own `install.sh` /
+  the 1401 Mac app. It is third-party (PolyForm Noncommercial), read its README and license.
+* The EFI already carries its prerequisites (`csr-active-config` = `43 0A 00 00`, boot-args, `SecureBootModel = Disabled`);
+  see [../efi/README.md](../efi/README.md#nvidia-dgpu-nullmoth-driver). AMFIPass must be loaded.
+* Reference machine: upstream **1.14.2** + local patches (VRAM clear, OLED brightness). See [NULLMOTH.md](NULLMOTH.md). The
+  patched builds are not distributed yet; plain upstream works but has the desktop stutter described there.
+* Safety net: the 1401/NullMoth tools add a *"Start once without NVIDIA driver"* entry to the picker. Use it if the screen
+  stays black.
+
+## 8. Apps and daemons (on the installed macOS, Xcode Command Line Tools required)
+
+```bash
+xcode-select --install
+git clone https://github.com/thanhnndev/ga403wm-hackintosh && cd ga403wm-hackintosh
+bash scripts/build-rogcontrol.sh --install     # ROG Control: profiles, fans, charge limit, lighting
+bash scripts/build-itlwifi.sh    --install     # Wi-Fi menu
+bash scripts/build-tapguard.sh   --install     # touchpad tap guard (needs Accessibility permission)
+```
+
+Install the other kexts to the ESP with `scripts/macos-install-kext.sh <name>` (it backs up the old one and keeps your injected
+Wi-Fi credentials). CPU boost daemon (administrator rights needed):
+
+```bash
+bash scripts/build-amdcppc-policy.sh
+sudo bash scripts/macos-amdcppc-policy-install.sh        # --undo removes it
+```
+
+Check it works:
+
+```bash
+sysctl debug.asuswmi.status            # profile, charge limit, MUX ... (AsusWmi)
+sysctl debug.amdcppc.freq              # clock of every CPU (AmdCppc)
+ioreg -rc itlmt7925 -d1 | grep wifi-  # Wi-Fi state, SSID, signal
+ioreg -rc MtkBtFw -l | grep -E '"bt-state"|"bt-log"'    # Bluetooth firmware loader
+/Applications/RogControl.app/Contents/MacOS/RogControl --bench 20   # runs the profiles under load
+```
+
+## 9. Updating, and what not to do
+
+* **Do not update macOS** beyond the 15.x you installed without checking the issues first. Turn off automatic updates.
+  **macOS 26 will break this setup**; there is no support for it.
+* Do not re-run NullMoth's "1401 Build" on the ESP; do not use *Reset NVRAM* if you depend on firmware boot entries.
+* Before changing the ESP: copy `config.plist` to `config.plist.<name>`; before swapping a kext: `macos-install-kext.sh` does
+  the backup, `--undo` puts it back.
+
+## 10. If it goes wrong
+
+| Symptom | First thing to try |
+|---|---|
+| Black screen after the logo | picker → *Start once without NVIDIA driver*; confirm MUX = Ultimate; see [NULLMOTH.md](NULLMOTH.md) |
+| Kernel panic at boot | boot with `-v`, photograph the panic, remove the most recently changed kext from `config.plist` |
+| Keys repeat / release late | `ItlXhciKick.kext` missing or disabled ([USB-XHCI-LAG.md](USB-XHCI-LAG.md)) |
+| No Wi-Fi | credentials injected? `itlmt_m1/m2/m3` boot-args? `ioreg -rc itlmt7925 -d1 \| grep wifi-` |
+| Touchpad dead | known issue, use a USB mouse ([HANDOFF #1](HANDOFF.md)) |
+| Linux/Windows entry gone | [DUAL-BOOT.md](DUAL-BOOT.md) |
+| Need logs | [DEBUGGING.md](DEBUGGING.md), `scripts/linux-collect-logs.sh`; redact serials, MACs, SSIDs before posting |
+
+When you open an issue, use the **Hardware report** template and attach redacted logs.

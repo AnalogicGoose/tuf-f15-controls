@@ -3,15 +3,22 @@
 Reports and patches are welcome, especially: results on other Zephyrus G14 / Strix Point laptops (`ItlXhciKick`, the EFI),
 other MT7925 machines (the Wi-Fi driver), and the open items in [docs/ROADMAP.md](docs/ROADMAP.md).
 
+> This project is vibe-coded (written mostly by an AI, tested on one laptop). Pull requests written with AI help are fine;
+> say so, and say what you tested on real hardware.
+
 ## Branches: where development happens
 
 | Branch | State |
 |---|---|
-| **`main`** | **The only active branch.** Everything is developed here (directly or through a short-lived feature branch + pull request). Every push builds the kexts in CI. |
-| `ccr-fc111298-ip8jp5` | Fast-mode Wi-Fi work (HT/VHT, Block Ack, A-MSDU, 160 MHz, HE). Merged into `main` by PR #2 (`4bd83f1`). Retired, kept for history only. |
-| `diag-esp-log` | ItlDiag writes `ITLLOG.BIN` to the ESP. Merged by PR #2. Retired. |
+| **`main`** | **The only long-lived branch.** Always buildable; every push builds the kexts in CI. |
+| `track/<nn>-<name>` | Short-lived topic branch for one roadmap workstream (for example `track/04-wifi-throughput`, numbers from [docs/ROADMAP.md](docs/ROADMAP.md)). Open a pull request into `main`; delete the branch after merging. |
+| `v0.<n>` (tags) | Releases cut from `main`. |
 
-Start new work from `main`: `git switch main && git pull && git switch -c <topic>`.
+Driver work on NullMoth's NVIDIA driver is done in a fork and sent upstream first; this repository only carries the machine
+patch until it is merged.
+
+Start new work from `main`: `git switch main && git pull && git switch -c track/<nn>-<name>`. If you take a roadmap item, update
+its row (state, "Doing now") in the same pull request.
 
 Current state, open issues and how to collect data: [docs/HANDOFF.md](docs/HANDOFF.md).
 
