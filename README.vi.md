@@ -31,7 +31,7 @@ EFI OpenCore, kext, app thanh menu và ghi chú nghiên cứu. English: [README.
 | Máy | ASUS ROG Zephyrus G14 **GA403WM**, BIOS GA403WM.310, OLED 2880x1800. Biến thể GA403 khác: chưa test |
 | Boot | OpenCore 1.0.9 + bản vá Zen 5, từ ESP trong máy; Windows/Linux vẫn nằm trong picker OpenCore |
 | Đồ họa | RTX 5060 qua [driver NullMoth](https://github.com/nullmoth/nvidia-macos-driver); **bắt buộc chế độ GPU "Ultimate" (MUX)**, iGPU không dùng được |
-| Wi-Fi | Driver tự viết (`itlmt7925`), đạt tốc độ tối đa của link (HE, 160 MHz). Hiện là **Ethernet** (en*) cho đến khi bản native xong. Phải **inject SSID/mật khẩu** ([hướng dẫn](docs/INSTALL.vi.md#4-wi-fi-inject-mạng)) |
+| Wi-Fi | Driver tự viết (`itlmt7925`, gọi là "legacy"), đạt tốc độ tối đa của link (HE, 160 MHz). Hiện là **Ethernet** (en*). Phải **inject SSID/mật khẩu** ([hướng dẫn](docs/INSTALL.vi.md#4-wi-fi-inject-mạng)). Driver **native** mới chỉ là bản thử nghiệm dang dở, **chưa chạy**: đừng bật ([dùng driver nào](docs/WIFI-DRIVERS.md#tiếng-việt)) |
 | Vấn đề còn lại | Các lỗi lớn trước đây (touchpad, chuột BLE, tốc độ Wi-Fi, độ sáng, điều khiển ROG, HiDPI) đã **sửa xong** tính đến 2026-10-12. Còn: Wi-Fi chưa native (hiện là Ethernet); **sleep/wake chưa chạy ổn (không có deep sleep)**; phần lớn phím Fn chưa map; chưa kiểm chứng âm thanh, đầu đọc SD, % pin |
 | Dùng hằng ngày | Ổn khi **cắm sạc và dùng màn hình ngoài qua HDMI**. Thời lượng pin **chưa test, và vì RTX 5060 là GPU duy nhất nên không hứa hẹn gì** về pin |
 
@@ -46,7 +46,7 @@ Chú giải dùng xuyên suốt: ✅ đã kiểm chứng trên máy tham chiếu
 | CPU (12 nhân / 24 luồng) | ✅ | `AmdCppc` + `AmdCppcPolicy` bật CPPC; nhân Zen 5 lên ~4,9 GHz khi tải (trước đó kẹt 2 GHz) | [docs/CPU-POWER.md](docs/CPU-POWER.md) |
 | NVIDIA RTX 5060 + OLED 2880x1800 @ 120 Hz | ✅ | Driver bên thứ ba NullMoth 1.14.2 + hai bản vá cục bộ. Cần MUX = chỉ dGPU. Màn ngoài chạy được | [docs/NULLMOTH.md](docs/NULLMOTH.md) |
 | Phím / chuột USB / webcam | ✅ | `ItlXhciKick` sửa lỗi nhả phím trễ 2 giây; port map USB nằm trong EFI chuẩn (sắp có, xem mục Cài đặt) | [docs/USB-XHCI-LAG.md](docs/USB-XHCI-LAG.md) |
-| Wi-Fi MT7925 | ✅ | `itlmt7925`: WPA2-PSK, DHCP, HE / 160 MHz đạt tốc độ tối đa của link. Hiện là Ethernet, chưa WPA3 / 6 GHz. **Đang port Wi-Fi native** | [docs/WIFI.md](docs/WIFI.md) |
+| Wi-Fi MT7925 | ✅ | `itlmt7925`: WPA2-PSK, DHCP, HE / 160 MHz đạt tốc độ tối đa của link. Hiện là Ethernet, chưa WPA3 / 6 GHz. **Đang port Wi-Fi native, chưa dùng được** | [docs/WIFI.md](docs/WIFI.md), [dùng driver nào](docs/WIFI-DRIVERS.md#tiếng-việt) |
 | Bluetooth MT7925 | ✅ | `MtkBtFw` nạp firmware; tai nghe (classic) và chuột BLE kết nối được (`BtLeDlFix`) | [docs/BLUETOOTH.md](docs/BLUETOOTH.md) |
 | Chế độ hiệu năng ROG, quạt, giới hạn sạc | ✅ | `AsusWmi` + app RogControl. Silent/Performance/Turbo đổi xung nhịp và tốc độ quạt thật | [docs/ASUSCTL-MACOS.md](docs/ASUSCTL-MACOS.md) |
 | Đèn bàn phím, đèn Slash | ✅ | Qua `AsusWmi` (HID report gửi từ kernel) | [docs/ASUSCTL-MACOS.md](docs/ASUSCTL-MACOS.md) |
@@ -87,7 +87,7 @@ Hướng dẫn đầy đủ: **[docs/INSTALL.vi.md](docs/INSTALL.vi.md)** (Engli
    `bash scripts/build.sh` trên Mac) cộng các kext bên thứ ba trong [efi/KEXTS.md](efi/KEXTS.md). Cách dùng release và mọi script:
    **[docs/SCRIPTS.vi.md](docs/SCRIPTS.vi.md)** (English: [SCRIPTS.md](docs/SCRIPTS.md)).
 3. Ghép EFI từ [efi/](efi/README.md), **tự tạo SMBIOS**, thêm OpenCore đã vá.
-4. **Inject mạng Wi-Fi** vào `itlmt7925.kext` (chưa có UI Wi-Fi gốc) hoặc dùng USB tethering.
+4. **Inject mạng Wi-Fi** vào `itlmt7925.kext` (chưa có Wi-Fi native dùng được: [dùng driver nào](docs/WIFI-DRIVERS.md#tiếng-việt)) hoặc dùng USB tethering.
 5. Cài macOS 15 (nên dùng bộ cài offline: bộ cài online nặng 16 GB nhưng đường Wi-Fi không dành cho việc đó), rồi cài driver NVIDIA, các app và daemon CPU.
 
 ## Thành phần

@@ -113,6 +113,10 @@ Do **not** run NullMoth's "1401 Build" on a config you edited by hand: it overwr
 
 ## 4. Wi-Fi: inject your network
 
+> **Two drivers exist; use `itlmt7925.kext` (legacy).** The native driver `itlmt7925Native.kext` is an unfinished experiment and does
+> **not** work: do not install or enable it, and do not add `itlmt_native*` boot-args. Details and how to check / go back:
+> [WIFI-DRIVERS.md](WIFI-DRIVERS.md).
+
 There is no native Wi-Fi in macOS for this card yet: `itlmt7925.kext` has to be told the network. Until the
 [native Wi-Fi work](ROADMAP.md) lands, the SSID and password live in the kext's `Info.plist`, **in plain text**, and the driver
 connects by itself after boot (boot-args `itlmt_m2=1 itlmt_m3=1`). Up to **4 networks**, in priority order.

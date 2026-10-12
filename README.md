@@ -33,7 +33,7 @@ OpenCore EFI, kernel extensions, menu bar apps and research notes. Tiếng Việ
 | Machine | ASUS ROG Zephyrus G14 **GA403WM**, BIOS GA403WM.310, 2880x1800 OLED. Other GA403 variants are untested |
 | Boot | OpenCore 1.0.9 + a Zen 5 patch, from the internal ESP; Windows/Linux stay in the OpenCore picker |
 | Graphics | RTX 5060 through the third-party [NullMoth driver](https://github.com/nullmoth/nvidia-macos-driver); **GPU mode must be "Ultimate" (MUX)**, the iGPU is not usable |
-| Wi-Fi | Own driver (`itlmt7925`), reaches the full link speed (HE, 160 MHz). Shows up as **Ethernet** (en*) until the native port lands. You must **inject your SSID/password** ([guide](docs/INSTALL.md#4-wi-fi-inject-your-network)) |
+| Wi-Fi | Own driver (`itlmt7925`, "legacy"), reaches the full link speed (HE, 160 MHz). Shows up as **Ethernet** (en*). You must **inject your SSID/password** ([guide](docs/INSTALL.md#4-wi-fi-inject-your-network)). A **native** driver exists only as an unfinished experiment that does **not** work yet: do not enable it ([which driver to use](docs/WIFI-DRIVERS.md)) |
 | Known issues | The earlier headline bugs (touchpad, BLE mouse, Wi-Fi speed, brightness, ROG controls, HiDPI) are **fixed** as of 2026-10-12. Left: Wi-Fi is not native yet (shows as Ethernet); **sleep/wake does not work reliably (no deep sleep)**; most Fn keys are not mapped; audio, SD reader and battery % are not verified |
 | Daily use | Fine **plugged in, with an external HDMI display**. Battery life is **untested, and with the RTX 5060 as the only GPU nothing is promised** about it |
 
@@ -48,7 +48,7 @@ Legend used everywhere: ✅ verified on the reference unit · 🟡 implemented, 
 | CPU (12 cores / 24 threads) | ✅ | `AmdCppc` + `AmdCppcPolicy` enable CPPC; Zen 5 cores reach ~4.9 GHz under load (were stuck at 2 GHz) | [docs/CPU-POWER.md](docs/CPU-POWER.md) |
 | NVIDIA RTX 5060 + 2880x1800 OLED @ 120 Hz | ✅ | Third-party NullMoth driver 1.14.2 + two local patches. Needs MUX = dGPU only. External monitor works | [docs/NULLMOTH.md](docs/NULLMOTH.md) |
 | USB keyboard / mouse / webcam | ✅ | `ItlXhciKick` fixes the 2 s key-release lag; the USB port map ships with the standard EFI (coming, see Install) | [docs/USB-XHCI-LAG.md](docs/USB-XHCI-LAG.md) |
-| Wi-Fi MT7925 | ✅ | `itlmt7925`: WPA2-PSK, DHCP, HE / 160 MHz at full link speed. Appears as Ethernet, no WPA3 / 6 GHz yet. **Native Wi-Fi port in progress** | [docs/WIFI.md](docs/WIFI.md) |
+| Wi-Fi MT7925 | ✅ | `itlmt7925`: WPA2-PSK, DHCP, HE / 160 MHz at full link speed. Appears as Ethernet, no WPA3 / 6 GHz yet. **Native Wi-Fi port in progress, not usable yet** | [docs/WIFI.md](docs/WIFI.md), [which driver](docs/WIFI-DRIVERS.md) |
 | Bluetooth MT7925 | ✅ | `MtkBtFw` loads the firmware; headphones (classic) and BLE mice connect (`BtLeDlFix`) | [docs/BLUETOOTH.md](docs/BLUETOOTH.md) |
 | ROG performance profiles, fans, charge limit | ✅ | `AsusWmi` + RogControl. Silent/Performance/Turbo change real clocks and fan speed | [docs/ASUSCTL-MACOS.md](docs/ASUSCTL-MACOS.md) |
 | Keyboard backlight, Slash lighting | ✅ | Via `AsusWmi` (HID reports sent from the kernel) | [docs/ASUSCTL-MACOS.md](docs/ASUSCTL-MACOS.md) |
@@ -90,7 +90,7 @@ Full guide: **[docs/INSTALL.md](docs/INSTALL.md)** (Tiếng Việt: [docs/INSTAL
    or build with `bash scripts/build.sh` on a Mac) and the third-party kexts of [efi/KEXTS.md](efi/KEXTS.md). How to use the release and
    every script: **[docs/SCRIPTS.md](docs/SCRIPTS.md)** (Tiếng Việt: [SCRIPTS.vi.md](docs/SCRIPTS.vi.md)).
 3. Assemble the EFI from [efi/](efi/README.md), generate **your own SMBIOS**, add the patched OpenCore.
-4. **Inject your Wi-Fi network** into `itlmt7925.kext` (there is no native Wi-Fi UI yet) or use USB tethering.
+4. **Inject your Wi-Fi network** into `itlmt7925.kext` (there is no working native Wi-Fi yet: [which driver to use](docs/WIFI-DRIVERS.md)) or use USB tethering.
 5. Install macOS 15 (offline installer recommended: the online installer is 16 GB and the Wi-Fi path is not meant for it), then install the
    NVIDIA driver, the apps and the policy daemon.
 

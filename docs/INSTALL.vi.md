@@ -112,6 +112,10 @@ Sửa `config.plist` (bằng `tools/occonfig.py`, ProperTree hoặc OpenCore Con
 
 ## 4. Wi-Fi: inject mạng
 
+> **Có hai driver; hãy dùng `itlmt7925.kext` (legacy).** Driver native `itlmt7925Native.kext` là bản thử nghiệm dang dở, **chưa chạy**:
+> đừng cài hay bật, và đừng thêm boot-arg `itlmt_native*`. Chi tiết, cách kiểm tra và quay lại:
+> [WIFI-DRIVERS.md](WIFI-DRIVERS.md#tiếng-việt).
+
 macOS chưa có Wi-Fi gốc cho card này: phải "dặn" `itlmt7925.kext` biết mạng. Cho tới khi
 [Wi-Fi gốc](ROADMAP.md) xong, SSID và mật khẩu nằm trong `Info.plist` của kext, **dạng chữ thường**, và driver tự kết nối sau khi
 boot (boot-args `itlmt_m2=1 itlmt_m3=1`). Tối đa **4 mạng**, thứ tự = ưu tiên.
