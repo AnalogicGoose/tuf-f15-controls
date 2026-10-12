@@ -119,6 +119,21 @@ No SMBIOS values, passphrases, MACs or neighbour SSIDs belong in this file.
    instead of the copied console, which is verbose text with `-v` anyway). Also seen: an 11 s gap after the APFS root graft and
    a 4.9 s NVMe `setPowerState`; firmware/OpenCore time is not measured yet (OpenCore logs are copied by the round-b script).
 
+   **2026-10-11 evening:** kernel -> login window is a steady ~36 s over the last 8 boots; root is mounted at 0.6-19 s, but
+   launchd's first boot task only runs at ~35 s (launchd exec'd at ~17 s, `lo0` at ~29 s), with almost no log lines in
+   between. Kernel printfs in that phase are ~40 ms apart each (e.g. 41.558 -> 41.599 -> 41.642 -> 41.686): the verbose
+   console draws on the 2880x1800 GOP framebuffer, which reads through PCIe at ~1.9 MB/s (the same cost as NVRM's boot
+   screen copy above). The ESP had `-v` again (added by hand for debugging, backup `config.plist.addv-*`); removed
+   (backup `config.plist.nov-20261011-183504`). Verbose on demand: Cmd+V in the OpenCore picker (PollAppleHotKeys).
+   Not the cause: XNU's 30 s wait for IORTC/IONVRAM (`IOKitInitializeTime`) runs before the root mount; launchd does not
+   import IOKit, so the 30.6 s busy of X86PlatformPlugin does not hold it.
+   **SSDT-PLUG-ALT** does two things here: (1) it declares `Processor` objects C000-C017, which macOS needs because this
+   firmware declares the CPUs only as `Device (ACPI0007)` (SSDT-2): removing the whole SSDT can leave AppleACPICPU without
+   CPUs; (2) `plugin-type = 1` on C000 loads X86PlatformPlugin, which on AMD has empty P/C-state tables and applies the
+   MacBookPro16,2 thermal profile (SFI forced-idle table, QoS thermal thresholds, `CPUOnACPower = No`). Without (2)
+   ACPI_SMC_PlatformPlugin (probe score 1000) takes the CPU instead, which is what Dortania's AMD SSDT-CPUR gives. Its
+   AGPMEnabler child would go too, so (2) is a separate experiment after the `-v` result, not bundled with it.
+
 10. **Wi-Fi after boot did not come back (fixed in code 2026-10-11, round c):** the supervisor change wiped the credentials in
     `m3Run1()` after the first selection, so when L6 passed no unicast and the ladder stepped down, the next level ended in
     `nocred` (rc -22) and the supervisor started again at L6, forever. Now the ladder keeps them and `lvlCap` remembers the
