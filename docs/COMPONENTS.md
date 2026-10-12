@@ -34,10 +34,10 @@ opens a window; `--background` runs it in the menu bar only. State: ✅ (working
 
 | Panel | What you get | State |
 |---|---|---|
-| **Overview / popover** | Performance mode buttons (Silent, Performance, Turbo, Manual; Turbo is disabled on battery like Armoury Crate), CPU temperature (Tctl), package power (RAPL), CPU and GPU fan RPM, charge limit presets (60/80/100 %), keyboard brightness, Slash settings, software OLED dimming | ✅ |
+| **Overview / popover** | Performance mode buttons (Silent, Performance, Turbo, Manual; Turbo is disabled on battery like Armoury Crate), CPU temperature (Tctl), package power (RAPL), CPU and GPU fan RPM, charge limit presets (60/80/100 %), keyboard brightness, Slash settings | ✅ |
 | **Performance** | Manual mode: SPL / SPPT / FPPT sliders (range checked for AC vs battery), fan base choice, firmware fan-curve charts for CPU/GPU (Swift Charts, explicit 20-105 °C axes, invalid points flagged instead of invented), separate settings for AC and battery re-applied on power-source change and login | ✅ |
 | **Lighting** | Keyboard backlight level, Slash lighting mode/brightness/interval, re-sent after wake | ✅ |
-| **Battery & Display** | Charge limit, battery health line (EC readout), GPU MUX state (read only), OLED brightness slider; "Dim the built-in OLED in software" (black click-through overlay) now redundant: real brightness works through `NVRMEdpBL`, turn the software dimming off | ✅ |
+| **Battery & Display** | Charge limit, battery health line (EC readout), GPU MUX state (read only). OLED brightness is not in the app: the system slider and Fn+F7 / Fn+F8 drive the panel through `NVRMEdpBL`; the old software dimmer was removed | ✅ |
 | **Settings** | Open at login, details, quit | ✅ |
 | **`--bench [s]`** | Runs Silent, Performance, Turbo under full load, prints power, Tctl, fans and Zen 5 / Zen 5c clocks, then restores your profile | ✅ |
 

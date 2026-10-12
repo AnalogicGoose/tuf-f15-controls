@@ -108,7 +108,7 @@ Every kext and app, what it does and how far along it is: **[docs/COMPONENTS.md]
 | `BtLeDlFix.kext` | Lilu plugin for BLE mice | ✅ |
 | `NVRMEdpBL.kext` (in a NullMoth fork) | OLED brightness over eDP AUX | ✅ (upstream PR pending) |
 | `ItlDiag.kext` | boot diagnostics | debug tool |
-| **ROG Control** (`RogControl.app`) | menu bar + window: profiles, fans, charge, lighting, dimming | ✅ |
+| **ROG Control** (`RogControl.app`) | menu bar + window: profiles, fans, charge, lighting | ✅ |
 | **ItlWiFi** (`ItlWiFi.app`) | menu bar Wi-Fi: scan, join, speed test | ✅ |
 | **TapGuard** (`TapGuard.app`) | ignore touchpad taps while typing | ✅ |
 

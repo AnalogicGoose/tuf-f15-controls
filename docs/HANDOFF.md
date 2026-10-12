@@ -14,11 +14,28 @@ The numbered "Open issues" below are the 2026-10-11 investigation log. As of 202
 | 10. Wi-Fi throughput (`itlmt7925`) | **full link speed** (HE, 160 MHz) | the owner measured it at the maximum speed; the numbers (`iperf3`, AP model, band, distance) will be supplied by the owner later for comparison: [WIFI.md](WIFI.md). Not measured by the agent |
 | 13. Bluetooth, BLE mouse | **works** (`MtkBtFw` + `BtLeDlFix`) | [BLUETOOTH.md](BLUETOOTH.md) |
 | ROG controls | **all working**: profiles, power limits, fan curves/speeds, charge limit, keyboard light, Slash, RogControl | section "ASUS controls" below |
-| OLED brightness | **works** (`NVRMEdpBL`, DPCD AUX) | [OLED-BRIGHTNESS-DPCD.md](OLED-BRIGHTNESS-DPCD.md) (checklist results recorded 2026-10-12); the software dimmer in RogControl is redundant now, but its default in the code is still **on** |
+| OLED brightness | **works** (`NVRMEdpBL`, DPCD AUX) | [OLED-BRIGHTNESS-DPCD.md](OLED-BRIGHTNESS-DPCD.md) (checklist results recorded 2026-10-12); the software dimmer was removed from RogControl (2026-10-12) |
 | 4. Wi-Fi shows as Ethernet | **native port in progress** | [WIFI-AS-WIFI.md](WIFI-AS-WIFI.md); `itlmt7925` stays as the fallback |
 
 Still open: sleep/wake (broad testing), audio, SD reader, battery %, a second owner reproducing the install, the USB map and the
 standard EFI in the release, upstreaming the NullMoth patches (VRAM clear, AUX backlight). Plan: [ROADMAP.md](ROADMAP.md).
+
+### Measure-and-record session 2026-10-12: skipped on purpose (decided by the owner), and not measurable
+
+Nothing below is a result. These are the items the session did **not** produce numbers or screenshots for, and why, so nobody
+reads a gap as a pass.
+
+| Item | Status | Why / what is needed |
+|---|---|---|
+| Wi-Fi throughput numbers (`iperf3`, latency, loss) | **skipped by the owner** | the link is at full speed (HE, 160 MHz) per the owner; the figures are supplied later and go into [WIFI.md](WIFI.md) with AP model, band and distance |
+| Battery drain / battery life | **skipped by the owner** | no promise is made ([ROADMAP.md](ROADMAP.md) row 24); the short on-battery bench (40 %, Silent / Performance) is in [ASUSCTL-MACOS.md](ASUSCTL-MACOS.md) and is not a drain test |
+| Sleep / wake, 5 cycles | **skipped by the owner** | sleep/wake is a known ❌ and roadmap row 22; the machine is used plugged in, without deep sleep |
+| Clean-up of the **live** ESP boot-args | **skipped by the owner** | the live config keeps its debug and `itlmt_native*` experiment arguments. Only the **exported release EFI** (made by `scripts/export-efi.py`, outside the repo) is cleaned |
+| App screenshots (RogControl, ItlWiFi, TapGuard, About This Mac) | **pending** | needs macOS Screen Recording permission for the session's host app (a quit and reopen of the app after granting); until then captures show the wallpaper only. Wanted shots: [images/README.md](images/README.md) |
+| Fn+F7 / Fn+F8 visible dimming, other Fn keys | **not measured** | needs a person to look at the panel and press the keys ([ROADMAP.md](ROADMAP.md) row 23) |
+| Touchpad tap / scroll / TapGuard, BLE re-pair | **not measured** | needs hands on the device |
+| Audible audio, SD card insert, lid close, external monitor hot-plug | **not measured** | needs a person (sound, a card, the lid); the devices only enumerate (card reader `10ec:525a` with `Sinetek-rtsx` loaded, internal audio, the ASUS webcam) |
+| Charge limit read-back | **not available** | RogControl writes 60 % at login; the firmware offers no read-back that this session could use |
 
 ## ASUS controls, RogControl and Bluetooth LE (was missing from this file)
 
@@ -252,7 +269,8 @@ Details live in [ASUSCTL-MACOS.md](ASUSCTL-MACOS.md), [CPU-POWER.md](CPU-POWER.m
      `1e8b2715e63437e6f09ec416a856d2b1061c00c85491e6e53db732be026a6e44`.
      Backup: `EFI/OC/Kexts-backup/itlmt7925.kext.20261011-211949`. Saved credentials were copied and verified privately;
      OpenCore config was verified unchanged, with the existing Kernel/Add entry enabled. No reboot performed.
-   * Brightness: existing AUX/DPCD limitation and RogControl software dimming documented in ASUSCTL-MACOS.md remain;
+   * Brightness: the AUX/DPCD limitation was documented in ASUSCTL-MACOS.md (later solved by `NVRMEdpBL`; the RogControl
+     software dimming mentioned there is gone);
      this continuation does not change GPU/backlight code.
 
 10d. **ItlWiFi speed-test error:** the screenshot's "speed.cloudflare.com not reachable over en2" was caused by
@@ -341,8 +359,8 @@ upstream"), `VRAM-GRANT-STALL.md`, `OLED-BRIGHTNESS-DPCD.md`.
 
 1. Boots? Both displays up (OLED 2880x1800 @ 120 Hz, Mi Monitor 1920x1080 @ 144 Hz). If not: boot-arg `nvrmedpbl=0`, or
    `scripts/macos-edpbl-install.sh --undo`, or the picker's "Start once without NVIDIA driver".
-2. Brightness: the checklist in `OLED-BRIGHTNESS-DPCD.md` ("Verify after the reboot"); then switch RogControl's software
-   dimming off and record the result in that file.
+2. Brightness: the checklist in `OLED-BRIGHTNESS-DPCD.md` ("Verify after the reboot"); record the result in that file
+   (done 2026-10-12; the software dimmer is gone from RogControl).
 3. `scripts/macos-nvrmfb-vramclear-ab.sh` (root): MB/s for `clear_mode` 0 and 1; record in `VRAM-GRANT-STALL.md`; re-check
    the stall picture and `tools/framepace.swift`.
 4. Report upstream: the VRAM clear (branch `nvrmfb-vram-clear-nontemporal`) and the AUX backlight (branch

@@ -104,7 +104,7 @@ Từng kext, app: làm gì, đến đâu rồi: **[docs/COMPONENTS.md](docs/COMP
 | `BtLeDlFix.kext` | Plugin Lilu cho chuột BLE | ✅ |
 | `NVRMEdpBL.kext` (trong fork NullMoth) | Độ sáng OLED qua eDP AUX | ✅ (PR upstream đang chờ) |
 | `ItlDiag.kext` | chẩn đoán lúc boot | công cụ debug |
-| **ROG Control** (`RogControl.app`) | thanh menu + cửa sổ: profile, quạt, sạc, đèn, làm tối | ✅ |
+| **ROG Control** (`RogControl.app`) | thanh menu + cửa sổ: profile, quạt, sạc, đèn | ✅ |
 | **ItlWiFi** (`ItlWiFi.app`) | Wi-Fi trên thanh menu: quét, kết nối, speed test | ✅ |
 | **TapGuard** (`TapGuard.app`) | bỏ qua tap touchpad khi đang gõ | ✅ |
 
@@ -114,7 +114,7 @@ Từng kext, app: làm gì, đến đâu rồi: **[docs/COMPONENTS.md](docs/COMP
 * Nhiệt độ CPU (Tctl), công suất package (RAPL), tốc độ quạt CPU/GPU, **đường cong quạt** của firmware (biểu đồ CPU/GPU).
 * **Giới hạn sạc** 60 / 80 / 100 %, thông tin pin; cài đặt riêng cho AC và pin, tự áp lại khi đổi nguồn và sau khi đăng nhập.
 * **Đèn bàn phím** và **đèn Slash** (độ sáng, chế độ), gửi lại sau khi wake.
-* Làm tối OLED bằng phần mềm (tạm thời), trạng thái GPU MUX (chỉ đọc), `--bench` đo hiệu năng từng profile.
+* Trạng thái GPU MUX (chỉ đọc), `--bench` đo hiệu năng từng profile.
 * Chưa có: đổi GPU MUX (cố ý chỉ đọc), hiệu ứng Aura từng phím, overdrive panel (BIOS này không có).
 
 ## Roadmap
