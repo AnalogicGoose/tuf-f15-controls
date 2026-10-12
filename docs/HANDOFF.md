@@ -164,6 +164,21 @@ No SMBIOS values, passphrases, MACs or neighbour SSIDs belong in this file.
    never came up three times hands over to the configured ones instead of switching Wi-Fi off. Binary installed on the ESP
    (Info.plist with the credentials kept; backup `Kexts-backup/itlmt7925.kext.20261011-190437`).
 
+10b. **Wi-Fi throughput (2026-10-11, measured on the same AP where a phone does 260 Mb/s):** link L6, HE 160 MHz ch 40, RSSI
+   -39 dBm; download 4.3 MB/s, upload 0.9-1.7 MB/s, gateway ping 4.6 % loss idle / 30 % under load. Counters (`stat-log`):
+   * under download 25-36 % of the frames from the stack failed with "no slot" (TX staging pool full) and were dropped while
+     `outputPacket()` returned success; the Ethernet controller had no output queue, so the stack also called
+     `outputPacket()` from several threads into one shared `txb` buffer. Now an `IOGatedOutputQueue` (512): a full pool stalls
+     the queue (`kIOReturnOutputStall`), `m3TxFree()` restarts it when TXFREE returns slots, the link loop retries after 20 ms
+     (300 ms slot reclaim), link changes kick it. `fail=` now counts only real drops; `txf` no-slot counts stalls.
+   * under upload no drops, but ~1.1 firmware retries per frame (`txf` 5th field / frees) and ~1300 frames/s. The driver never
+     sent `EDCA_UPDATE` (Linux `mt7925_mcu_set_tx`, sent after every BSS_INFO: "ensure that enable txcmd_mode after
+     bss_info"). Now `m3Edca()` sends the AP's WMM parameters (station defaults without a WMM element) after each `m3Bss()`.
+   * open: RX Block Ack window 64 while the AP offers 256; ~8 % of reorder input is "old" (AP retransmissions of frames we
+     had); no CLC / rate power limits are sent; RX is polled (no interrupts). Binary installed on the ESP (backup
+     `Kexts-backup/itlmt7925.kext.20261011-201343`); verify after reboot: `edca` line in the m3 log, `stat-log` deltas,
+     speed test, ping.
+
 10. **Wi-Fi after boot did not come back (fixed in code 2026-10-11, round c):** the supervisor change wiped the credentials in
     `m3Run1()` after the first selection, so when L6 passed no unicast and the ladder stepped down, the next level ended in
     `nocred` (rc -22) and the supervisor started again at L6, forever. Now the ladder keeps them and `lvlCap` remembers the
