@@ -75,3 +75,13 @@ early log (`scripts/usblog.ps1 -Esp -Read` on Windows).
   hardware). Fix: power tables are best effort (failure is logged and the join continues), and the rejected efuse event is logged
   (`efuse event rejected: len= tag= addr= want= valid=`) so the parser can be corrected from a real event. This needs a rebuilt
   **core** kext (replace it on the ESP, then re-inject the credentials with `scripts/inject-creds.ps1`).
+* 2026-10-12, stage A, commit 9339299 (native kext now links): **kernel panic at 0.47 s uptime**, before the filesystem is up
+  (decoded from `AAPL,PanicInfo0000..0007`, 7-bit unpacking, in the user's tarball). Page fault CR2=RSI=RDI=0x648 (RBX=0) in
+  `IOLockLock+0x3`, called from `IONetworkController::start+0x1d4` <- `IO80211Controller::start+0x41` (the `call [rax+0x5d0]`
+  to the IONetworkController start) <- `itlmt7925Wifi::start+0x8c` (our `super::start`). So the work queue, CoreCapture logger and
+  fault reporter built before it did not fault; `IONetworkController::start` locks a lock inside an object it holds as NULL
+  (`lock = NULL + 0x648`). Which pointer is NULL is **chưa xác định** (candidates: a field `IONetworkController::init` fills, the
+  provider being the core driver and not a PCI device, a global of IONetworkingFamily not ready at 0.47 s). Rolled back by the
+  user (native `Enabled=False`, `itlmt_native*` removed). Next: round 6 dump (`tools/dump_native_wifi_round6.py`) of
+  `IONetworkController::start`/`init`, `IOEthernetController::start`, `IO80211Controller::init` and Apple's `AppleBCMWLANCore`
+  start/init to see what the BCM driver sets up before the base `start`.
