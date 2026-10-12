@@ -139,3 +139,11 @@ early log (`scripts/usblog.ps1 -Esp -Read` on Windows).
   `itlmt_native_trace` of the controller (IOLog output was not found in any collected log, stage A or B). Read it with
   `ioreg -l | grep itlmt_native_trace` or `scripts/native-wifi-test.sh logs` (`native-trace.txt`). Expected last entry on success:
   `sw:registerInfraEthernetInterface=0; mk:startWithInfo ok`.
+* 2026-10-12, correction after round 8 (`abi/native-wifi/24H32/round8/`): (1) the phase-2 registry extracts are filtered (the JSON keeps a fixed
+  key set, the text file a grep window), so the absence of `IOInterfaceNamePrefix`/`IOMACAddress` there is **not** evidence that
+  registration failed. (2) `isWMMSchedModelCapable` counts Tx queues per service class against {0x100080, 0, 0x380100, 0x400180} and
+  needs each exactly once, so our four class-0 queues make it false, but `registerNetworkInterface` then uses queue-set type 3 and
+  `IOSkywalkQueueSet::initWithQueues` only rejects a false result when info bit 0x8 is set (type 0xb). Service classes are therefore
+  not the established blocker; no code change was made for them. (3) `copyRegistrationInfo` publishes `IOMACAddress` and the
+  registration sets `IOInterfaceNamePrefix`/`IOInterfaceUnit` on the interface: the next log collection reads the full interface node
+  (`native-interface-full.txt`) instead of a filtered one. One reboot of the already installed a8c7ae2 build is the cheapest next datum.

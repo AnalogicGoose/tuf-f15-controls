@@ -94,6 +94,8 @@ logs)
   log show --last boot --predicate 'eventMessage CONTAINS[c] "itlmt" OR process == "kernel"' --style compact > "$o/log.txt" 2>&1 || true
   dmesg | grep -i itlmt > "$o/dmesg.txt" || true
   ioreg -l -w0 | grep -E 'itlmt_native_trace|IOInterfaceNamePrefix|IOInterfaceUnit|IO80211InterfaceRole' > "$o/native-trace.txt" || true
+  ioreg -r -c itlmt7925WifiInterface -l -w0 > "$o/native-interface-full.txt" 2>&1 || true
+  ioreg -r -c itlmt7925Wifi -d1 -l -w0 | grep -v -i 'mac' > "$o/native-controller.txt" 2>&1 || true
   nvram boot-args > "$o/boot-args.txt" || true
   ifconfig -a | grep -E '^[a-z]+[0-9]+:' > "$o/interfaces.txt"
   echo "$o (check for SSIDs/MACs before sharing)";;
