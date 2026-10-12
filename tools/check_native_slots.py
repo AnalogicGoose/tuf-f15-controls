@@ -33,7 +33,8 @@ def apple_slots(dumps, cls):
 def demangle(names):
     names = sorted(set(names))
     # Mach-O symbols carry one more leading underscore than the Itanium name c++filt expects
-    r = subprocess.run(['c++filt'], input='\n'.join(n[1:] for n in names), capture_output=True, text=True)
+    # Inputs already have the Mach-O prefix removed; Darwin c++filt otherwise strips another underscore.
+    r = subprocess.run(['c++filt', '-n'], input='\n'.join(n[1:] for n in names), capture_output=True, text=True)
     return dict(zip(names, r.stdout.splitlines()))
 
 
