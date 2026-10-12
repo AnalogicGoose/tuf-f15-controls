@@ -92,5 +92,6 @@ early log (`scripts/usblog.ps1 -Esp -Read` on Windows).
   layer unless boot-arg `wlan.workQueue.create` is set). Fix (commit after 4435061): `itlmt7925Wifi::getWorkLoop()` returns the
   provider's work loop (fallback: an own `IOWorkLoop`), so the compare matches and `ml_thread_policy` is skipped. Slots 20/0 and
   compile check pass. **Not run on hardware.** Residual risk: code in the IO80211 family that casts `getWorkLoop()` to an
-  `IO80211WorkQueue` (none seen in the dumps read so far) and any further fault later in `IONetworkController::start` (the part after
-  +0x1d4 was read; it only sets properties and calls `IOService::registerService`-style setup).
+  `IO80211WorkQueue` (none seen in the dumps read so far) and any further fault later in `IONetworkController::start` (after the policy call it creates an
+  `IOCommandGate` and `addEventSource`s it to the loop returned by `getWorkLoop()`, i.e. now the provider's loop, which must stay
+  enabled/running for the life of the controller).
