@@ -3,7 +3,12 @@
 # Copyright (c) 2026 thanhnndev and contributors
 # Backup / install / restore helper for the first load of itlmt7925Native (docs/TEST-NATIVE-WIFI.md). macOS only.
 #   scripts/native-wifi-test.sh backup            copy ESP:/EFI to ~/itlmt-backup/EFI-<time> (+ tar.gz) and print the path
-#   scripts/native-wifi-test.sh install <kext>    backup first, then copy the kext to OC/Kexts and add the Kernel/Add entry + boot-args
+#   scripts/native-wifi-test.sh install <kext> [--stage a|b] [--exclusive]
+#                                                 backup first, then copy the kext to OC/Kexts and add the Kernel/Add entry + boot-args.
+#                                                 --stage a (default) = controller only (itlmt_native=1); b = + interface (itlmt_native_if=1).
+#                                                 --exclusive = switch the old Wi-Fi off for this test: removes itlmt_m2/itlmt_m3/itlmt_fast
+#                                                 (the core still loads and, with itlmt_m1, loads the firmware, but never scans/joins and
+#                                                 creates no Ethernet interface), so only one of the two paths is live. restore undoes it.
 #   scripts/native-wifi-test.sh restore [dir]     put the newest (or given) backup back, replacing ESP:/EFI
 #   scripts/native-wifi-test.sh logs              collect kextstat/ioreg/log of the last boot into ~/itlmt-backup/logs-<time>
 # ESP is taken from /Volumes/ESP (scripts/esp-automount.sh) or from ESP=/path.
@@ -27,6 +32,16 @@ case "${1:-}" in
 backup) backup;;
 install)
   k=${2:?path to itlmt7925Native.kext}
+  shift 2
+  stage=a; excl=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+    --stage) stage=${2:?--stage a|b}; shift 2;;
+    --exclusive) excl=1; shift;;
+    *) echo "unknown option $1"; exit 2;;
+    esac
+  done
+  case "$stage" in a|b) ;; *) echo "--stage must be a or b"; exit 2;; esac
   [ -f "$k/Contents/Info.plist" ] || { echo "not a kext: $k"; exit 1; }
   d=$(backup); echo "backup: $d"
   # The core kext must be a library kext (OSBundleCompatibleVersion) or the native kext fails with 0xdc00800e. Patch the ESP copy
@@ -42,9 +57,9 @@ if 'OSBundleCompatibleVersion' not in c:
 PY
   rm -rf "$ESP/EFI/OC/Kexts/itlmt7925Native.kext"
   cp -Rp "$k" "$ESP/EFI/OC/Kexts/"
-  /usr/bin/python3 -I - "$ESP/EFI/OC/config.plist" <<'PY'
+  /usr/bin/python3 -I - "$ESP/EFI/OC/config.plist" "$stage" "$excl" <<'PY'
 import plistlib, sys
-p = sys.argv[1]
+p, stage, excl = sys.argv[1], sys.argv[2], sys.argv[3] == '1'
 c = plistlib.load(open(p, 'rb'))
 add = c['Kernel']['Add']
 names = [a['BundlePath'] for a in add]
@@ -54,14 +69,18 @@ if 'itlmt7925Native.kext' not in names:
          'ExecutablePath': 'Contents/MacOS/itlmt7925Native', 'MaxKernel': '', 'MinKernel': '', 'PlistPath': 'Contents/Info.plist'}
     add.insert(core + 1, e)       # must come after the core kext it depends on
 a = c['NVRAM']['Add']['7C436110-AB2A-4BBB-A880-FE41995C9F82']
-ba = a.get('boot-args', '')
-for t in ('itlmt_native=1', 'itlmt_native_if=1'):
-    if t not in ba.split():
-        ba += ' ' + t
-a['boot-args'] = ba.strip()
+toks = a.get('boot-args', '').split()
+want = ['itlmt_native=1'] + (['itlmt_native_if=1'] if stage == 'b' else [])
+drop = ['itlmt_native_if=1'] if stage == 'a' else []
+if excl:
+    drop += [t for t in toks if t.split('=')[0] in ('itlmt_m2', 'itlmt_m3', 'itlmt_fast')]
+toks = [t for t in toks if t not in drop] + [t for t in want if t not in toks]
+a['boot-args'] = ' '.join(toks)
 plistlib.dump(c, open(p, 'wb'))
 print('config.plist: Add entry after itlmt7925.kext, boot-args =', a['boot-args'])
 PY
+  echo "NVRAM boot-args (wins over config.plist if set; clear it or reset NVRAM from the picker if it differs):"
+  nvram boot-args 2>&1 || true
   echo "done. Reboot. To go back: scripts/native-wifi-test.sh restore";;
 restore)
   d=${2:-$(ls -d "$BK"/EFI-* 2>/dev/null | grep -v '\.' | tail -1)}
@@ -77,5 +96,5 @@ logs)
   nvram boot-args > "$o/boot-args.txt" || true
   ifconfig -a | grep -E '^[a-z]+[0-9]+:' > "$o/interfaces.txt"
   echo "$o (check for SSIDs/MACs before sharing)";;
-*) echo "usage: $0 backup | install <kext> | restore [dir] | logs"; exit 2;;
+*) echo "usage: $0 backup | install <kext> [--stage a|b] [--exclusive] | restore [dir] | logs"; exit 2;;
 esac

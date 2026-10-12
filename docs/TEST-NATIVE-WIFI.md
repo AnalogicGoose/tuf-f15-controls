@@ -27,13 +27,24 @@ Creates `~/itlmt-backup/EFI-<time>/` (+ `.tar.gz`, + `.nvram-boot-args.txt`). Co
 
     scripts/native-wifi-test.sh install build/itlmt7925Native.kext
 
-This backs up again, copies the kext, adds it to `Kernel/Add` right after `itlmt7925.kext` and appends **both** boot-args. For
-stage A edit `config.plist` by hand afterwards and remove `itlmt_native_if=1` (only `itlmt_native=1`). Reboot.
+This backs up again, copies the kext, adds it to `Kernel/Add` right after `itlmt7925.kext` and sets `itlmt_native=1` (stage A is
+the default; `--stage b` and `--exclusive` are described in section 4). Reboot.
 
 Expected: boots; the Ethernet-style Wi-Fi from the core kext is replaced by the native controller, no Wi-Fi in System Settings
 yet (no interface). Collect: `scripts/native-wifi-test.sh logs`. Fail = panic or hang on boot, or the core kext lost its network.
 
 ## 4. Stage B: controller + interface
+
+One path at a time: stage A ran next to the old Wi-Fi (the core joined and gave the Ethernet-style link). For stage B use the helper's
+options instead of editing `config.plist` by hand:
+
+    scripts/native-wifi-test.sh install build/itlmt7925Native.kext --stage b --exclusive
+
+`--stage b` adds `itlmt_native_if=1` (default `--stage a` removes it); `--exclusive` removes `itlmt_m2`, `itlmt_m3` and `itlmt_fast`
+from the boot-args, so the core loads (and with `itlmt_m1` brings the firmware up) but never scans/joins and creates no Ethernet
+interface; the only network device left from this driver is the native one. No Wi-Fi at all then: use the phone tether. Going back =
+`restore` (it puts the whole EFI, including the old boot-args, back). Without the core's `IOMACAddress` (no Ethernet front end) the
+native interface uses a placeholder locally-administered MAC (`02:00:79:25:00:01`), which is expected in this mode.
 
 Add `itlmt_native_if=1` back to `boot-args` (`itlmt_native_unit=N` is optional; default 9) and reboot. Look for:
 
