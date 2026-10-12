@@ -7,6 +7,13 @@ standard HCI controller, but only after its RAM code has been downloaded; macOS 
 > **Update 2026-10-12 (owner-confirmed):** the BLE mouse connects now, the `BtLeDlFix` plugin works; classic devices (headphones) work too.
 > The sections below are the investigation in order. Still open: keyboard pairing was not recorded, and a warm reboot sets `bt-state` to
 > `error` although the controller works.
+>
+> **Check 2026-10-12 22:1x, after a restart (not a cold boot):** `bt-state` = `ready`, `bt-log` = `chip 7925 fw_ver 00004200; firmware
+> 20260813113236, 5 sections, 448367 bytes; section 0: already loaded; section 1: already loaded; section 2: 41472 bytes in 166 blocks;
+> bluetooth function on (flag 0); ready in 1562 ms, 0 interrupt packets dropped`. So on this restart the controller kept sections 0-1 from
+> before, the loader skipped them and reached `ready` in 1.6 s (cold boot: 5.2 s). The `error` after a warm reboot was **not**
+> reproduced; one data point, so it stays open. Not measured in this session: re-pairing the BLE mouse, headphones and keyboard
+> (they need a person and the devices).
 
 ## Status (2026-10-11, first boot with it)
 
