@@ -61,8 +61,8 @@ for c in IO80211SkywalkInterface IO80211InfraInterface IO80211WorkQueue IO80211C
   python3 tools/kc_vtable.py vtable $c > abi/$c.vtable.txt 2>&1
 done
 python3 tools/kc_vtable.py compare IO80211SkywalkInterface AppleBCMWLANSkywalkInterface > abi/skywalk-if.diff
-python3 tools/kc_vtable.py methods AppleBCMWLANCore getSCAN        > abi/bcm-scan.txt
-python3 tools/kc_vtable.py methods AppleBCMWLANCore setASSOCIATE   > abi/bcm-assoc.txt
+python3 tools/kc_vtable.py methods AppleBCMWLANCore SCAN        > abi/bcm-scan.txt
+python3 tools/kc_vtable.py methods AppleBCMWLANCore ASSOCIATE   > abi/bcm-assoc.txt
 python3 tools/kc_vtable.py methods IO80211Controller               > abi/ctrl-methods.txt
 ```
 
@@ -83,3 +83,13 @@ large; commit the distilled tables.
 ## Status
 
 * 2026-10-12: branch created from `main` (7635608); `tools/kc_vtable.py` and this plan added. No driver code changed.
+
+* 2026-10-12: installed macOS 15.8.1 / 24H32 collection dumped successfully without sudo.
+  Partial ABI findings and remaining milestone 1 work: [IO80211-ABI-2.md](IO80211-ABI-2.md).
+  `tools/collect_native_wifi_abi.py` collects vtables, method lists, overrides, startup and
+  scan/association disassembly in one run; use an ignored `build/` destination. BCM uses WCL
+  scan/association handlers on this collection; the original narrower filters returned empty output.
+  No native kext has been built or installed.
+
+* The 24H32 extraction bundle is committed in `abi/native-wifi/24H32/` at the user's request
+  so the cloud session can continue from the same evidence. No kernel collection binary is included.

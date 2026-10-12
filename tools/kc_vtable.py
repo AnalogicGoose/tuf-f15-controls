@@ -10,7 +10,7 @@
 Layout is per macOS build: run it on the build you target and keep the output next to the date and Darwin version.
 Only symbol names and pointer tables are read; no function body is disassembled.
 """
-import os, struct, sys
+import os, re, struct, sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kc  # noqa: E402  (reads $KC or argv[1]; see kc.py)
@@ -61,10 +61,10 @@ def cmd_find(sub):
 
 
 def cmd_methods(cls, sub=''):
-    tag = '%d%s' % (len(cls), cls)
+    tag = re.compile(r'^__ZNK?%d%s(?=\d)' % (len(cls), re.escape(cls)))
     for a in kc.sorted_addrs:
         s = kc.syms[a]
-        if tag in s and sub in s and not s.startswith('__ZTV'):
+        if tag.match(s) and sub in s:
             print('%#x\t%s' % (a, s))
 
 
