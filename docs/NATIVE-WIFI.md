@@ -108,3 +108,9 @@ large; commit the distilled tables.
 * 2026-10-12 (cloud, round 3): `kexts/itlmt7925/io80211/IO80211Controller.h` is generated from the vtable dump and checked
   against it (`tools/gen_io80211_header.py`, `tools/check_io80211_header.py`: 463 slots, 0 mismatches). Not part of the kext
   build yet. Open: `CCPipeOptions`/`CCStreamOptions` for the logger, the interface-side headers, RegistrationInfo.
+
+* 2026-10-12 (Mac, round 4): logger option layouts (`CCPipeOptions` 0x350, `CCStreamOptions` 0x358) with Apple's values,
+  `RegistrationInfo` (0x130 bytes), the queue/pool contract (one pool, 4 Tx submission, Tx/Rx completion, common Rx submission,
+  numeric defaults, ownership at stop) and seven verified interface-side headers (`kexts/itlmt7925/io80211/`, 0 mismatches each)
+  are in [IO80211-ABI-2.md](IO80211-ABI-2.md#extraction-round-4-mac-2026-10-12-read-only). Raw: `abi/native-wifi/24H32/round4/`.
+  Milestone 1 is complete except request payload layouts; milestone 2 (stub) is unblocked. Nothing has been loaded.

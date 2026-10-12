@@ -1,6 +1,6 @@
-# Handoff: native Wi-Fi (`IO80211Controller`) work, cloud session -> local macOS (2026-10-12)
+# Handoff: native Wi-Fi (`IO80211Controller`) work, cloud session -> local macOS (2026-10-12; updated after round 4)
 
-Branch **`wifi-native-80211`** (based on `main` 7635608, contains all of main; last commit `62649f3`). Continue on the Mac with
+Branch **`wifi-native-80211`** (based on `main` 7635608, contains all of main; round 4 is the newest commit). Continue on the Mac with
 the installed macOS 15.8.1 (24H32, Darwin 24.6.0); the cloud session has no access to the kernel collection or the hardware.
 No SMBIOS values, passphrases, MACs or neighbour SSIDs belong in this file or in `abi/`.
 
@@ -22,13 +22,13 @@ System Settings shows the MT7925 as **Wi-Fi** (menu bar, scan/join from the UI) 
 | Path | What |
 |---|---|
 | `docs/NATIVE-WIFI.md` | plan, milestones, extraction commands, open questions, running status |
-| `docs/IO80211-ABI-2.md` | extraction rounds 1-3 and analysis (controller `start` contract, interface/data-path registration, request routing, feasibility) |
-| `abi/native-wifi/24H32/` and `round3/` | raw dumps: vtables, method lists, disassembly (~2.5 MB) |
+| `docs/IO80211-ABI-2.md` | extraction rounds 1-4 and analysis (controller `start` contract, interface/data-path registration, request routing, feasibility; round 4 = logger options, RegistrationInfo, queue/pool contract, header verification) |
+| `abi/native-wifi/24H32/`, `round3/`, `round4/` | raw dumps: vtables, method lists, disassembly (~3 MB) |
 | `tools/kc.py`, `kc_vtable.py` | read the KC: symbols, vtables, disassembly |
-| `tools/collect_native_wifi_abi.py`, `dump_native_wifi_dispatch.py` | the collectors (refuse an existing output dir; the dispatch one only accepts the recorded KC hash) |
+| `tools/collect_native_wifi_abi.py`, `dump_native_wifi_dispatch.py`, `dump_native_wifi_round4.py` | the collectors (the last two only accept the recorded KC hash) |
 | `tools/annotate_vcalls.py` | names virtual calls (`call [reg+0xN]` -> slot) in a dump; the receiver class is not known, choose by what the object is |
-| `tools/gen_io80211_header.py`, `check_io80211_header.py` | generate `kexts/itlmt7925/io80211/IO80211Controller.h` and **verify** it: clang's vtable layout of a concrete subclass equals Apple's (463 slots, 0 mismatches) |
-| `kexts/itlmt7925/io80211/IO80211Controller.h` | generated, `sizeof == 0x128`; **not compiled into the kext yet** |
+| `tools/gen_io80211_header.py`, `check_io80211_header.py` (+ `io80211_abi.py`, `io80211_check.py`) | generate the headers and **verify** them: clang's vtable layout of a probe subclass equals Apple's. Default = Controller (463 slots, 0 mismatches); `--all` = the seven interface-side classes (0 mismatches each) |
+| `kexts/itlmt7925/io80211/*.h` | `IO80211Controller`, `IO80211WorkQueue` 0x50, `IO80211CommandGate` 0x18, `IOSkywalkInterface` (0xb0, SDK value), `IOSkywalkNetworkInterface` 0xd0, `IOSkywalkEthernetInterface` 0x110, `IO80211SkywalkInterface` 0x118, `IO80211InfraInterface` 0x120; generated, **not compiled into the kext yet** |
 
 ## Established (with evidence in the dumps)
 
@@ -46,62 +46,50 @@ System Settings shows the MT7925 as **Wi-Fi** (menu bar, scan/join from the UI) 
   wrappers call virtuals **on the interface** (slots 594/595 of the BCM interface = `AppleBCMWLANInfraProtocol::setWCL_*`), correcting
   round 2 which said controller. Card-specific codes `0x3f1..0x3f5` are a different namespace.
 * `CCLogStream::withPipeAndName(pipe, name, opts)` can be called directly; it reads the log level (`CCStreamLogLevel`) at `opts+8`.
+* **Round 4** (details and addresses in IO80211-ABI-2.md "Extraction round 4"): `CCPipeOptions` is 0x350 bytes (+0 = 0 selects
+  `CCLogPipe`), `CCStreamOptions` 0x358 (+0 = 0 selects `CCLogStream`; the pipe is cast to `CCLogPipe` without a null check; levels
+  `-1..7`/`0x7f`); Apple's own values are listed. `RegistrationInfo` is 0x130 bytes (version 1, size 0x130, MAC at +0x108), with
+  defaults from the interface's virtuals. The driver supplies queues + pools only (`registerNetworkInterface` builds the queue set
+  and logical link): one pool, `TxSubmission` x4 (ACs 0..3), `TxCompletion`, `RxCompletion`, common `RxSubmission`, optional multicast;
+  default capacities `a=0x200, b=0x400, c=0x400`, pool 0x1300 packets of 0x800 bytes. Headers for the whole interface chain verify.
 
 ## Open (what blocks milestone 2, the stub that loads)
 
-1. **Logger**: layouts of `CCPipeOptions` and `CCStreamOptions` (discriminator at `+0` selects the stream class), which pipe class
-   `CCStream::init` expects, and what Apple's own code passes. Nothing may be guessed here.
-2. **Interface side**: `RegistrationInfo` layout, how BCM creates the four Skywalk queues and two pools (sizes, flags), ownership at stop.
-3. Headers for `IO80211WorkQueue`, `IO80211CommandGate`, `IO80211SkywalkInterface`, `IO80211InfraInterface`, `IOSkywalkNetworkInterface`,
-   `IOSkywalkEthernetInterface` with the same generate-and-verify method (vtable dumps for all of them are in `round3/`).
-4. Return types of virtuals are not in mangled names; the generator marks guesses. Only methods the stub overrides must be right.
-5. Payload layouts of the `apple80211_*` structs (scan request/result, associate, capabilities); who owns the WPA2 4-way handshake on
+1. ~~Logger options~~, ~~RegistrationInfo + queue/pool contract~~, ~~interface-side headers~~: closed in round 4. What remains of them:
+   field *names* of a few option words (not needed while Apple's values are used), `IOSkywalkInterface`'s own instance size
+   (SDK value used), and nothing of this has run yet: **the first real test is the stub**.
+2. Return types of virtuals are not in mangled names; the generator marks guesses. Only methods the stub overrides must be right.
+3. What `AppleBCMWLANInfraProtocol`'s `setWCL_*`/`getWCL_*` expect and return (the stub must answer `IO80211InfraInterface`'s
+   protocol slots); `IO80211SkywalkInterface::start` creates a pipe/stream and a peer manager itself - check what it needs from the
+   controller (`getPostOffice`, entitlements, `wlan.entitlement` boot-arg seen in `start`).
+4. Payload layouts of the `apple80211_*` structs (scan request/result, associate, capabilities); who owns the WPA2 4-way handshake on
    this macOS (decides whether `itl_wpa.cpp` is reused); the `OSBundleLibraries` needed (`com.apple.iokit.IO80211Family`, `IOSkywalkFamily`,
    `corecapture`) and their versions.
 
 ## Next steps, in order
 
-1. Run extraction "round 4" (prompt below) -> `abi/native-wifi/24H32/round4/` + a section in `docs/IO80211-ABI-2.md`.
-2. Generate and verify the interface-side headers; commit.
+1. ~~Extraction round 4~~ and ~~interface-side headers~~ are done (see IO80211-ABI-2.md).
+2. Build the headers into the kext (`io80211/` include path, `OSBundleLibraries`: `com.apple.iokit.IO80211Family`, IOSkywalkFamily,
+   corecapture) as a compile-only step first, behind the existing build.
 3. Milestone 2: stub class `itlmt7925Wifi : IO80211Controller` that registers, builds the work queue and logger, creates the interface, no radio,
    guarded by `itlmt_native=1`. Add `io80211/` to `scripts/build.sh` / `Info.plist` dependencies. Test on the installed system; success =
    loads, shows under the IO80211 plane, System Settings lists a Wi-Fi service, no panic on load/unload/sleep.
 4. Milestones 3-7 in NATIVE-WIFI.md.
 
-## Prompt for the local session (extraction round 4)
+## Round 4 (done) and the next prompt
 
-Use it verbatim (it is also the source of truth for what "round 4" means).
+Round 4 ran as specified (`abi/native-wifi/24H32/round4/`, `IO80211-ABI-2.md` "Extraction round 4"). Not done: task 4, payload sizes
+of the scan/associate requests (the wrappers only forward pointers; only `apple80211_capability_data` shows an extent, >= 0x18 bytes).
+Suggested prompt for the next local session (milestone 2, compile-only first):
 
 ```text
-Bối cảnh: repo ga403wm-hackintosh, nhánh `wifi-native-80211`. Đọc trước docs/HANDOFF-NATIVE-WIFI.md, docs/NATIVE-WIFI.md và
-docs/IO80211-ABI-2.md ("Extraction round 3", "Analysis round 3"). macOS 15.8.1 / 24H32.
-
-QUY TẮC: chỉ ĐỌC (không sudo, không nạp kext, không sửa NVRAM/EFI/mạng); ghi vào abi/native-wifi/24H32/round4/ và docs/.
-Clean-room: không đọc/dán/diễn giải itlwm/AirportItlwm hay mã GPL; chỉ binary Apple qua tools/kc.py, kc_vtable.py,
-annotate_vcalls.py. KC=/System/Library/KernelCollections/BootKernelExtensions.kc, SHA-256 phải là
-cd013c14a7f21dbb8181fb06c44e079de8646b6a674abe21f6e47f42e8979af3 (khác thì dừng). Không commit .kc. Venv có capstone. Không đoán
-layout: chỉ ghi điều có bằng chứng (offset, độ rộng, địa chỉ lệnh); chỗ chưa chắc ghi "chưa xác định". Không ghi SSID/MAC/serial.
-
-VIỆC:
-1. Logger: disassemble CCStream::initWithPipeAndName (0xffffff80031c0122), CCLogStream::initWithPipeAndName (0xffffff80031d0450),
-   CCPipe::initWithOwnerNameCapacity, CCLogPipe::withOwnerNameCapacity + init, CCPipe::withOwnerNameCapacity. Ghi layout CCStreamOptions
-   và CCPipeOptions (offset, độ rộng, trường bắt buộc, giá trị hợp lệ, discriminator +0 ứng với lớp nào), pipe được safeMetaCast sang
-   lớp nào; và giá trị các trường options mà IO80211SkywalkInterface::start / AppleBCMWLANCore truyền thực tế.
-2. RegistrationInfo + queue/pool: disassemble AppleBCMWLANSkywalkInterface::start (0xffffff800156aa90 và đoạn trước) phần điền
-   IOSkywalkEthernetInterface::RegistrationInfo và tạo 4 queue (Tx/Rx submission/completion) + 2 IOSkywalkPacketBufferPool: factory,
-   chữ ký, ý nghĩa đối số từ nơi gọi, kích thước/trường RegistrationInfo, tham số pool/queue (số lượng, buffer size, capacity, flags),
-   ai sở hữu/giải phóng khi stop.
-3. Header phía interface: tổng quát hoá tools/gen_io80211_header.py + check_io80211_header.py để sinh VÀ KIỂM TRA (clang
-   -fdump-vtable-layouts, 0 mismatches) header cho IO80211WorkQueue (0x50), IO80211CommandGate (0x18), IO80211SkywalkInterface (0x118),
-   IO80211InfraInterface (0x120), IOSkywalkNetworkInterface (0xd0), IOSkywalkEthernetInterface (0x110). Đặt trong
-   kexts/itlmt7925/io80211/. Cần MacKernelSDK (https://github.com/acidanthera/MacKernelSDK) ngoài repo, truyền qua đối số 2 của
-   check script. Báo trung thực lớp nào không kiểm tra được.
-4. (nếu còn thời gian) kích thước payload và trường được đọc/ghi của SET 10/20/22/441/442 và GET 11/12/21 + getCARD_CAPABILITIES,
-   từ ioctl-*.asm.txt: chỉ offset+độ rộng thấy trong disassembly.
-
-TRƯỚC KHI COMMIT: chạy lại `python3 tools/check_io80211_header.py abi/native-wifi/24H32/round3` (0 mismatches) và các check mới;
-git status không có .kc/SSID/MAC/serial; dung lượng round4 hợp lý. Commit lên wifi-native-80211, `git push origin wifi-native-80211`,
-không tạo PR. In tóm tắt ≤ 20 dòng: đã xác minh / chưa / cái gì chặn stub kext.
+Nhánh wifi-native-80211, làm trong worktree riêng (không đụng main). Đọc docs/HANDOFF-NATIVE-WIFI.md và docs/IO80211-ABI-2.md
+("Extraction round 4"). Việc: (1) đưa kexts/itlmt7925/io80211/*.h vào build như bước compile-only (thêm include path, một .cpp
+rỗng include tất cả, static_assert sizeof) - không đổi hành vi kext; (2) viết lớp itlmt7925Wifi : IO80211Controller (stub,
+chưa nạp): createWorkQueue trước start, getLogger trả CCLogStream dựng bằng CCPipeOptions/CCStreamOptions với đúng giá trị
+Apple trong ABI-2 §1, CreatePostOffice, createInterface qua IO80211InfraInterface, đăng ký 4 TxSubmission + TxCompletion +
+RxCompletion + RxSubmission + 1 pool theo §2; (3) bật bằng boot-arg itlmt_native=1, mặc định giữ itlmt7925Eth.
+KHÔNG nạp kext, không sudo. Dừng và báo nếu clang không biên dịch được header hoặc build cần SDK ngoài repo.
 ```
 
 ## Housekeeping

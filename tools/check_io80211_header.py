@@ -4,14 +4,30 @@
 the same `Class::method` at every slot as Apple's vtable (slots 2..464, i.e. the whole inherited IOKit part too).
 
   python3 tools/check_io80211_header.py abi/native-wifi/24H32/round3 [path/to/MacKernelSDK/Headers]
+  python3 tools/check_io80211_header.py abi/native-wifi/24H32/round3 [SDK] --all | --class IO80211WorkQueue ...
 
+Without --class/--all it checks IO80211Controller (slots 2..464). With them it checks the interface-side classes of
+tools/io80211_abi.py, every slot against the class's own dump.
 Needs clang++ and c++filt. Exit status 0 = layout identical.
 """
 import os, re, subprocess, sys, tempfile
 
-D = sys.argv[1]
-SDK = sys.argv[2] if len(sys.argv) > 2 else os.environ.get('MACKERNELSDK', '/tmp/claude-0/sdk/MacKernelSDK/Headers')
+argv = [x for x in sys.argv[1:]]
+want = []
+while '--class' in argv:
+    i = argv.index('--class')
+    want.append(argv[i + 1])
+    del argv[i:i + 2]
+if '--all' in argv:
+    argv.remove('--all')
+    want = ['all']
+D = argv[0]
+SDK = argv[1] if len(argv) > 1 else os.environ.get('MACKERNELSDK', '/tmp/claude-0/sdk/MacKernelSDK/Headers')
 here = os.path.dirname(os.path.abspath(__file__))
+if want:
+    sys.path.insert(0, here)
+    import io80211_check
+    sys.exit(io80211_check.check_main(D, SDK, want))
 gen = subprocess.run([sys.executable, os.path.join(here, 'gen_io80211_header.py'), D], capture_output=True, text=True, check=True).stdout
 tmp = tempfile.mkdtemp()
 open(os.path.join(tmp, 'IO80211Controller.h'), 'w').write(gen)
@@ -29,7 +45,7 @@ for line in open(os.path.join(D, 'AppleBCMWLANCore.vtable.txt')):
 
 
 def dem(sym):
-    return subprocess.run(['c++filt', sym[1:]], capture_output=True, text=True).stdout.strip()
+    return subprocess.run(['c++filt', '-n', sym[1:]], capture_output=True, text=True).stdout.strip()
 
 
 # a concrete subclass that overrides every pure slot of the generated header

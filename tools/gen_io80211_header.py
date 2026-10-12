@@ -3,7 +3,9 @@
 """Generate a slot-exact C++ header for IO80211Controller from the vtable dumps of one macOS build.
 
   python3 tools/gen_io80211_header.py abi/native-wifi/24H32/round3 > kexts/itlmt7925/io80211/IO80211Controller.h
-  bash tools/check_io80211_header.sh abi/native-wifi/24H32/round3       # clang's own vtable layout must match the dump
+  python3 tools/gen_io80211_header.py abi/native-wifi/24H32/round3 IO80211WorkQueue > kexts/itlmt7925/io80211/IO80211WorkQueue.h
+  python3 tools/check_io80211_header.py abi/native-wifi/24H32/round3 [MacKernelSDK/Headers] [--class NAME | --all]
+                                                                       # clang's own vtable layout must match the dump
 
 Only names found in Apple's binary are used (symbol names of the vtable; pure-virtual slots take the name of the override in
 AppleBCMWLANCore's vtable). Return types are NOT in a mangled name: they are filled from RET below (verified from a call site
@@ -12,6 +14,15 @@ or marked "guess") and only matter for methods a subclass overrides or calls.
 import re, subprocess, sys, os
 
 D = sys.argv[1]
+CLS = sys.argv[2] if len(sys.argv) > 2 else 'IO80211Controller'
+if CLS != 'IO80211Controller':
+    # interface-side classes: tools/io80211_abi.py (generic: parent from the SDK or from another generated header)
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import io80211_abi
+    # override return types come from the SDK header that declares the method (arg 3 or $MACKERNELSDK = .../Headers)
+    sdk = sys.argv[3] if len(sys.argv) > 3 else os.environ.get('MACKERNELSDK')
+    sys.stdout.write(io80211_abi.render(D, CLS, sdk)[0])
+    sys.exit(0)
 FIRST, LAST = 396, 464          # new virtuals of IO80211Controller (slots counted with the two header words, as in the dump)
 
 # return types: name -> (type, how known)
@@ -40,7 +51,7 @@ def vt(name):
 
 
 def demangle(sym):
-    r = subprocess.run(['c++filt', sym[1:]], capture_output=True, text=True).stdout.strip()
+    r = subprocess.run(['c++filt', '-n', sym[1:]], capture_output=True, text=True).stdout.strip()
     return r
 
 
