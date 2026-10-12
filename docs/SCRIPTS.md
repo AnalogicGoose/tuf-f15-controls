@@ -19,7 +19,7 @@ Contents: [1. Get the prebuilt release](#1-use-the-prebuilt-release-v1) · [2. B
 ## 1. Use the prebuilt release (v1)
 
 The [release](https://github.com/thanhnndev/ga403wm-hackintosh/releases) contains the kexts, apps and the CPU policy daemon, already
-built (x86_64, ad-hoc signed), so you do not need Xcode for them. **You still need a clone of the repo** for the install scripts.
+built (x86_64; the apps are ad-hoc signed, the kexts and the daemon are unsigned: OpenCore injects the kexts, no signature is needed), so you do not need Xcode for them. **You still need a clone of the repo** for the install scripts.
 
 ```bash
 git clone https://github.com/thanhnndev/ga403wm-hackintosh && cd ga403wm-hackintosh
@@ -188,8 +188,8 @@ and refuses other versions. See [NULLMOTH.md](NULLMOTH.md). Do not run them blin
 
 | Script | Where | What |
 |---|---|---|
-| `scripts/export-efi.py` | 🖥 | writes `efi/OC` from a working EFI with every machine identifier replaced by placeholders (for publishing) |
-| `scripts/check-efi-privacy.py [plist...]` | 🖥 | fails if `config.plist` carries anything but the placeholders; also runs in CI |
+| `scripts/export-efi.py` | 🖥 | writes `efi/OC` from a working EFI with every machine identifier replaced by placeholders (for publishing); empties `Misc.Entries` too, because its device paths carry the SSD's NVMe EUI-64 and partition GUID |
+| `scripts/check-efi-privacy.py [plist...]` | 🖥 | fails if `config.plist` carries anything but the placeholders, or an NVMe EUI-64 / GPT GUID device path; also runs in CI |
 | `tools/occonfig.py` | 🖥 | typed `get`/`set`/`add`/`del`/`args`/`check`/`diff` for `config.plist` (always keep a backup copy; use `--dry` first) |
 | `scripts/build-ocvalidate.sh` | 🐧 | builds `ocvalidate` for the exact OpenCore commit (needs git, make, gcc, ~120 MB download) |
 | `.github/workflows/opencore.yml` | CI | builds OpenCore 1.0.9 with `patches/opencore/fix-zen5-fsb.diff`; also attached to releases |

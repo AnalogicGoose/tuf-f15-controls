@@ -10,7 +10,7 @@ Ký hiệu: 🍎 macOS · 🐧 Linux · 🪟 Windows · 🖥 bất kỳ. "Root" 
 
 ## 1. Dùng bản build sẵn (release v1)
 
-[Release](https://github.com/thanhnndev/ga403wm-hackintosh/releases) chứa kext, app và daemon CPU đã build sẵn (x86_64, ký ad-hoc), không cần
+[Release](https://github.com/thanhnndev/ga403wm-hackintosh/releases) chứa kext, app và daemon CPU đã build sẵn (x86_64; app ký ad-hoc, kext và daemon không ký: OpenCore nạp kext nên không cần chữ ký), không cần
 Xcode cho phần này. **Vẫn cần clone repo** để dùng các script cài.
 
 ```bash
@@ -157,8 +157,8 @@ hash và từ chối phiên bản khác. Xem [NULLMOTH.md](NULLMOTH.md). Đừng
 
 | Script | Làm gì |
 |---|---|
-| `scripts/export-efi.py` | xuất `efi/OC` từ EFI đang chạy, thay mọi định danh máy bằng giá trị giữ chỗ |
-| `scripts/check-efi-privacy.py` | fail nếu `config.plist` còn gì khác ngoài giá trị giữ chỗ (chạy trong CI) |
+| `scripts/export-efi.py` | xuất `efi/OC` từ EFI đang chạy, thay mọi định danh máy bằng giá trị giữ chỗ; cũng làm rỗng `Misc.Entries` vì đường dẫn thiết bị trong đó chứa EUI-64 NVMe và GUID phân vùng của SSD |
+| `scripts/check-efi-privacy.py` | fail nếu `config.plist` còn gì khác ngoài giá trị giữ chỗ, hoặc còn đường dẫn thiết bị chứa EUI-64 NVMe / GUID GPT (chạy trong CI) |
 | `tools/occonfig.py` | get/set/add/del/args/check/diff `config.plist` (luôn backup; dùng `--dry` trước) |
 | `scripts/build-ocvalidate.sh` | 🐧 build `ocvalidate` đúng commit OpenCore |
 
