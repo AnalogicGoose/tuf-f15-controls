@@ -6,15 +6,19 @@
 #   scripts/macos-install-hidpi.sh --undo   remove it again
 # Unlike the Linux installer (install-display-override.sh) this does NOT replace the EDID and does NOT delete the
 # WindowServer prefs: the panel keeps the timing it boots with (2880x1800 @ 120 Hz), so picking a HiDPI size is a scaling
-# change inside WindowServer, not a new mode for NVKMS. Entries (backing size, macOS shows half of it):
-#   2880x1800 -> looks like 1440x900 (exact 2x, like Windows 200 %)
-#   3360x2100 -> looks like 1680x1050 (more space; rendered larger and scaled down, costs more GPU)
-#   2560x1600 -> looks like 1280x800  (larger text)
-# Entry format (IOGraphicsLib IOFBInstallScaledModes): width, height, install flags, mode flags to set. Copied from Apple's
-# own override for the 2880x1800 MacBook Pro panel (DisplayVendorID-610/DisplayProductID-a013): "9 a00000" =
-# kScaleInstallAlways|kScaleInstallMirrorDeps, kDisplayModeValidForHiResFlag|kDisplayModeValidForMirroringFlag.
-# The first version used "1 200000": 0x200000 alone is kDisplayModeValidForMirroringFlag, i.e. mirror-only, so the modes
-# were installed in NVRMFB (IOFBConfig) but hidden from the Displays list and no HiDPI mode was built.
+# change inside WindowServer, not a new mode for NVKMS.
+# Entry format (IOGraphicsLib IOFBInstallScaledModes): width, height, install flags, mode flags to set.
+# History on this machine (docs/HANDOFF.md item 7):
+#   "w h 1 0x200000"   0x200000 = kDisplayModeValidForMirroringFlag alone: mirror-only, CoreGraphics drops the modes.
+#   "w h 9 0xa00000"   Apple's own format for the 2880x1800 MacBook Pro panel (DisplayProductID-a013): still mirror-only, and
+#                      the 2880x1800 entry is dropped as a duplicate of the native mode. WindowServer then builds "1440 x 900"
+#                      HiDPI on the native mode itself but marks it unusable (flag 0x80000000; CoreDisplay: "Mode 65792 not
+#                      available"), because NVRMFB never sets kDisplayModeValidForHiResFlag on its own modes.
+#   now: "2880 1800 1 0x800000"  kScaleInstallAlways, valid for HiRes, NOT mirror-only: IOGraphicsLib installs a scaled mode
+#                      whose desktop equals the raster (2880x1800 on 2880x1800, so NVRMFB's mode set needs no scaling) and
+#                      that carries the HiRes flag; WindowServer can offer "looks like 1440 x 900" on it.
+#   Only this one: 1680x1050 / 1280x800 HiDPI would need a real scaled NVKMS commit, which goes black on NullMoth (item 7),
+#   and System Settings would offer them without a revert timer.
 set -euo pipefail
 VID=4c83; PID=419c
 DIR=/Library/Displays/Contents/Resources/Overrides/DisplayVendorID-$VID
@@ -27,9 +31,9 @@ case "$cur" in *DisplayProductID=16796*DisplayVendorID=19587*) ;; *) echo "built
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 /usr/bin/python3 -I - "$T/o.plist" <<'PY'
 import plistlib, struct, sys
-def ent(w, h): return struct.pack(">IIII", w, h, 9, 0x00a00000)   # always|mirror deps, valid for HiRes|mirroring
+def ent(w, h): return struct.pack(">IIII", w, h, 1, 0x00800000)   # always; valid for HiRes, not mirror-only
 plistlib.dump({"DisplayVendorID": 0x4c83, "DisplayProductID": 0x419c, "DisplayProductName": "Built-in OLED",
-               "scale-resolutions": [ent(2880, 1800), ent(3360, 2100), ent(2560, 1600)]}, open(sys.argv[1], "wb"))
+               "scale-resolutions": [ent(2880, 1800)]}, open(sys.argv[1], "wb"))
 PY
 plutil -lint "$T/o.plist" >/dev/null
 sudo mkdir -p "$DIR"
