@@ -118,3 +118,8 @@ early log (`scripts/usblog.ps1 -Esp -Read` on Windows).
   the first 8 bytes of the block (`efuse a71 tag= block=`). First run of the CLC and tx-power commands on hardware follows from this,
   still best effort (failure is logged, join continues). Whether tag 2 puts the 16-byte block at the same offset is **chưa xác định**
   until the logged block is checked against the known encapsulation byte. Needs a rebuilt core kext.
+* 2026-10-12, phase 2, stage B exclusive, commit 7428c5e (`docs/native-wifi-results/20261012-phase2-7428c5e/`): booted without
+  panic; both kexts loaded and controller registered/matched/active. Child `itlmt7925WifiInterface` exists but is not
+  registered/matched; no en9 and no service named Wi-Fi in networksetup. Native start/failure IOLog messages were absent from
+  collected logs, so the precise publication/failure step is unknown. Sleep/wake not tested. Phase 1 power-table test was
+  skipped at the user's direction; exclusive mode disables core scan/join. Persistent per-step logging is needed before retry.
