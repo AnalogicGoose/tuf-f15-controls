@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: BSD-3-Clause-Clear
 """Read-only native Wi-Fi ABI collection. Set KC, then run with an output directory.
 
-Raw Apple disassembly belongs in build/, not git. Capstone is required.
+Raw Apple disassembly is collected in build/ before review. Capstone is required.
 """
 import argparse
 import contextlib
@@ -33,7 +33,14 @@ def main():
     classes = ['IO80211Controller', 'IO80211SkywalkInterface', 'IO80211InfraInterface',
                'IO80211WorkQueue', 'IO80211CommandGate', 'IO80211Peer',
                'IO80211VirtualInterface', 'IO80211ControllerMonitor',
-               'AppleBCMWLANCore', 'AppleBCMWLANSkywalkInterface']
+               'AppleBCMWLANCore', 'AppleBCMWLANSkywalkInterface',
+               'IOSkywalkEthernetInterface', 'IOSkywalkNetworkInterface',
+               'IOSkywalkPacketQueue', 'IOSkywalkPacketBufferPool',
+               'IOSkywalkTxSubmissionQueue', 'IOSkywalkRxCompletionQueue',
+               'IOSkywalkTxCompletionQueue', 'IOSkywalkRxSubmissionQueue',
+               'IOSkywalkPacket', 'CCPipe', 'CCStream', 'CCLogStream', 'CCLogPipe',
+               'CCFaultReporter', 'AppleBCMWLANPCIeSkywalk',
+               'AppleBCMWLANPCIeSkywalkPacketPool', 'IO80211Glue']
     for cls in classes:
         try:
             summary[cls] = len(vt.vtable(cls))
@@ -41,15 +48,35 @@ def main():
         except SystemExit as error:
             summary[cls] = str(error)
         save(cls + '.methods.txt', lambda: vt.cmd_methods(cls))
+        constructors = [(a, n) for a, n in sorted(kc.syms.items())
+                        if n.startswith('__ZN%d%s9MetaClassC' % (len(cls), cls))]
+        def dump_constructors():
+            if not constructors:
+                print('# No MetaClass constructor symbol in this collection')
+            for address, name in constructors:
+                print('#', hex(address), name)
+                kc.disasm(*kc.func_range(address), comment_strings=False)
+        save(cls + '-MetaClass.asm.txt', dump_constructors)
     if isinstance(summary['AppleBCMWLANSkywalkInterface'], int):
         save('skywalk-if.diff', lambda: vt.cmd_compare('IO80211SkywalkInterface', 'AppleBCMWLANSkywalkInterface'))
     targets = {
-        'AppleBCMWLANCore': ['start', 'createWorkQueue', 'SCAN', 'ASSOCIATE', 'getCARD_CAPABILITIES', 'handleCardSpecific'],
+        'AppleBCMWLANCore': ['start', 'createWorkQueue', 'SCAN', 'ASSOCIATE', 'getCARD_CAPABILITIES', 'handleCardSpecific', 'getLogger', 'getWorkQueue'],
         'IO80211Controller': ['start', 'createWorkQueue', 'attachInterface'],
-        'IO80211SkywalkInterface': ['init', 'start', 'register'],
+        'IO80211SkywalkInterface': ['init', 'start', 'register', 'processBSDCommand', 'performGatedCommandIOCTL', 'routeIoctlToWcl'],
         'IO80211InfraInterface': ['init', 'start', 'registerInfraEthernetInterface'],
-        'AppleBCMWLANSkywalkInterface': ['initWithProviderAndParameters', 'start'],
+        'AppleBCMWLANSkywalkInterface': ['initWithProviderAndParameters', 'start', 'withProvider'],
     }
+    targets.update({
+        'IO80211Glue': ['sendIOUCToWcl'],
+        'CCPipe': ['withOwnerNameCapacity', 'initWithOwnerNameCapacity'],
+        'CCStream': ['withPipeAndName', 'initWithPipeAndName'],
+        'CCLogStream': ['withPipeAndName', 'initWithPipeAndName'],
+        'CCLogPipe': ['withOwnerNameCapacity'],
+        'AppleBCMWLANPCIeSkywalk': ['withProviderAndCapacity', 'initWithProviderAndCapacity'],
+        'AppleBCMWLANPCIeSkywalkPacketPool': ['withName'],
+        'IOSkywalkEthernetInterface': ['registerEthernetInterface'],
+        'IOSkywalkPacketBufferPool': ['withName', 'initWithName'],
+    })
     for cls, terms in targets.items():
         pattern = re.compile(r'^__ZNK?%d%s(\d+)([A-Za-z_][A-Za-z_0-9]*)' % (len(cls), cls))
         for term in terms:
@@ -67,10 +94,20 @@ def main():
                     print('#', hex(address), name)
                     kc.disasm(*kc.func_range(address), comment_strings=False)
             save(cls + '-' + term + '.asm.txt', dump)
+    for function in ('apple80211RouteExternal', 'apple80211RouteInternal'):
+        prefix = '__Z%d%s' % (len(function), function)
+        def dump_function():
+            for address, name in sorted(kc.syms.items()):
+                if name.startswith(prefix):
+                    print('#', hex(address), name)
+                    kc.disasm(*kc.func_range(address), comment_strings=False)
+        save(function + '.asm.txt', dump_function)
     metadata = {'kc': kc.KC, 'sha256': hashlib.sha256(kc.d).hexdigest(),
                 'system': subprocess.check_output(['sw_vers'], text=True),
                 'darwin': subprocess.check_output(['uname', '-r'], text=True).strip(),
-                'vtables_symbol_spans': summary}
+                'vtables_symbol_spans': summary,
+                'collection_entries': [name for name, _, _ in kc.entries
+                                       if any(part in name for part in ('80211', 'Skywalk', 'BCMWLAN', 'corecapture'))]}
     (args.output / 'source.json').write_text(json.dumps(metadata, indent=2) + '\n')
     print(args.output)
 

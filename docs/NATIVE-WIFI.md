@@ -98,3 +98,9 @@ large; commit the distilled tables.
   the controller needs a real `CCLogStream` logger and an existing work queue before the base `start`; the data path is
   IOSkywalkFamily packet queues/pools registered through `registerInfraEthernetInterface`; instance sizes and the
   IOSkywalk/CoreCapture layouts are the blockers. `tools/annotate_vcalls.py` added. Next extraction batch is listed at the end of that page.
+
+* 2026-10-12 (Mac): round-3 evidence committed under `abi/native-wifi/24H32/round3/`.
+  MetaClass instance sizes, IOSkywalk/CoreCapture vtables and factories, RegistrationInfo
+  call sites, and GET/SET dispatch tables are now extracted. WCL request IDs 441/442
+  route through interface virtuals / AppleBCMWLANInfraProtocol; see the round-3 ABI note.
+  Struct layouts, protocol forwarding and ownership remain open before a native stub.
