@@ -389,13 +389,21 @@ static const char *failText(const char *stage)
     return "connection failed";
 }
 
+// Seen by a scan within maxAgeMs (beacon or probe response). Hidden networks never are; see the probe-all round below.
+bool itlmt7925::apInRange(const char *ssid, uint32_t maxAgeMs)
+{
+    uint32_t now = nowMs();
+    for (int i = 0; i < nAps; i++) if (!strcmp(aps[i].ssid, ssid) && now - aps[i].seenMs <= maxAgeMs) return true;
+    return false;
+}
+
 void itlmt7925::m3Supervise()
 {
     Net boot[4];
     int nb = loadPlistNets(boot, 4);
     Net user = {};
-    bool haveUser = false, want = nb > 0, everUp = false;
-    uint32_t fails = 0, nextTry = 0;
+    bool haveUser = false, want = nb > 0, everUp = false, away = false, bootScan = true;   // aps[] holds the M2 boot scan
+    uint32_t fails = 0, nextTry = 0, lastProbeAll = nowMs();
     wifiNets();                                              // the boot scan (M2) already filled aps[]
     wifiState(want ? "connecting" : "idle", "");
     m3log("supervisor: %d configured network(s)", nb);
@@ -403,7 +411,7 @@ void itlmt7925::m3Supervise()
         Net j;
         uint32_t c = cmdTake(CMD_SCAN | CMD_JOIN | CMD_DISCONNECT, &j);
         if (c & CMD_DISCONNECT) {
-            want = false; haveUser = false; fails = 0;
+            want = false; haveUser = false; fails = 0; away = false;
             bzero(&user, sizeof(user));
             m3log("supervisor: disconnect");
             wifiState("idle", "");
@@ -411,19 +419,39 @@ void itlmt7925::m3Supervise()
         if (c & CMD_JOIN) {
             if (strcmp(user.ssid, j.ssid) != 0) lvlCap = 255;      // another network: its own ladder
             user = j;
-            haveUser = true; want = true; everUp = false; fails = 0; nextTry = 0;
+            haveUser = true; want = true; everUp = false; fails = 0; nextTry = 0; away = false;
             m3log("supervisor: join ssid len=%u", (unsigned)strlen(user.ssid));
         }
         bzero(&j, sizeof(j));
         if (c & CMD_SCAN) {
             wifiScan();
-            wifiState(want ? "connecting" : "idle", nullptr);
+            wifiState(want ? (away ? "idle" : "connecting") : "idle", nullptr);
         }
         uint32_t now = nowMs();
         if (want && (int32_t)(now - nextTry) >= 0) {
+            // Only networks a scan sees right now are tried: the joined one first, then itl_ssid..itl_ssid4. A network the
+            // user just picked is tried as asked. Every 5 min every configured network gets the directed probes too
+            // (hidden SSIDs never show in a wildcard scan). Out of range of all of them: idle, wildcard scan every 30 s
+            // (the menu bar app's auto-join of its own saved networks runs on those scans).
+            bool fresh = haveUser && !everUp && fails == 0;
+            bool probeAll = now - lastProbeAll >= 300000;
+            if (!fresh && !(c & CMD_SCAN) && !bootScan) { wifiScan(); now = nowMs(); }
+            bootScan = false;
+            if (probeAll) lastProbeAll = now;
             candN = 0;
-            if (haveUser) candNets[candN++] = user;
-            else for (int i = 0; i < nb; i++) candNets[candN++] = boot[i];
+            if (haveUser && (fresh || probeAll || apInRange(user.ssid, 60000))) candNets[candN++] = user;
+            for (int i = 0; i < nb && candN < 4; i++) {
+                if (haveUser && !strcmp(boot[i].ssid, user.ssid)) continue;
+                if (probeAll || apInRange(boot[i].ssid, 60000)) candNets[candN++] = boot[i];
+            }
+            if (!candN) {
+                if (!away) { m3log("supervisor: no configured network in range"); evLog("no configured network in range"); }
+                away = true;
+                wifiState("idle", "no saved network in range");
+                nextTry = nowMs() + 30000;
+                continue;
+            }
+            away = false;
             wifiState("connecting", "");
             setProperty("wifi-ssid", candNets[0].ssid);
             uint32_t up0 = linkUpMs;
@@ -442,7 +470,8 @@ void itlmt7925::m3Supervise()
             nextTry = nowMs() + backoff[fails < 5 ? fails : 4];
             const char *why = wasUp ? (m3lostWhy[0] ? m3lostWhy : "link lost") : failText(m3res);
             if (haveUser && !everUp && fails >= 3) {                     // a network the user picked never worked: stop trying
-                want = false;
+                haveUser = false;
+                want = nb > 0;                                           // the configured networks, if any, take over again
                 wifiState("failed", why);
                 m3log("supervisor: giving up on the joined network: %s", why);
             } else {

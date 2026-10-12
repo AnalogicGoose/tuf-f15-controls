@@ -315,6 +315,7 @@ private:
     Net candNets[4] = {};                    // candidates for the next m3Run1(), in priority order
     int candN = 0;
     int loadPlistNets(Net *out, int max);
+    bool apInRange(const char *ssid, uint32_t maxAgeMs);
     void m3Supervise();                      // replaces a single m3Run(): connect, reconnect, obey commands
     void wifiState(const char *st, const char *err);
     void wifiLink();                         // ssid / channel / rssi / rate of the current link

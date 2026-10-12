@@ -141,6 +141,25 @@ No SMBIOS values, passphrases, MACs or neighbour SSIDs belong in this file.
    MacBookPro16,2 thermal profile (SFI forced-idle table, QoS thermal thresholds, `CPUOnACPower = No`). Without (2)
    ACPI_SMC_PlatformPlugin (probe score 1000) takes the CPU instead, which is what Dortania's AMD SSDT-CPUR gives. Its
    AGPMEnabler child would go too, so (2) is a separate experiment after the `-v` result, not bundled with it.
+   **2026-10-11 18:49 boot (no `-v`):** kernel -> WindowServer 3.6 s (was 36-60 s), NVRM boot hold released at 10.8 s (was
+   74-115 s), loginwindow connected to WindowServer at 76.8 s (was 140-180 s over the 12 boots before). The remaining 60 s:
+   WindowServer logs `GPUWranglerWaitForPublish: timed out; status=0xe00002d6` at 71.47 s, exactly 60 s after it got past
+   IOKitWaitQuiet. AppleGPUWrangler (`ioreg -c AppleGPUWrangler`, `debug-gpus`) tracks two GPUs: the RTX 5060 (0xED33, accel
+   and fb) and the Radeon 890M (`VGA@0`, 1002:150E, class 0x038000, no accel, no fb, only AMDSupport attached), which is never
+   published. Its `disable-gpu` property does nothing because WhateverGreen is disabled. (NVRM's own "flip 60 s after the
+   release" line lands 0.6 s before the timeout only because both are 60 s from the same moment.) Fix: the 890M's
+   DeviceProperties also get `class-code` FFFFFFFF, `name`/`IOName` `#display` (Dortania's GPU-disable values) so no driver,
+   IONDRVFramebuffer or the wrangler takes it as a display device (ESP backup `config.plist.noigpu-20261011-190545`).
+   Check after the next boot: no "GPUWranglerWaitForPublish: timed out" from WindowServer, one entry in `debug-gpus`.
+
+10a. **Saved networks out of range (2026-10-11):** the supervisor retried itl_ssid..itl_ssid4 forever (3 rounds of directed
+   probes for every network, then 30 s back-off), so away from them the menu stayed "connecting"/"failed" and a join from the
+   menu waited for the round to finish. Now each try starts with a wildcard scan and only networks seen in the last 60 s are
+   tried (the joined one first); none in range = state `idle`, error "no saved network in range", wildcard scan every 30 s
+   (that also drives ItlWiFi's auto-join of its Keychain networks); every 5 min all configured networks get the directed
+   probes anyway (hidden SSIDs). A join or disconnect from the menu interrupts the directed probes. A joined network that
+   never came up three times hands over to the configured ones instead of switching Wi-Fi off. Binary installed on the ESP
+   (Info.plist with the credentials kept; backup `Kexts-backup/itlmt7925.kext.20261011-190437`).
 
 10. **Wi-Fi after boot did not come back (fixed in code 2026-10-11, round c):** the supervisor change wiped the credentials in
     `m3Run1()` after the first selection, so when L6 passed no unicast and the ladder stepped down, the next level ended in
