@@ -98,3 +98,12 @@ early log (`scripts/usblog.ps1 -Esp -Read` on Windows).
   `IO80211WorkQueue` (none seen in the dumps read so far) and any further fault later in `IONetworkController::start` (after the policy call it creates an
   `IOCommandGate` and `addEventSource`s it to the loop returned by `getWorkLoop()`, i.e. now the provider's loop, which must stay
   enabled/running for the life of the controller).
+* 2026-10-12, stage A, commit b6693cb (`docs/native-wifi-results/20261012-stage-a-b6693cb/`): **PASS, no panic.** `com.itlmt7925.native`
+  loaded, `itlmt7925Wifi` registered/matched/active, `kern.bootargs` had `itlmt_native=1` only. Confirms the `getWorkLoop()` fix
+  (`ml_thread_policy` path skipped, command gate on the provider's loop did not fault). The `controller started` IOLog line was not seen
+  (registry entry is the evidence). Not tested: stage B (interface), sleep/wake, unload. The core joined and got DHCP (`RESULT rc=0
+  link up`) without power tables: `efuse event rejected: len=124 tag=0002 addr=00000a70 want=00000a70 valid=00000001`. The event is the
+  expected shape (address and valid match) but its tag is **2**, the parser demanded 1. Fix: `efuseRead` accepts tag 1 or 2 and logs
+  the first 8 bytes of the block (`efuse a71 tag= block=`). First run of the CLC and tx-power commands on hardware follows from this,
+  still best effort (failure is logged, join continues). Whether tag 2 puts the 16-byte block at the same offset is **chưa xác định**
+  until the logged block is checked against the known encapsulation byte. Needs a rebuilt core kext.
