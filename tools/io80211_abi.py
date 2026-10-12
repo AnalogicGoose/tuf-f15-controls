@@ -42,6 +42,26 @@ ORDER = ['IOSkywalkInterface', 'IO80211WorkQueue', 'IO80211CommandGate', 'IOSkyw
 # exported non-virtual members the stub calls (they do not change the layout): class -> [(mangled symbol, declaration, evidence)].
 # The mangled symbol must be in <Class>.methods.txt of the dump or generation stops.
 STATICS = {
+    # non-virtual members the native interface calls (symbols from the method dumps; return types are guesses, the callers ignore
+    # or only test them). A None symbol is a plain declaration needed so that the mangled parameter type resolves.
+    'IOSkywalkEthernetInterface': [
+        (None, 'struct RegistrationInfo;', 'distinct from IOSkywalkNetworkInterface::RegistrationInfo (mangled as IOSkywalkEthernetInterface::RegistrationInfo); 0x130 bytes, ABI-2 section 2'),
+        ('__ZN26IOSkywalkEthernetInterface20initRegistrationInfoEPNS_16RegistrationInfoEjm',
+         'IOReturn initRegistrationInfo(RegistrationInfo* info, uint32_t version, unsigned long size);',
+         'AppleBCMWLANCore::createSkywalkInterface calls it with (info, 1, 0x130) on a zeroed block; result ignored'),
+    ],
+    'IO80211SkywalkInterface': [
+        ('__ZN23IO80211SkywalkInterface16getInterfaceRoleEv', 'uint32_t getInterfaceRole();', 'AppleBCMWLANSkywalkInterface::start compares the result with 1'),
+        ('__ZN23IO80211SkywalkInterface16setInterfaceRoleEj', 'void setInterfaceRole(uint32_t role);', 'called by AppleBCMWLANSkywalkInterface::initWithProviderAndParameters'),
+        ('__ZN23IO80211SkywalkInterface14getInterfaceIdEv', 'uint32_t getInterfaceId();', 'queue factories take it as ifId'),
+        ('__ZN23IO80211SkywalkInterface12getWorkQueueEv', 'IO80211WorkQueue* getWorkQueue();', 'AppleBCMWLANSkywalkInterface::start takes the interface\'s work queue from it; result used with the IOWorkLoop virtuals'),
+        ('__ZN23IO80211SkywalkInterface14setInterfaceIdEj', 'void setInterfaceId(uint32_t id);', 'called by AppleBCMWLANSkywalkInterface::initWithProviderAndParameters'),
+    ],
+    'IO80211InfraInterface': [
+        ('__ZN21IO80211InfraInterface30registerInfraEthernetInterfaceEPN26IOSkywalkEthernetInterface16RegistrationInfoEPP20IOSkywalkPacketQueuejP25IOSkywalkPacketBufferPoolS7_',
+         'IOReturn registerInfraEthernetInterface(IOSkywalkEthernetInterface::RegistrationInfo* info, IOSkywalkPacketQueue** queues, uint32_t count, IOSkywalkPacketBufferPool* txPool, IOSkywalkPacketBufferPool* rxPool);',
+         'AppleBCMWLANSkywalkInterface::start registers the queue array and the pool(s) with it'),
+    ],
     'IO80211WorkQueue': [
         ('__ZN16IO80211WorkQueue9workQueueEv', 'static IO80211WorkQueue *workQueue();',
          'AppleBCMWLANCore::createWorkQueue calls it when boot-arg wlan.workQueue.create is set'),
@@ -335,6 +355,8 @@ def render(d, cls, sdk=None, known_rets=None):
     toks = types_of(allp)
     for r in a['new']:
         toks.update(re.findall(r'[A-Za-z_][\w:]*', r['ret']))
+    for sym, decl, why in STATICS.get(cls, ()):       # types named by the non-virtual declarations need forward declarations too
+        toks.update(t for t in re.findall(r'[A-Za-z_][\w:]*', decl) if re.match(r'(IO|OS|CC)[A-Z0-9]\w*', t) and t != 'IOReturn')
     nested = {}
     plain = set()
     for t in toks:
@@ -345,6 +367,10 @@ def render(d, cls, sdk=None, known_rets=None):
             nested.setdefault(o, set()).add(n)
         else:
             plain.add(t)
+    for sym, decl, why in STATICS.get(cls, ()):       # a generated class named only by a non-virtual declaration: forward-declare it
+        for t in re.findall(r'[A-Za-z_]\w*', decl):
+            if t in CLASSES and t != cls and t not in ancestors(cls) and re.match(r'(IO|OS|CC)[A-Z0-9]', t):
+                plain.add(t)
     mine_nested = sorted(nested.get(cls, ()))
     macro = 'OSDeclareAbstractStructors' if any(r['pure'] for r in a['new']) else 'OSDeclareDefaultStructors'
     hdr = []
@@ -395,6 +421,9 @@ def render(d, cls, sdk=None, known_rets=None):
     hdr.extend(g['new'])
     hdr.append('')
     for sym, decl, why in STATICS.get(cls, ()):
+        if sym is None:
+            hdr.append('    %s   // %s' % (decl, why))
+            continue
         if sym not in open(dump_path(d, cls + '.methods.txt')).read():
             raise SystemExit('%s: %s is not in the method dump' % (cls, sym))
         hdr.append('    %s   // exported: %s; %s' % (decl, sym, why))

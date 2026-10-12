@@ -7,9 +7,14 @@
 // "Native stub"): a work queue before start, a real CCLogStream from getLogger(), a non-null fault reporter from
 // getFaultReporterFromDriver() (a null one panics in findAndAttachToFaultReporter). It creates no interface, no queues, and
 // answers every request as prohibited; the data path stays on the Ethernet front end in the core kext.
+//
+// Stage 2 (second boot-arg itlmt_native_if=1): after the base start it also creates the native interface
+// (itlmt7925_iface.cpp), in the order of AppleBCMWLANCore::createSkywalkInterface: object -> attachInterface -> RegistrationInfo
+// -> interface start (which registers pool + queues) -> detachInterface on failure. Still no radio.
 #include "../itlmt7925/io80211/IO80211Controller.h"
 #include "../itlmt7925/io80211/IO80211WorkQueue.h"
 #include "corecapture_min.h"
+#include "itlmt7925_iface.h"
 
 #include <IOKit/IOLib.h>
 #include <pexpert/pexpert.h>
@@ -45,6 +50,8 @@ public:
 private:
     bool makeLogger(IOService *owner);
     bool makeFaultReporter(IOService *owner);
+    bool makeInterface(IOService *provider);
+    void dropInterface();
 
     IO80211WorkQueue *wq = nullptr;
     CCPipe *logPipe = nullptr;
@@ -53,6 +60,7 @@ private:
     CCStream *dataStream = nullptr;         // a CCDataStream (options type 1)
     CCFaultReporter *ccFault = nullptr;
     IO80211FaultReporter *fault = nullptr;
+    itlmt7925WifiInterface *iface = nullptr;
 };
 
 #define super IO80211Controller
@@ -181,18 +189,107 @@ bool itlmt7925Wifi::start(IOService *provider)
         return false;
     }
     registerService();
-    IOLog(LOGT "controller started (no interface yet)\n");
+    uint32_t withIf = 0;
+    if (PE_parse_boot_argn("itlmt_native_if", &withIf, sizeof(withIf)) && withIf) {
+        if (!makeInterface(provider)) {
+            // the controller stays up without an interface; nothing else depends on it
+            IOLog(LOGT "interface creation failed, controller only\n");
+            return true;
+        }
+        IOLog(LOGT "controller and interface started (no radio)\n");
+        return true;
+    }
+    IOLog(LOGT "controller started (no interface: itlmt_native_if not set)\n");
     return true;
+}
+
+// The core driver's Ethernet front end publishes IOMACAddress on itself (IOEthernetController::start); it is a child of the core.
+static bool findMac(IOService *provider, uint8_t out[6])
+{
+    bool found = false;
+    if (IORegistryIterator *it = IORegistryIterator::iterateOver(provider, gIOServicePlane)) {
+        while (!found) {
+            IORegistryEntry *e = it->getNextObject();
+            if (!e) break;
+            if (OSData *d = OSDynamicCast(OSData, e->getProperty("IOMACAddress"))) {
+                if (d->getLength() == 6) {
+                    memcpy(out, d->getBytesNoCopy(), 6);
+                    found = true;
+                }
+            }
+        }
+        it->release();
+    }
+    return found;
+}
+
+// Mirrors AppleBCMWLANCore::createSkywalkInterface (0xffffff800163aaf8, ABI-2 "Native stub, stage 2"). Role 2 is the only role the
+// RegistrationInfo path of that function handles (BSD name prefix + unit from the creation parameters).
+bool itlmt7925Wifi::makeInterface(IOService *provider)
+{
+    uint8_t mac[6];
+    if (!findMac(provider, mac)) {
+        // locally administered placeholder: the Ethernet front end has not published a MAC (or is not loaded)
+        static const uint8_t fallback[6] = {0x02, 0x00, 0x79, 0x25, 0x00, 0x01};
+        memcpy(mac, fallback, 6);
+        IOLog(LOGT "no IOMACAddress under the core driver, using a placeholder\n");
+    }
+    uint32_t unit = 9;      // the core's Ethernet front end takes the low en units; override with itlmt_native_unit
+    PE_parse_boot_argn("itlmt_native_unit", &unit, sizeof(unit));
+
+    itlmt7925WifiInterface *ifc = itlmt7925WifiInterface::withController(this, 0, 2);
+    if (!ifc) return false;
+    if (!attachInterface(ifc, this)) {
+        ifc->release();
+        return false;
+    }
+    uint8_t block[0x130];
+    bzero(block, sizeof(block));
+    IOSkywalkEthernetInterface::RegistrationInfo *info = (IOSkywalkEthernetInterface::RegistrationInfo *)block;
+    ifc->initRegistrationInfo(info, 1, 0x130);
+    // The fields createSkywalkInterface sets after initRegistrationInfo (offsets from its disassembly; meaning of +0x14, +0x24,
+    // +0x28 and +0xc is only partly known): +0x14 = 2, MAC at +0x108, +0x24 = +0x28 = 0x80, +0xc = 3, +0x3c (u16) = 0x40,
+    // +0x40 flags = 4 for role 2 (| 2 when the provider has IOPMResetPowerStateOnWake: not replicated), BSD prefix at +0x30,
+    // unit at +0x38.
+    static const char kPrefix[] = "en";
+    put<uint32_t>(block, 0x14, 2);
+    memcpy(block + 0x108, mac, 6);
+    put<uint32_t>(block, 0x24, 0x80);
+    put<uint32_t>(block, 0x28, 0x80);
+    put<uint32_t>(block, 0x0c, 3);
+    put<uint16_t>(block, 0x3c, 0x40);
+    put<uint32_t>(block, 0x40, 4);
+    put<uint64_t>(block, 0x30, (uint64_t)(uintptr_t)kPrefix);
+    put<uint32_t>(block, 0x38, unit);
+
+    if (!ifc->startWithInfo(this, info)) {
+        detachInterface(ifc, false);
+        ifc->release();
+        return false;
+    }
+    iface = ifc;
+    return true;
+}
+
+void itlmt7925Wifi::dropInterface()
+{
+    if (!iface) return;
+    itlmt7925WifiInterface *ifc = iface;
+    iface = nullptr;
+    detachInterface(ifc, false);
+    ifc->release();
 }
 
 void itlmt7925Wifi::stop(IOService *provider)
 {
+    dropInterface();
     super::stop(provider);
 }
 
 void itlmt7925Wifi::free()
 {
     // reverse order of creation; the reporter chain holds the stream and the work queue
+    dropInterface();
     rel(fault);       fault = nullptr;
     rel(ccFault);     ccFault = nullptr;
     rel(dataStream);  dataStream = nullptr;

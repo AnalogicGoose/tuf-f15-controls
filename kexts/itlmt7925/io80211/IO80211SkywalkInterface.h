@@ -22,6 +22,7 @@ class IO80211NetworkPacket;
 class IO80211Peer;
 class IO80211PeerManager;
 class IO80211ScanManager;
+class IO80211WorkQueue;
 class IOSkywalkPacketBufferPool;
 class IOSkywalkPacketQueue;
 class IOSkywalkRxCompletionQueue;
@@ -203,6 +204,12 @@ public:
     /* 459 */ virtual IOReturn getNClearTxRxLatency(apple80211_latency_all_ac* a1, apple80211_latency_all_ac* a2);   // ret: guess
     /* 460 */ virtual IOReturn getLastTxTimeStamp(uint64_t& a1);   // ret: guess
     /* 461 */ virtual IOReturn getLastRxTimeStamp(uint64_t& a1);   // ret: guess
+
+    uint32_t getInterfaceRole();   // exported: __ZN23IO80211SkywalkInterface16getInterfaceRoleEv; AppleBCMWLANSkywalkInterface::start compares the result with 1
+    void setInterfaceRole(uint32_t role);   // exported: __ZN23IO80211SkywalkInterface16setInterfaceRoleEj; called by AppleBCMWLANSkywalkInterface::initWithProviderAndParameters
+    uint32_t getInterfaceId();   // exported: __ZN23IO80211SkywalkInterface14getInterfaceIdEv; queue factories take it as ifId
+    IO80211WorkQueue* getWorkQueue();   // exported: __ZN23IO80211SkywalkInterface12getWorkQueueEv; AppleBCMWLANSkywalkInterface::start takes the interface's work queue from it; result used with the IOWorkLoop virtuals
+    void setInterfaceId(uint32_t id);   // exported: __ZN23IO80211SkywalkInterface14setInterfaceIdEj; called by AppleBCMWLANSkywalkInterface::initWithProviderAndParameters
 
 protected:
     uint8_t iO80211SkywalkInterfaceOpaque[0x118 - sizeof(IOSkywalkEthernetInterface)];   // ivars of Apple's class: layout not determined

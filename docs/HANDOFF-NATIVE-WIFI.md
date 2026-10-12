@@ -1,4 +1,4 @@
-# Handoff: native Wi-Fi (`IO80211Controller`) work, cloud session -> local macOS (2026-10-12; updated after round 4)
+# Handoff: native Wi-Fi (`IO80211Controller`) work, cloud session -> local macOS (2026-10-12; updated after stage 2)
 
 Branch **`wifi-native-80211`** (based on `main` 7635608, contains all of main; newest work: round 4 + native stub stage 1). Continue on the Mac with
 the installed macOS 15.8.1 (24H32, Darwin 24.6.0); the cloud session has no access to the kernel collection or the hardware.
@@ -60,6 +60,21 @@ System Settings shows the MT7925 as **Wi-Fi** (menu bar, scan/join from the UI) 
   fault reporter panics `IO80211Controller::start` just like a null logger; the object is an `IO80211FaultReporter` wrapping a
   `CCFaultReporter` on a `CCDataStream`; `isCommandProhibited` returns 0 = allowed.
 
+## Stage 2 (done in the cloud, never loaded)
+
+`itlmt7925WifiInterface : IO80211InfraProtocol` + pool + 4 Tx / TxComp / RxComp queues, created by `itlmt7925Wifi::makeInterface`
+behind a second boot-arg `itlmt_native_if=1` (unit: `itlmt_native_unit`, default 9). Details, evidence (the
+`createSkywalkInterface` sequence, `start(core, info)` = vtable slot 657, `attachInterface` 443 / `detachInterface` 444) and the
+list of knowing gaps: IO80211-ABI-2.md "Native stub, stage 2". New tools: `tools/gen_native_iface.py` (191 pure-virtual stubs),
+`tools/check_native_slots.py` (override slots against Apple's vtable: 209/0 and 19/0), `tools/check_native_symbols.py`.
+Header generator gained non-virtual member declarations (`STATICS`): `setInterfaceRole/Id`, `getWorkQueue`, `initRegistrationInfo`,
+`registerInfraEthernetInterface`.
+
+**First things to do on the Mac**: `scripts/build.sh io80211check itlmt7925Native`, then `tools/check_kext_links.py` (new
+undefined symbols, esp. `IO80211InfraProtocolD2Ev`); fix whatever the link check rejects. Known gaps that a load may expose: all
+four Tx queues have the default service class (no subclass to pass the AC table), queue callbacks do nothing, the common Rx
+submission queue is not registered, the `createSkywalkInterface` caller / the primary interface's id are not known (id 0, role 2 used).
+
 ## Open (what blocks milestone 2, the stub that loads)
 
 1. ~~Logger options~~, ~~RegistrationInfo + queue/pool contract~~, ~~interface-side headers~~: closed in round 4. What remains of them:
@@ -77,9 +92,9 @@ System Settings shows the MT7925 as **Wi-Fi** (menu bar, scan/join from the UI) 
 
 1. ~~Extraction round 4~~ and ~~interface-side headers~~ are done (see IO80211-ABI-2.md).
 2. ~~Headers compile with the kext flags~~ and ~~controller stub (work queue, logger, fault reporter) builds and links~~ are done.
-3. **Stage 2 of milestone 2**: `IO80211InfraInterface` subclass + queues/pools of section 2 (no radio), created from the stub's
-   `start` after the base `start`; then the first load (see "Before the first load"). Success = loads, shows under the IO80211 plane,
-   System Settings lists a Wi-Fi service, no panic on load/unload/sleep.
+3. ~~Stage 2 code~~ (done, see above). **Next: build + link-check on the Mac, then the first load** (see "Before the first load";
+   `itlmt_native=1 itlmt_native_if=1`). Success = loads, shows under the IO80211 plane, System Settings lists a Wi-Fi service, no
+   panic on load/unload/sleep. Then service classes for the Tx queues (subclass `IOSkywalkTxSubmissionQueue`).
 4. Milestones 3-7 in NATIVE-WIFI.md.
 
 ## Before the first load

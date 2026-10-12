@@ -64,6 +64,9 @@ public:
     /* 352 */ virtual void _RESERVEDIOSkywalkEthernetInterface9();
     /* 353 */ virtual void _RESERVEDIOSkywalkEthernetInterface10();
 
+    struct RegistrationInfo;   // distinct from IOSkywalkNetworkInterface::RegistrationInfo (mangled as IOSkywalkEthernetInterface::RegistrationInfo); 0x130 bytes, ABI-2 section 2
+    IOReturn initRegistrationInfo(RegistrationInfo* info, uint32_t version, unsigned long size);   // exported: __ZN26IOSkywalkEthernetInterface20initRegistrationInfoEPNS_16RegistrationInfoEjm; AppleBCMWLANCore::createSkywalkInterface calls it with (info, 1, 0x130) on a zeroed block; result ignored
+
 protected:
     uint8_t iOSkywalkEthernetInterfaceOpaque[0x110 - sizeof(IOSkywalkNetworkInterface)];   // ivars of Apple's class: layout not determined
 };

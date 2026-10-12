@@ -15,6 +15,8 @@ struct ether_addr;
 struct __mbuf;
 class IO80211NetworkPacket;
 class IO80211Peer;
+class IOSkywalkPacketBufferPool;
+class IOSkywalkPacketQueue;
 struct PacketSkywalkScratch;
 struct TxCompletionEnqueueStats;
 struct TxSubmissionDequeueStats;
@@ -110,6 +112,8 @@ public:
     /* 464 */ virtual void setWCL_ADVISORTY_INFO(apple80211_wcl_advisory_info* a1);   // ret: guess from name
     /* 465 */ virtual IOReturn getWCL_TX_RX_LATENCY(apple80211_wcl_tx_rx_latency* a1);   // ret: guess
     /* 466 */ virtual IOReturn createLQMData();   // ret: guess
+
+    IOReturn registerInfraEthernetInterface(IOSkywalkEthernetInterface::RegistrationInfo* info, IOSkywalkPacketQueue** queues, uint32_t count, IOSkywalkPacketBufferPool* txPool, IOSkywalkPacketBufferPool* rxPool);   // exported: __ZN21IO80211InfraInterface30registerInfraEthernetInterfaceEPN26IOSkywalkEthernetInterface16RegistrationInfoEPP20IOSkywalkPacketQueuejP25IOSkywalkPacketBufferPoolS7_; AppleBCMWLANSkywalkInterface::start registers the queue array and the pool(s) with it
 
 protected:
     uint8_t iO80211InfraInterfaceOpaque[0x120 - sizeof(IO80211SkywalkInterface)];   // ivars of Apple's class: layout not determined
