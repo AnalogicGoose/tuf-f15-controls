@@ -179,6 +179,52 @@ No SMBIOS values, passphrases, MACs or neighbour SSIDs belong in this file.
      `Kexts-backup/itlmt7925.kext.20261011-201343`); verify after reboot: `edca` line in the m3 log, `stat-log` deltas,
      speed test, ping.
 
+10c. **Wi-Fi RX + power-table continuation (2026-10-11):** completed the unfinished RX/CLC/SAR changes.
+   * RX data ring: 1536 entries at fast level >= 2, allocation fallback to 512/256; MCU RX ring 512. Frame DMA buffers
+     use cached memory on x86; RX reads acquire DMA writes before touching cached data. Descriptors stay uncached.
+     Ethernet input flushes at 64 frames and at the end of every data poll / MCU pass / reorder tick.
+   * Added `itlmt7925_pwr.cpp` to the build and IOACPIFamily to the bundle dependencies. Reads efuse block 0xa70 for
+     module encapsulation, selects firmware POWER/POWER_EXT CLC tables, and sends world (`00`, indoor) rules with ACK/status
+     checking. CLC region, rule and segment offsets are bounds checked. Before association, sends 449-byte SKU tables
+     for 2.4/5 GHz in batches of three channels. No 6 GHz enablement in this change.
+   * Reads MTDS/MTGS from the PCI device's ACPI path, accepts actual v1/v2 layouts independently of version labels,
+     handles 0xff as absent limits and treats geo offsets as unsigned (Linux layout). Uses first dynamic profile and
+     world geo row. Caps per-rate power at min(SAR, 40 half-dBm = 20 dBm); firmware CLC may lower it further. This is a
+     conservative world-domain ceiling, not a full cfg80211 regulatory port. Failed power setup aborts association and
+     is retried on the next join; successful setup is retained across reconnects.
+   * Validation: clean x86_64 kext build (no compiler warnings), plist lint, diff whitespace check, ASan/UBSan power tests
+     covering SAR sentinel/layout/offset cases, SKU rate placement and invalid CLC bounds. The tests also walk all POWER /
+     POWER_EXT tables in the bundled RAM firmware (4 tables, 24 world rules). Hardware behavior remains to be checked
+     after reboot: `rx data ring 1536`, `sar:`, `clc 00`, `txpower:` logs, download/upload speed and gateway packet loss.
+   * Installed `/Volumes/ESP/EFI/OC/Kexts/itlmt7925.kext`; binary SHA256
+     `1e8b2715e63437e6f09ec416a856d2b1061c00c85491e6e53db732be026a6e44`.
+     Backup: `EFI/OC/Kexts-backup/itlmt7925.kext.20261011-211949`. Saved credentials were copied and verified privately;
+     OpenCore config was verified unchanged, with the existing Kernel/Add entry enabled. No reboot performed.
+   * Brightness: existing AUX/DPCD limitation and RogControl software dimming documented in ASUSCTL-MACOS.md remain;
+     this continuation does not change GPU/backlight code.
+
+10d. **ItlWiFi speed-test error:** the screenshot's "speed.cloudflare.com not reachable over en2" was caused by
+   interface binding while an active VPN routed the provider through `utun4`. Reproduced on Cloudflare and Hetzner:
+   `curl --interface en2` failed immediately with exit 7; unbound curl returned HTTP 200/206 via the VPN. The gateway
+   remained reachable over en2. The old app discarded stderr and exit status, hiding this distinction.
+   * Split the test engine into `macos/ItlWiFi/SpeedTest.swift`. Default path is "Internet (VPN allowed)"; "Wi-Fi direct"
+     retains interface binding. Results identify the provider, resolved server IP and actual route (including VPN).
+     A failed direct test with a working tunneled system-route probe explains the VPN restriction explicitly.
+   * Auto selection probes Cloudflare, Hetzner Singapore, OVHcloud Singapore and Hetzner US West, falling back on probe
+     failures. Each server can also be selected manually. Hetzner/OVH measure download only; Cloudflare supports upload.
+     Endpoints were verified live with small ranged requests, rather than pinning mutable CDN IPs.
+   * Capture curl JSON metrics / exit code / stderr; reject HTTP error responses as speed results, retain completed metrics
+     when another direction fails, label TCP connect latency accurately. Both directions use total transfer time; the old
+     code subtracted first-response time from upload duration (upload normally precedes that response). Upload payloads
+     are unique temporary 8 MiB files and are removed after the run. Timed-out uploads without a successful HTTP response
+     are displayed as unavailable, rather than treating unacknowledged bytes as a valid result.
+   * Validation: app build, signature verification, plist lint; Swift result-validation tests and live probes of all four
+     providers passed. Full 10-second-direction live test returned 22.0 Mb/s down and 9.42 Mb/s up via utun4;
+     Wi-Fi-direct mode returned the explanatory VPN error. These are Internet/VPN measurements, not isolated Wi-Fi capacity.
+   * Installed `/Applications/ItlWiFi.app`, retaining existing login configuration; old app backed up to
+     `build/ItlWiFi.before-speed-fix.app`. LaunchServices initially returned -600 just after stopping the old process;
+     launching the installed executable directly succeeded (PID 24849). No kext / ESP / VPN configuration changed.
+
 10. **Wi-Fi after boot did not come back (fixed in code 2026-10-11, round c):** the supervisor change wiped the credentials in
     `m3Run1()` after the first selection, so when L6 passed no unicast and the ladder stepped down, the next level ended in
     `nocred` (rc -22) and the supervisor started again at L6, forever. Now the ladder keeps them and `lvlCap` remembers the
