@@ -104,6 +104,12 @@ submission queue is not registered, the `createSkywalkInterface` caller / the pr
 
 ## Before the first load
 
+Confidence for a first load (stage 1 + 2, honest estimate, nothing has run): the build, link check, vtable slots and symbol
+presence are verified, but object lifetime of Family internals (`IO80211InfraProtocol` start/stop, queue enable on
+`registerInfraEthernetInterface`, post office/peer manager) is only inferred from Apple's call order. Expect a clean failure
+(start returns false, controller keeps working as Ethernet) more likely than a panic; a panic is possible in stop/teardown. That
+is below the 90% the user asked for, so the first load stays an experiment on a stick, not a daily-driver change.
+
 * Keep `itlmt7925Native.kext` out of `config.plist` until stage 2 is done; when testing, put it **after** `itlmt7925.kext` in
   `Kernel/Add` (it depends on it) and set `itlmt_native=1` only for that boot. Without the boot-arg it is inert (start returns false).
 * Run `KC=... python3 tools/check_kext_links.py build/itlmt7925Native.kext build/itlmt7925.kext` after every build; a symbol that
