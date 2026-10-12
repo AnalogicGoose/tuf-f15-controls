@@ -14,6 +14,11 @@ States: ✅ done · 🔧 in progress (someone is on it now) · 🟡 implemented,
   RogControl.
 * **macOS 15 only.** macOS 26 (Tahoe) is explicitly **out of scope** until macOS 15 is stable for other GA403WM owners
   (see [milestones](#milestones)). The NVIDIA driver is macOS 15 only anyway.
+* **Usable today, with caveats (owner's own assessment, 2026-10-12):** fine as a **plugged-in machine with an external HDMI
+  display**. There is **no working deep sleep** (sleep/wake is not reliable: do not close the lid and expect it to come back), most
+  Fn keys are not mapped yet, and **battery life has not been tested**. Because the RTX 5060 is the only usable GPU (MUX =
+  "Ultimate", the iGPU is hidden), **no promise is made about battery life at all**: expect it to be poor, and the dGPU is the
+  reason. The work to improve this is workstreams 22-24 below.
 
 ## Milestones
 
@@ -34,7 +39,7 @@ States: ✅ done · 🔧 in progress (someone is on it now) · 🟡 implemented,
 |---|---|---|---|---|---|
 | 1 | **Install experience** (README, INSTALL, release assets, issue templates) | 🔧 | `main` | this page, publish first release (kexts + apps zip) | [INSTALL.md](INSTALL.md) |
 | 2 | **Standard EFI**: the author's tested EFI uploaded to the release (**coming**); **EFI hygiene**: published USB map, drop debug boot-args / `IOPCIMSIMode` leftovers / ItlDiag, verbose off | ⚪ | `main` (`efi/`) | USBToolBox map for the GA403WM replacing the `UTBDefault` placeholder, keep keyboard `0b05:19b6` internal | [efi/README.md](../efi/README.md) |
-| 3 | **Touchpad** (I2C-HID `ASUP1208`, `093a:3011`) | ✅ | `main` | works again since 2026-10-12 (it died on 2026-10-10). The root cause is not written down yet: add it to [HANDOFF.md](HANDOFF.md) | [HANDOFF](HANDOFF.md) |
+| 3 | **Touchpad** (I2C-HID `ASUP1208`, `093a:3011`) | ✅ | `main` | works again since 2026-10-12 (it died on 2026-10-10). Cause (owner-reported): it is dead after a **warm reboot from Windows into macOS**; a **full shutdown and power on** brings it back. Boot macOS from a cold start (or shut down after Windows) | [HANDOFF](HANDOFF.md) |
 | 4 | **Wi-Fi throughput** (`itlmt7925`) | ✅ | `main` (`kexts/itlmt7925`) | reaches the full link speed (HE, 160 MHz) since 2026-10-12. Record a LAN `iperf3` result with AP model, band and distance in [WIFI.md](WIFI.md) | [WIFI.md](WIFI.md) |
 | 5 | **Wi-Fi app** (ItlWiFi) and runtime control | ✅ | `main` (`macos/ItlWiFi`) | scan / join / reconnect / speed test; becomes optional once native Wi-Fi exists | [WIFI.md](WIFI.md#runtime-control-itlwifi-menu-bar-app) |
 | 6 | **Native Wi-Fi** (`IO80211Controller` subclass, Skywalk) | 🔧 | port in progress (not in this repository yet) | ABI notes: 12 pure virtuals mapped; Skywalk interface and `apple80211_*` structs. Clean-room, no GPL `itlwm` code. `itlmt7925` stays as the fallback | [WIFI-AS-WIFI.md](WIFI-AS-WIFI.md), [IO80211-ABI.md](IO80211-ABI.md) |
@@ -47,12 +52,16 @@ States: ✅ done · 🔧 in progress (someone is on it now) · 🟡 implemented,
 | 13 | **HiDPI 2x** (like Windows scale 200 %) | ✅ | `main` (`scripts/macos-install-hidpi.sh`, `tools/hidpi-try.swift`) | "looks like 1440 x 900" at 120 Hz via the same-size HiRes override; 2x is the supported scale. Next: second-owner confirmation, upstream flag fix so no override is needed | [SCRIPTS.md §4](SCRIPTS.md#4-hidpi-looks-like-1440-x-900-step-by-step), [HANDOFF #7](HANDOFF.md) |
 | 14 | **Black screen / flicker with 120 Hz + modeset** | 🟡 | NullMoth upstream | stable on 1.13-1.14 with the boot raster at 120 Hz; do not change modes at login | [HANDOFF #2](HANDOFF.md), [NULLMOTH.md](NULLMOTH.md) |
 | 15 | **Boot time** (~36 s kernel to login) | 🟡 | `main` (EFI) | OpenCore debug target off, `-nvrmnobootscreen`, verbose off; remaining: GOP console cost | [HANDOFF #9](HANDOFF.md) |
-| 16 | **Unverified hardware**: audio, SD reader, battery %, webcam, sleep/wake, lid, Fn keys | ⚪ | - | go through them one by one; each result into [HANDOFF.md](HANDOFF.md) and the README table | [README](../README.md#what-works) |
-| 17 | **Release v1**: prebuilt kexts, apps, CPU daemon, patched OpenCore, reference EFI, checksums | 🔧 | `main` (`.github/workflows/build.yml`, `.github/release-body.md`) | workflow ready (tag `v1` publishes); app/OpenCore build steps never run in CI yet: run `build-kexts` by hand (workflow_dispatch) and fix, then tag. Later: Developer ID signing + notarisation | [SCRIPTS.md §1](SCRIPTS.md#1-use-the-prebuilt-release-v1) |
+| 16 | **Unverified hardware**: audio (speakers, jack, mic), SD reader, battery %, webcam | ⚪ | - | go through them one by one; each result into [HANDOFF.md](HANDOFF.md) and the README table. Sleep and Fn keys have their own rows (22, 23) | [README](../README.md#what-works) |
+| 17 | **Release v1**: prebuilt kexts, apps, CPU daemon, patched OpenCore, reference EFI, checksums | 🔧 | `main` (`.github/workflows/build.yml`, `.github/release-body.md`) | workflow ready (tag `v1` publishes); the `build-kexts` run on `main` **fails in the RogControl step** (Swift concurrency error at `RogControl.swift:263`, wake observer closure, on the `macos-14` runner's older toolchain; builds fine with the local Swift 6.1.2). Fix is either a newer runner/Xcode or rewriting that closure: decision pending, then tag. Later: Developer ID signing + notarisation | [SCRIPTS.md §1](SCRIPTS.md#1-use-the-prebuilt-release-v1) |
 | 18 | **Other GA403 variants** (GA403UI/UV/WU...) | ⚪ | - | needs reports from owners; use the Hardware report issue template | |
 | 19 | **Codebase standardisation** (call conventions, shared helpers, cleanup of debug/dead code, scripts) | ⚪ gated | `track/19-*` per component | starts per component only after its stability gate | [below](#codebase-standardisation) |
 | 20 | **Scripts guide** (what to run, undo, author-specific flags) | ✅ | `main` | [SCRIPTS.md](SCRIPTS.md); next: remove author-specific paths (part of 19) | [SCRIPTS.md](SCRIPTS.md) |
 | 21 | **macOS 26 (Tahoe)** | 🧊 | - | not planned. Revisit after M1 | |
+| 22 | **Sleep / wake fix** (idle sleep, lid close, wake, hibernate/deep sleep) | ❌ | `main` (EFI, `AmdCppcPolicy`, drivers) | no working deep sleep. Known from `pmset -g log`: wake is slow in `NVRMFramebuffer` (SetState, ~0.3 s) and `AppleHDADriver` (~0.5 s), and `wifip2pd` times out (30 s) on the sleep notification. Plan: a reproducible 5-cycle test (log wake reason, per-driver delays), find what blocks or breaks wake (NVIDIA driver power state, USB/xHCI, I2C touchpad, Wi-Fi/BT firmware), then `pmset` `hibernatemode` / `standby` policy. Do not test with the lid closed until a cycle survives with the lid open | [HANDOFF.md](HANDOFF.md) |
+| 23 | **Fn keys and keybinds** (map every key of the GA403WM keyboard) | ⚪ | `main` (`kexts/AsusWmi`, `macos/RogControl`) | works today: brightness (Fn+F7/F8), keyboard backlight (0xC4/0xC5), Fn+F4 (0xB3), Fn+F5 (0xAE). To do: press every special key and Fn combination on the keyboard (F1-F12 row, the ROG / Armoury key and any others the owner finds), record the code each one sends in `asus-log` ("key xx"), write the table (key, code, intended macOS action), implement the missing ones in `AsusWmi` and show the mapping in RogControl | [ASUSCTL-MACOS.md](ASUSCTL-MACOS.md) |
+| 24 | **Battery life** (not tested; no promise) | ⚪ | - | measure idle and light use drain on battery with `pmset -g batt` over time; compare Silent profile, Dimmer on/off, charge limit; document what the always-on RTX 5060 costs. Realistically the dGPU-only MUX mode sets a floor that software cannot fix | [CPU-POWER.md](CPU-POWER.md) |
+| 25 | **Other fixes** (everything left that is not listed above) | ⚪ | - | native Wi-Fi (row 6), audio / SD / webcam verification (row 16), CI app build (row 17), EFI hygiene and the published USB map (row 2); anything new found while using the machine plugged in with HDMI goes here first | |
 
 ## Codebase standardisation
 

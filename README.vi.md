@@ -32,7 +32,8 @@ EFI OpenCore, kext, app thanh menu và ghi chú nghiên cứu. English: [README.
 | Boot | OpenCore 1.0.9 + bản vá Zen 5, từ ESP trong máy; Windows/Linux vẫn nằm trong picker OpenCore |
 | Đồ họa | RTX 5060 qua [driver NullMoth](https://github.com/nullmoth/nvidia-macos-driver); **bắt buộc chế độ GPU "Ultimate" (MUX)**, iGPU không dùng được |
 | Wi-Fi | Driver tự viết (`itlmt7925`), đạt tốc độ tối đa của link (HE, 160 MHz). Hiện là **Ethernet** (en*) cho đến khi bản native xong. Phải **inject SSID/mật khẩu** ([hướng dẫn](docs/INSTALL.vi.md#4-wi-fi-inject-mạng)) |
-| Vấn đề còn lại | Các lỗi lớn trước đây (touchpad, chuột BLE, tốc độ Wi-Fi, độ sáng, điều khiển ROG, HiDPI) đã **sửa xong** tính đến 2026-10-12. Còn: Wi-Fi chưa native (hiện là Ethernet), chưa kiểm chứng sleep/wake, âm thanh, đầu đọc SD, % pin |
+| Vấn đề còn lại | Các lỗi lớn trước đây (touchpad, chuột BLE, tốc độ Wi-Fi, độ sáng, điều khiển ROG, HiDPI) đã **sửa xong** tính đến 2026-10-12. Còn: Wi-Fi chưa native (hiện là Ethernet); **sleep/wake chưa chạy ổn (không có deep sleep)**; phần lớn phím Fn chưa map; chưa kiểm chứng âm thanh, đầu đọc SD, % pin |
+| Dùng hằng ngày | Ổn khi **cắm sạc và dùng màn hình ngoài qua HDMI**. Thời lượng pin **chưa test, và vì RTX 5060 là GPU duy nhất nên không hứa hẹn gì** về pin |
 
 Chú giải dùng xuyên suốt: ✅ đã kiểm chứng trên máy tham chiếu · 🟡 đã viết, cần test thêm · 🔧 đang làm ·
 ❌ không chạy · ⚪ chưa làm / chưa kiểm chứng.
@@ -50,11 +51,12 @@ Chú giải dùng xuyên suốt: ✅ đã kiểm chứng trên máy tham chiếu
 | Chế độ hiệu năng ROG, quạt, giới hạn sạc | ✅ | `AsusWmi` + app RogControl. Silent/Performance/Turbo đổi xung nhịp và tốc độ quạt thật | [docs/ASUSCTL-MACOS.md](docs/ASUSCTL-MACOS.md) |
 | Đèn bàn phím, đèn Slash | ✅ | Qua `AsusWmi` (HID report gửi từ kernel) | [docs/ASUSCTL-MACOS.md](docs/ASUSCTL-MACOS.md) |
 | Độ sáng OLED | ✅ | Panel chỉ điều khiển qua AUX; `NVRMEdpBL` (DPCD) điều khiển nó. Thanh trượt và phím độ sáng làm tối chính OLED | [docs/OLED-BRIGHTNESS-DPCD.md](docs/OLED-BRIGHTNESS-DPCD.md) |
-| Sleep / wake | 🟡 | Một chu kỳ sleep/wake khôi phục được chính sách CPU; chưa test rộng | |
+| Sleep / wake | ❌ | Chưa có deep sleep; wake chậm và không ổn định. Một chu kỳ hoàn tất thì khôi phục được chính sách CPU, nhưng đừng trông cậy vào sleep hay đóng nắp | [docs/ROADMAP.md](docs/ROADMAP.md) |
 | Dual boot Windows / Linux | ✅ | Chọn từ picker OpenCore; có ghi chú sửa entry UEFI bị mất | [docs/DUAL-BOOT.md](docs/DUAL-BOOT.md) |
 | Touchpad (I2C `093a:3011`) | ✅ | Hoạt động (chết ngày 2026-10-10, đã sửa 2026-10-12) | [HANDOFF](docs/HANDOFF.md) |
 | HiDPI **2x** (như scale 200 % của Windows) | ✅ | "looks like 1440 x 900" trên OLED 2880x1800 ở 120 Hz nhờ file override màn hình. Hỗ trợ tỉ lệ 2x; không hỗ trợ tỉ lệ lẻ | [docs/SCRIPTS.vi.md §4](docs/SCRIPTS.vi.md#4-hidpi-looks-like-1440-x-900-từng-bước) |
-| Âm thanh, đầu đọc thẻ SD, % pin, phím Fn khác ngoài độ sáng | ⚪ | Kext đã có trong EFI (AppleALC layout 33, Sinetek-rtsx, SMCBatteryManager) nhưng **chưa kiểm chứng** | |
+| Phím Fn khác ngoài độ sáng / đèn bàn phím | ⚪ | Chưa map; sẽ lập bảng mã phím | [docs/ROADMAP.md](docs/ROADMAP.md) |
+| Âm thanh, đầu đọc thẻ SD, % pin | ⚪ | Kext đã có trong EFI (AppleALC layout 33, Sinetek-rtsx, SMCBatteryManager) nhưng **chưa kiểm chứng** | |
 | Wi-Fi gốc trong System Settings / AirDrop / Continuity | ⚪ | Cần port `IO80211Controller`; mới ở mức nghiên cứu | [docs/WIFI-AS-WIFI.md](docs/WIFI-AS-WIFI.md) |
 | iGPU Radeon 890M | ❌ | Cố ý ẩn khỏi macOS; không có driver | |
 
@@ -121,8 +123,9 @@ Từng kext, app: làm gì, đến đâu rồi: **[docs/COMPONENTS.md](docs/COMP
 
 * 🔧 **Wi-Fi native** (port `IO80211Controller`, đang làm) để menu bar và System Settings hoạt động; driver `itlmt7925` vẫn giữ làm phương án dự phòng
 * 🔧 mượt hơn cho desktop (WindowServer CPU), đẩy các bản vá NVIDIA (VRAM clear, độ sáng OLED) lên upstream
-* ⚪ kiểm chứng sleep/wake, âm thanh, đầu đọc SD, % pin; một chủ máy thứ hai cài lại được từ repo
-* ⚪ kiểm chứng âm thanh / SD / pin, bản release đầu tiên có kext build bằng CI
+* ❌ **sửa sleep/wake** (hiện chưa có deep sleep), ⚪ **map các phím Fn** của bàn phím, ⚪ test thời lượng pin (không hứa hẹn: dGPU là GPU duy nhất)
+* ⚪ kiểm chứng âm thanh, đầu đọc SD, % pin; một chủ máy thứ hai cài lại được từ repo
+* ⚪ bản release đầu tiên có kext build bằng CI (bước build app trong CI hiện đang lỗi: xem roadmap)
 * ⚪ **Chuẩn hoá codebase** (hàm dùng chung, dọn code debug, script): từng thành phần một, chỉ sau khi thành phần đó chứng minh ổn định
 * ⚪ **macOS 26**: chỉ sau khi 15 ổn định. Chưa lên kế hoạch.
 

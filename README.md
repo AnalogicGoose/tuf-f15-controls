@@ -34,7 +34,8 @@ OpenCore EFI, kernel extensions, menu bar apps and research notes. Tiếng Việ
 | Boot | OpenCore 1.0.9 + a Zen 5 patch, from the internal ESP; Windows/Linux stay in the OpenCore picker |
 | Graphics | RTX 5060 through the third-party [NullMoth driver](https://github.com/nullmoth/nvidia-macos-driver); **GPU mode must be "Ultimate" (MUX)**, the iGPU is not usable |
 | Wi-Fi | Own driver (`itlmt7925`), reaches the full link speed (HE, 160 MHz). Shows up as **Ethernet** (en*) until the native port lands. You must **inject your SSID/password** ([guide](docs/INSTALL.md#4-wi-fi-inject-your-network)) |
-| Known issues | The earlier headline bugs (touchpad, BLE mouse, Wi-Fi speed, brightness, ROG controls, HiDPI) are **fixed** as of 2026-10-12. Left: Wi-Fi is not native yet (shows as Ethernet), sleep/wake, audio, SD reader and battery % are not verified |
+| Known issues | The earlier headline bugs (touchpad, BLE mouse, Wi-Fi speed, brightness, ROG controls, HiDPI) are **fixed** as of 2026-10-12. Left: Wi-Fi is not native yet (shows as Ethernet); **sleep/wake does not work reliably (no deep sleep)**; most Fn keys are not mapped; audio, SD reader and battery % are not verified |
+| Daily use | Fine **plugged in, with an external HDMI display**. Battery life is **untested, and with the RTX 5060 as the only GPU nothing is promised** about it |
 
 Legend used everywhere: ✅ verified on the reference unit · 🟡 implemented, needs more testing · 🔧 in progress ·
 ❌ not working · ⚪ not started / not verified.
@@ -52,11 +53,12 @@ Legend used everywhere: ✅ verified on the reference unit · 🟡 implemented, 
 | ROG performance profiles, fans, charge limit | ✅ | `AsusWmi` + RogControl. Silent/Performance/Turbo change real clocks and fan speed | [docs/ASUSCTL-MACOS.md](docs/ASUSCTL-MACOS.md) |
 | Keyboard backlight, Slash lighting | ✅ | Via `AsusWmi` (HID reports sent from the kernel) | [docs/ASUSCTL-MACOS.md](docs/ASUSCTL-MACOS.md) |
 | OLED brightness | ✅ | The panel is AUX-only; `NVRMEdpBL` (DPCD) drives it. The slider and the brightness keys dim the OLED itself | [docs/OLED-BRIGHTNESS-DPCD.md](docs/OLED-BRIGHTNESS-DPCD.md) |
-| Sleep / wake | 🟡 | A sleep/wake cycle restores CPU policy; not tested broadly | |
+| Sleep / wake | ❌ | No working deep sleep; wake is slow and unreliable. A completed cycle restores the CPU policy, but do not rely on sleep or lid close | [docs/ROADMAP.md](docs/ROADMAP.md) |
 | Dual boot Windows / Linux | ✅ | Chosen from the OpenCore picker; repair notes for lost UEFI entries | [docs/DUAL-BOOT.md](docs/DUAL-BOOT.md) |
 | Touchpad (I2C `093a:3011`) | ✅ | Works (was dead 2026-10-10, fixed 2026-10-12) | [HANDOFF](docs/HANDOFF.md) |
 | HiDPI **2x** (like Windows scale 200 %) | ✅ | "looks like 1440 x 900" on the 2880x1800 OLED at 120 Hz via a display override. 2x is the supported scale; fractional scales are not | [docs/SCRIPTS.md §4](docs/SCRIPTS.md#4-hidpi-looks-like-1440-x-900-step-by-step) |
-| Audio, SD-card reader, battery %, Fn keys other than brightness | ⚪ | Kexts are in the EFI (AppleALC layout 33, Sinetek-rtsx, SMCBatteryManager) but **not verified** | |
+| Fn keys other than brightness / keyboard light | ⚪ | Not mapped yet; the table of key codes is planned | [docs/ROADMAP.md](docs/ROADMAP.md) |
+| Audio, SD-card reader, battery % | ⚪ | Kexts are in the EFI (AppleALC layout 33, Sinetek-rtsx, SMCBatteryManager) but **not verified** | |
 | Native Wi-Fi in System Settings / AirDrop / Continuity | ⚪ | Needs an `IO80211Controller` port; research only | [docs/WIFI-AS-WIFI.md](docs/WIFI-AS-WIFI.md) |
 | iGPU Radeon 890M | ❌ | Hidden from macOS on purpose; no driver | |
 
@@ -116,8 +118,9 @@ Every kext and app, what it does and how far along it is: **[docs/COMPONENTS.md]
 
 * 🔧 **Native Wi-Fi** (`IO80211Controller` port, in progress) so the menu bar and System Settings work; the `itlmt7925` driver stays as the fallback
 * 🔧 desktop smoothness (WindowServer CPU), sending the NVIDIA patches (VRAM clear, OLED brightness) upstream
-* ⚪ verify sleep/wake, audio, SD reader, battery %; a second owner reproducing the install
-* ⚪ audio / SD / battery verification, first tagged release with CI-built kexts
+* ❌ **fix sleep/wake** (no deep sleep today), ⚪ **map the Fn keys** of the keyboard, ⚪ battery-life tests (no promise: the dGPU is the only GPU)
+* ⚪ verify audio, SD reader, battery %; a second owner reproducing the install
+* ⚪ first tagged release with CI-built kexts (the app build step in CI currently fails: see the roadmap)
 * ⚪ **Codebase standardisation** (shared helpers, cleanup of debug code, scripts): component by component, only after each is proven stable
 * ⚪ **macOS 26**: only after 15 is stable. Not planned before that.
 
