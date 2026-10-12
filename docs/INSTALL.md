@@ -45,7 +45,9 @@ You need two groups. Put them in a scratch folder, **not** on the ESP yet.
 
 Pick one:
 
-* **Release** (when published): download the `.kext.zip` files from [Releases](https://github.com/thanhnndev/ga403wm-hackintosh/releases).
+* **Release v1** (recommended): download the `.kext.zip` files, `SHA256SUMS.txt` and the rest from [Releases](https://github.com/thanhnndev/ga403wm-hackintosh/releases);
+  unzip instructions, apps and the CPU daemon are in [SCRIPTS.md §1](SCRIPTS.md#1-use-the-prebuilt-release-v1). The release also has the patched OpenCore and
+  `EFI-reference.zip`, so 2c below is already done for you.
 * **CI artifact:** Actions → `build-kexts` → latest run → artifact `kexts`.
 * **Build on a Mac** (Xcode command line tools):
   ```bash
@@ -177,7 +179,10 @@ Without it macOS has **no framebuffer** on this laptop (black screen after the b
 * Safety net: the 1401/NullMoth tools add a *"Start once without NVIDIA driver"* entry to the picker. Use it if the screen
   stays black.
 
-## 8. Apps and daemons (on the installed macOS, Xcode Command Line Tools required)
+## 8. Apps and daemons (on the installed macOS)
+
+Without Xcode: use the prebuilt apps and daemon from the release ([SCRIPTS.md §1](SCRIPTS.md#1-use-the-prebuilt-release-v1)). To build them yourself
+(Xcode Command Line Tools):
 
 ```bash
 xcode-select --install
@@ -187,7 +192,7 @@ bash scripts/build-itlwifi.sh    --install     # Wi-Fi menu
 bash scripts/build-tapguard.sh   --install     # touchpad tap guard (needs Accessibility permission)
 ```
 
-Install the other kexts to the ESP with `scripts/macos-install-kext.sh <name>` (it backs up the old one and keeps your injected
+Every script, its root needs and its undo: [SCRIPTS.md](SCRIPTS.md). Install the other kexts to the ESP with `scripts/macos-install-kext.sh <name>` (it backs up the old one and keeps your injected
 Wi-Fi credentials). CPU boost daemon (administrator rights needed):
 
 ```bash
@@ -204,6 +209,12 @@ ioreg -rc itlmt7925 -d1 | grep wifi-  # Wi-Fi state, SSID, signal
 ioreg -rc MtkBtFw -l | grep -E '"bt-state"|"bt-log"'    # Bluetooth firmware loader
 /Applications/RogControl.app/Contents/MacOS/RogControl --bench 20   # runs the profiles under load
 ```
+
+## 8b. Optional: HiDPI ("looks like 1440 x 900")
+
+The OLED runs at 2880x1800 / 120 Hz; a display override plus one preference gives a 2x desktop at 1440x900 points. Only that size works.
+Follow [SCRIPTS.md §4](SCRIPTS.md#4-hidpi-looks-like-1440-x-900-step-by-step) (it has the safety net and the undo); do not pick other scaled sizes in
+System Settings.
 
 ## 9. Updating, and what not to do
 

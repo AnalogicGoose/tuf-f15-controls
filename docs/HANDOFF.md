@@ -77,7 +77,7 @@ No SMBIOS values, passphrases, MACs or neighbour SSIDs belong in this file.
    (The 1.9.0 lead "every cursor move is a primary flip" was fixed upstream in 1.10.0; installed now is 1.13.0.)
    Tools: `tools/framepace.swift` (no sudo), `scripts/macos-ws-frame-sample.sh` (sudo, WindowServer sample of the same frames).
 
-7. **HiDPI: not possible on NullMoth 1.13 (2026-10-11, measured).** With the scale-resolutions override macOS offers no HiDPI
+7. **HiDPI: only "1440 x 900" works on NullMoth 1.13+; update 2026-10-11 19:13: with the round-f override below it works from System Settings at 120 Hz (user report; user guide: [SCRIPTS.md §4](SCRIPTS.md#4-hidpi-looks-like-1440-x-900-step-by-step)). The rest of this item is the chronological investigation and its early conclusions are superseded.** Original text: not possible on NullMoth 1.13 (2026-10-11, measured). With the scale-resolutions override macOS offers no HiDPI
    mode at all (every mode has points == pixels; listed with CGDisplayCopyAllDisplayModes). "1440 x 900" is a low-resolution
    mode `0x80001000`: NVRMFB implements it as a 1440x900 surface scaled by NVKMS to the 2880x1800 raster, the NVKMS test commit
    fails (`switchMode 0x80001000: test 1440x900 -> raster 2880x1800 ... -> 0`), NVRMFB stays on 0x10100 while WindowServer has

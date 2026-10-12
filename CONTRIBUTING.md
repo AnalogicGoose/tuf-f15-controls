@@ -53,3 +53,12 @@ environment (Recovery or installed) you tested on, and attach the redacted `itlk
   the MediaTek copyright notice.
 * No patching of Apple binaries, no raw writes to registers the Linux driver does not touch, without a written reason.
 * Keep the files under the Clear BSD License (`SPDX-License-Identifier: BSD-3-Clause-Clear` on top); `efi/` is the exception, see `NOTICE.md`.
+
+## Releasing (maintainers)
+
+1. Run the `build-kexts` workflow by hand (Actions → Run workflow) on `main` and check that kexts, apps and `AmdCppcPolicy` build.
+   Run `opencore` too if the patch changed.
+2. Update [.github/release-body.md](.github/release-body.md) (known problems, what changed).
+3. `git tag v1 && git push origin v1`: the `build-kexts` workflow rebuilds everything, builds the patched OpenCore, adds the
+   sanitized `EFI-reference.zip` and `SHA256SUMS.txt`, and publishes the GitHub release. Kexts in a release always carry
+   **empty** Wi-Fi credentials.

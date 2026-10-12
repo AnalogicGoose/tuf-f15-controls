@@ -84,6 +84,8 @@ power source (AC Performance 128, AC Turbo 0, battery 191, Silent 255); pauses d
 
 ## Tools and scripts worth knowing
 
+Every script, with where to run it, root needs and undo: **[SCRIPTS.md](SCRIPTS.md)** (HiDPI guide in §4). Highlights:
+
 | Path | Use |
 |---|---|
 | `scripts/inject-creds.ps1` | put SSID/password(s) into `itlmt7925.kext` (Windows) |

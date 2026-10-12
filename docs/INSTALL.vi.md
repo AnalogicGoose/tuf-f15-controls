@@ -45,7 +45,9 @@ Cần hai nhóm. Để vào thư mục tạm, **chưa** chép lên ESP.
 
 Chọn một:
 
-* **Release** (khi có): tải các file `.kext.zip` ở [Releases](https://github.com/thanhnndev/ga403wm-hackintosh/releases).
+* **Release v1** (nên dùng): tải các file `.kext.zip`, `SHA256SUMS.txt` và phần còn lại ở [Releases](https://github.com/thanhnndev/ga403wm-hackintosh/releases);
+  cách giải nén, app và daemon CPU ở [SCRIPTS.vi.md §1](SCRIPTS.vi.md#1-dùng-bản-build-sẵn-release-v1). Release còn có OpenCore đã vá và
+  `EFI-reference.zip`, nên mục 2c bên dưới đã có sẵn.
 * **Artifact CI:** Actions → `build-kexts` → lần chạy mới nhất → artifact `kexts`.
 * **Build trên Mac** (Xcode command line tools):
   ```bash
@@ -171,7 +173,9 @@ Không có nó, macOS **không có framebuffer** trên laptop này (đen màn h�
   phân phối; upstream thuần vẫn chạy nhưng desktop giật như mô tả ở đó.
 * Lưới an toàn: công cụ 1401/NullMoth thêm mục *"Start once without NVIDIA driver"* vào picker. Dùng khi màn hình vẫn đen.
 
-## 8. App và daemon (trên macOS đã cài, cần Xcode Command Line Tools)
+## 8. App và daemon (trên macOS đã cài)
+
+Không có Xcode: dùng app và daemon build sẵn trong release ([SCRIPTS.vi.md §1](SCRIPTS.vi.md#1-dùng-bản-build-sẵn-release-v1)). Tự build (cần Xcode Command Line Tools):
 
 ```bash
 xcode-select --install
@@ -181,7 +185,7 @@ bash scripts/build-itlwifi.sh    --install     # menu Wi-Fi
 bash scripts/build-tapguard.sh   --install     # chặn tap touchpad khi gõ (cần quyền Accessibility)
 ```
 
-Cài các kext khác lên ESP bằng `scripts/macos-install-kext.sh <tên>` (tự backup bản cũ và giữ thông tin Wi-Fi đã inject). Daemon
+Mọi script, quyền root và cách hoàn tác: [SCRIPTS.vi.md](SCRIPTS.vi.md). Cài các kext khác lên ESP bằng `scripts/macos-install-kext.sh <tên>` (tự backup bản cũ và giữ thông tin Wi-Fi đã inject). Daemon
 boost CPU (cần quyền administrator):
 
 ```bash
@@ -198,6 +202,12 @@ ioreg -rc itlmt7925 -d1 | grep wifi-  # trạng thái Wi-Fi, SSID, tín hiệu
 ioreg -rc MtkBtFw -l | grep -E '"bt-state"|"bt-log"'    # nạp firmware Bluetooth
 /Applications/RogControl.app/Contents/MacOS/RogControl --bench 20   # chạy các profile dưới tải
 ```
+
+## 8b. Tùy chọn: HiDPI ("looks like 1440 x 900")
+
+OLED chạy 2880x1800 / 120 Hz; một file override màn hình cùng một preference cho desktop 2x ở 1440x900 điểm. Chỉ cỡ này chạy được.
+Làm theo [SCRIPTS.vi.md §4](SCRIPTS.vi.md#4-hidpi-looks-like-1440-x-900-từng-bước) (có lưới an toàn và cách hoàn tác); đừng chọn cỡ co giãn khác trong
+System Settings.
 
 ## 9. Cập nhật, và những điều không nên làm
 

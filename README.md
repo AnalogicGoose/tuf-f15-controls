@@ -34,7 +34,7 @@ OpenCore EFI, kernel extensions, menu bar apps and research notes. Tiếng Việ
 | Boot | OpenCore 1.0.9 + a Zen 5 patch, from the internal ESP; Windows/Linux stay in the OpenCore picker |
 | Graphics | RTX 5060 through the third-party [NullMoth driver](https://github.com/nullmoth/nvidia-macos-driver); **GPU mode must be "Ultimate" (MUX)**, the iGPU is not usable |
 | Wi-Fi | Own driver, shows up as **Ethernet** (en*), slow; no native Wi-Fi menu yet. You must **inject your SSID/password** ([guide](docs/INSTALL.md#4-wi-fi-inject-your-network)) |
-| Known broken | I2C touchpad (dead on the reference unit, cause unknown), HiDPI, BLE mouse (fix untested) |
+| Known broken | I2C touchpad (dead on the reference unit, cause unknown), BLE mouse (fix untested). HiDPI works for one size only |
 
 Legend used everywhere: ✅ verified on the reference unit · 🟡 implemented, needs more testing · 🔧 in progress ·
 ❌ not working · ⚪ not started / not verified.
@@ -55,7 +55,7 @@ Legend used everywhere: ✅ verified on the reference unit · 🟡 implemented, 
 | Sleep / wake | 🟡 | A sleep/wake cycle restores CPU policy; not tested broadly | |
 | Dual boot Windows / Linux | ✅ | Chosen from the OpenCore picker; repair notes for lost UEFI entries | [docs/DUAL-BOOT.md](docs/DUAL-BOOT.md) |
 | Touchpad (I2C `093a:3011`) | ❌ | Dead on the reference unit (Windows too) since 2026-10-10; cause not found. A USB mouse works | [HANDOFF #1](docs/HANDOFF.md) |
-| HiDPI / "looks like 1440x900" | ❌ | Not possible on the current NVIDIA driver | [HANDOFF #7](docs/HANDOFF.md) |
+| HiDPI "looks like 1440 x 900" @ 120 Hz | 🟡 | Works on the reference unit with a display override; **other scales go black** (the driver cannot do scaled modes) | [docs/SCRIPTS.md §4](docs/SCRIPTS.md#4-hidpi-looks-like-1440-x-900-step-by-step) |
 | Audio, SD-card reader, battery %, Fn keys other than brightness | ⚪ | Kexts are in the EFI (AppleALC layout 33, Sinetek-rtsx, SMCBatteryManager) but **not verified** | |
 | Native Wi-Fi in System Settings / AirDrop / Continuity | ⚪ | Needs an `IO80211Controller` port; research only | [docs/WIFI-AS-WIFI.md](docs/WIFI-AS-WIFI.md) |
 | iGPU Radeon 890M | ❌ | Hidden from macOS on purpose; no driver | |
@@ -79,8 +79,9 @@ Placeholders; real screenshots will replace them. See [docs/images/README.md](do
 Full guide: **[docs/INSTALL.md](docs/INSTALL.md)** (Tiếng Việt: [docs/INSTALL.vi.md](docs/INSTALL.vi.md)). Short version:
 
 1. BIOS: MUX = **Ultimate**, Above 4G Decoding **ON**, CSM **OFF**, Secure Boot **OFF**. Back up the disk.
-2. Download the kexts (a [release](https://github.com/thanhnndev/ga403wm-hackintosh/releases) once published, or the `kexts` artifact of the `build-kexts` workflow, or
-   `bash scripts/build.sh` on a Mac) and the third-party kexts of [efi/KEXTS.md](efi/KEXTS.md).
+2. Download the **prebuilt [release v1](https://github.com/thanhnndev/ga403wm-hackintosh/releases)** (kexts, apps, CPU daemon, patched OpenCore, reference EFI, checksums;
+   or build with `bash scripts/build.sh` on a Mac) and the third-party kexts of [efi/KEXTS.md](efi/KEXTS.md). How to use the release and
+   every script: **[docs/SCRIPTS.md](docs/SCRIPTS.md)** (Tiếng Việt: [SCRIPTS.vi.md](docs/SCRIPTS.vi.md)).
 3. Assemble the EFI from [efi/](efi/README.md), generate **your own SMBIOS**, add the patched OpenCore.
 4. **Inject your Wi-Fi network** into `itlmt7925.kext` (there is no native Wi-Fi UI yet) or use USB tethering.
 5. Install macOS 15 (offline installer recommended: the online installer is 16 GB and our Wi-Fi is slow), then install the
@@ -110,8 +111,9 @@ Every kext and app, what it does and how far along it is: **[docs/COMPONENTS.md]
 
 * 🔧 Wi-Fi throughput, then a **native Wi-Fi** (`IO80211Controller`) so the menu bar and System Settings work
 * 🔧 OLED brightness via DPCD, desktop smoothness (WindowServer CPU, VRAM clear)
-* ❌ → ⚪ touchpad, HiDPI, BLE mouse
+* ❌ → ⚪ touchpad, BLE mouse; HiDPI other than 1440 x 900
 * ⚪ audio / SD / battery verification, first tagged release with CI-built kexts
+* ⚪ **Codebase standardisation** (shared helpers, cleanup of debug code, scripts): component by component, only after each is proven stable
 * ⚪ **macOS 26**: only after 15 is stable. Not planned before that.
 
 ## Repository map
@@ -125,7 +127,7 @@ patches/opencore/    OpenCorePkg patch for Zen 5
 scripts/             build, install, Wi-Fi credential injection, log collection, EFI export + privacy check
 tools/               kernel-collection reader, HiDPI/frame-pacing/CPU-clock probes
 test/                host tests (WPA2, capabilities, Block Ack, ...), run in CI
-docs/                install guide, components, roadmap, per-topic research notes, HANDOFF (lab notebook)
+docs/                install guide, scripts guide (incl. HiDPI), components, roadmap, per-topic research notes, HANDOFF (lab notebook)
 ```
 
 ## Privacy

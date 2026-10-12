@@ -32,7 +32,7 @@ EFI OpenCore, kext, app thanh menu và ghi chú nghiên cứu. English: [README.
 | Boot | OpenCore 1.0.9 + bản vá Zen 5, từ ESP trong máy; Windows/Linux vẫn nằm trong picker OpenCore |
 | Đồ họa | RTX 5060 qua [driver NullMoth](https://github.com/nullmoth/nvidia-macos-driver); **bắt buộc chế độ GPU "Ultimate" (MUX)**, iGPU không dùng được |
 | Wi-Fi | Driver tự viết, hiện là **Ethernet** (en*), chậm; chưa có menu Wi-Fi gốc. Phải **inject SSID/mật khẩu** ([hướng dẫn](docs/INSTALL.vi.md#4-wi-fi-inject-mạng)) |
-| Đang hỏng | Touchpad I2C (chết trên máy tham chiếu, chưa rõ nguyên nhân), HiDPI, chuột BLE (bản sửa chưa test) |
+| Đang hỏng | Touchpad I2C (chết trên máy tham chiếu, chưa rõ nguyên nhân), chuột BLE (bản sửa chưa test). HiDPI chỉ chạy một cỡ |
 
 Chú giải dùng xuyên suốt: ✅ đã kiểm chứng trên máy tham chiếu · 🟡 đã viết, cần test thêm · 🔧 đang làm ·
 ❌ không chạy · ⚪ chưa làm / chưa kiểm chứng.
@@ -53,7 +53,7 @@ Chú giải dùng xuyên suốt: ✅ đã kiểm chứng trên máy tham chiếu
 | Sleep / wake | 🟡 | Một chu kỳ sleep/wake khôi phục được chính sách CPU; chưa test rộng | |
 | Dual boot Windows / Linux | ✅ | Chọn từ picker OpenCore; có ghi chú sửa entry UEFI bị mất | [docs/DUAL-BOOT.md](docs/DUAL-BOOT.md) |
 | Touchpad (I2C `093a:3011`) | ❌ | Chết trên máy tham chiếu (cả Windows) từ 2026-10-10; chưa tìm ra nguyên nhân. Chuột USB dùng được | [HANDOFF #1](docs/HANDOFF.md) |
-| HiDPI / "looks like 1440x900" | ❌ | Chưa làm được với driver NVIDIA hiện tại | [HANDOFF #7](docs/HANDOFF.md) |
+| HiDPI "looks like 1440 x 900" @ 120 Hz | 🟡 | Chạy được trên máy tham chiếu nhờ file override màn hình; **các tỉ lệ khác bị đen màn hình** (driver không làm được mode co giãn) | [docs/SCRIPTS.vi.md §4](docs/SCRIPTS.vi.md#4-hidpi-looks-like-1440-x-900-từng-bước) |
 | Âm thanh, đầu đọc thẻ SD, % pin, phím Fn khác ngoài độ sáng | ⚪ | Kext đã có trong EFI (AppleALC layout 33, Sinetek-rtsx, SMCBatteryManager) nhưng **chưa kiểm chứng** | |
 | Wi-Fi gốc trong System Settings / AirDrop / Continuity | ⚪ | Cần port `IO80211Controller`; mới ở mức nghiên cứu | [docs/WIFI-AS-WIFI.md](docs/WIFI-AS-WIFI.md) |
 | iGPU Radeon 890M | ❌ | Cố ý ẩn khỏi macOS; không có driver | |
@@ -77,8 +77,9 @@ Mọi dòng trong bảng đều có ngày tháng và bằng chứng trong [docs/
 Hướng dẫn đầy đủ: **[docs/INSTALL.vi.md](docs/INSTALL.vi.md)** (English: [docs/INSTALL.md](docs/INSTALL.md)). Tóm tắt:
 
 1. BIOS: MUX = **Ultimate**, Above 4G Decoding **ON**, CSM **OFF**, Secure Boot **OFF**. Backup ổ đĩa.
-2. Lấy kext: [Release](https://github.com/thanhnndev/ga403wm-hackintosh/releases) (khi có), artifact `kexts` của workflow `build-kexts`, hoặc `bash scripts/build.sh` trên Mac;
-   cộng các kext bên thứ ba trong [efi/KEXTS.md](efi/KEXTS.md).
+2. Tải **[release v1 build sẵn](https://github.com/thanhnndev/ga403wm-hackintosh/releases)** (kext, app, daemon CPU, OpenCore đã vá, EFI tham khảo, checksum; hoặc
+   `bash scripts/build.sh` trên Mac) cộng các kext bên thứ ba trong [efi/KEXTS.md](efi/KEXTS.md). Cách dùng release và mọi script:
+   **[docs/SCRIPTS.vi.md](docs/SCRIPTS.vi.md)** (English: [SCRIPTS.md](docs/SCRIPTS.md)).
 3. Ghép EFI từ [efi/](efi/README.md), **tự tạo SMBIOS**, thêm OpenCore đã vá.
 4. **Inject mạng Wi-Fi** vào `itlmt7925.kext` (chưa có UI Wi-Fi gốc) hoặc dùng USB tethering.
 5. Cài macOS 15 (nên dùng bộ cài offline: bộ cài online nặng 16 GB mà Wi-Fi của mình chậm), rồi cài driver NVIDIA, các app và daemon CPU.
@@ -116,8 +117,9 @@ Từng kext, app: làm gì, đến đâu rồi: **[docs/COMPONENTS.md](docs/COMP
 
 * 🔧 Tăng tốc Wi-Fi, sau đó **Wi-Fi gốc** (`IO80211Controller`) để menu bar và System Settings hoạt động
 * 🔧 Độ sáng OLED qua DPCD, mượt hơn cho desktop (WindowServer CPU, VRAM clear)
-* ❌ → ⚪ touchpad, HiDPI, chuột BLE
+* ❌ → ⚪ touchpad, chuột BLE; HiDPI ngoài 1440 x 900
 * ⚪ kiểm chứng âm thanh / SD / pin, bản release đầu tiên có kext build bằng CI
+* ⚪ **Chuẩn hoá codebase** (hàm dùng chung, dọn code debug, script): từng thành phần một, chỉ sau khi thành phần đó chứng minh ổn định
 * ⚪ **macOS 26**: chỉ sau khi 15 ổn định. Chưa lên kế hoạch.
 
 ## Cấu trúc repo
@@ -131,7 +133,7 @@ patches/opencore/    bản vá OpenCorePkg cho Zen 5
 scripts/             build, cài đặt, inject Wi-Fi, thu log, export EFI + kiểm tra riêng tư
 tools/               công cụ đọc kernel collection, thăm dò HiDPI / frame pacing / xung CPU
 test/                test trên host (WPA2, capabilities, Block Ack, ...), chạy trong CI
-docs/                hướng dẫn cài, thành phần, roadmap, ghi chú nghiên cứu, HANDOFF (sổ nhật ký)
+docs/                hướng dẫn cài, hướng dẫn script (có HiDPI), thành phần, roadmap, ghi chú nghiên cứu, HANDOFF (sổ nhật ký)
 ```
 
 ## Riêng tư
