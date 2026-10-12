@@ -87,9 +87,12 @@ early log (`scripts/usblog.ps1 -Esp -Read` on Windows).
   (+0x1a0..0x1d4) compares `this->getWorkLoop()` with `provider->getWorkLoop()`; when they differ it calls
   `ml_thread_policy(workLoop->getThread(), ...)`. Our `getWorkLoop()` was `IO80211Controller`'s, which returns something other than
   the provider's loop, and `IO80211WorkQueue::getThread` (0xffffff80022591fa, 8 bytes between two method addresses) is a stub that
-  returns NULL, so the call faulted at `thread+0x648`. Why Apple's BCM driver does not hit it is **chưa xác định**
-  (`IO80211Controller::getWorkLoop` at 0xffffff800222aec0 is not disassembled yet; the BCM driver's own queue comes from the bus
-  layer unless boot-arg `wlan.workQueue.create` is set). Fix (commit after 4435061): `itlmt7925Wifi::getWorkLoop()` returns the
+  returns NULL, so the call faulted at `thread+0x648`. Round 7 (`abi/native-wifi/24H32/round7/`): `IO80211Controller::getWorkLoop` is a pure tail call to virtual
+  `getWorkQueue` (slot 399; Family default returns NULL, BCM returns `ivars+0x7898`), and `IO80211WorkQueue::getThread` is
+  `xor eax,eax`. So Apple's BCM also returns an `IO80211WorkQueue` from `getWorkLoop`; it avoids the policy call only if its provider
+  (the bus layer, which supplies that queue by default, see `createWorkQueue`) returns the *same* queue from `getWorkLoop`, so the
+  compare matches. That is an inference (the bus class was not dumped): **chưa xác định**. Our provider is the core `itlmt7925`
+  (plain `IOService::getWorkLoop` = the PCI device's loop), so the equal-loops condition is met by returning the provider's loop. Fix (commit after 4435061): `itlmt7925Wifi::getWorkLoop()` returns the
   provider's work loop (fallback: an own `IOWorkLoop`), so the compare matches and `ml_thread_policy` is skipped. Slots 20/0 and
   compile check pass. **Not run on hardware.** Residual risk: code in the IO80211 family that casts `getWorkLoop()` to an
   `IO80211WorkQueue` (none seen in the dumps read so far) and any further fault later in `IONetworkController::start` (after the policy call it creates an
