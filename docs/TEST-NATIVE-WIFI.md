@@ -147,3 +147,5 @@ early log (`scripts/usblog.ps1 -Esp -Read` on Windows).
   not the established blocker; no code change was made for them. (3) `copyRegistrationInfo` publishes `IOMACAddress` and the
   registration sets `IOInterfaceNamePrefix`/`IOInterfaceUnit` on the interface: the next log collection reads the full interface node
   (`native-interface-full.txt`) instead of a filtered one. One reboot of the already installed a8c7ae2 build is the cheapest next datum.
+
+* 2026-10-12, Stage B exclusive trace build cf1bd62 (`docs/native-wifi-results/20261012-stageb-trace-cf1bd62/`): boot completed, no new panic reported. Persistent trace: `mk:withController=ok; mk:attachInterface=1; sw:IO80211InfraInterface::start=0; mk:startWithInfo failed`. Base interface start returns false before getWorkQueue, pool/queue creation or registration. WMM/service class is not the failing step in this boot. Controller active, interface child unregistered/unmatched, no en9. Sleep/wake not tested.
