@@ -239,9 +239,13 @@ bool itlmt7925Wifi::makeInterface(IOService *provider)
     uint32_t unit = 9;      // the core's Ethernet front end takes the low en units; override with itlmt_native_unit
     PE_parse_boot_argn("itlmt_native_unit", &unit, sizeof(unit));
 
+    itlmtTrace(this, "mk:start unit=%u", unit);
     itlmt7925WifiInterface *ifc = itlmt7925WifiInterface::withController(this, 0, 2);
+    itlmtTrace(this, "mk:withController=%s", ifc ? "ok" : "null");
     if (!ifc) return false;
-    if (!attachInterface(ifc, this)) {
+    bool att = attachInterface(ifc, this);
+    itlmtTrace(this, "mk:attachInterface=%d", att);
+    if (!att) {
         ifc->release();
         return false;
     }
@@ -265,10 +269,12 @@ bool itlmt7925Wifi::makeInterface(IOService *provider)
     put<uint32_t>(block, 0x38, unit);
 
     if (!ifc->startWithInfo(this, info)) {
+        itlmtTrace(this, "mk:startWithInfo failed");
         detachInterface(ifc, false);
         ifc->release();
         return false;
     }
+    itlmtTrace(this, "mk:startWithInfo ok");
     iface = ifc;
     return true;
 }

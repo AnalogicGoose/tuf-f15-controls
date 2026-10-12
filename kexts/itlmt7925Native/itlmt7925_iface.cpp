@@ -10,6 +10,7 @@
 #include "itlmt7925_iface.h"
 
 #include <IOKit/IOLib.h>
+#include <stdarg.h>
 #include <string.h>
 
 #define super IO80211InfraProtocol
@@ -43,6 +44,23 @@ inline void rel(OSObject *o)
     if (o) o->release();
 }
 
+}
+
+void itlmtTrace(IORegistryEntry *e, const char *fmt, ...)
+{
+    if (!e) return;
+    char add[96];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(add, sizeof(add), fmt, ap);
+    va_end(ap);
+    char buf[512];
+    buf[0] = 0;
+    if (OSString *old = OSDynamicCast(OSString, e->getProperty("itlmt_native_trace")))
+        strlcpy(buf, old->getCStringNoCopy(), sizeof(buf));
+    if (buf[0]) strlcat(buf, "; ", sizeof(buf));
+    if (strlcat(buf, add, 480) >= 480) return;      // full: keep what is there
+    e->setProperty("itlmt_native_trace", buf);
 }
 
 itlmt7925WifiInterface *itlmt7925WifiInterface::withController(IO80211Controller *controller, uint32_t ifId, uint32_t role)
@@ -79,6 +97,7 @@ bool itlmt7925WifiInterface::createPoolAndQueues()
     po.zero = 0;
     po.flags = 1;
     pool = IOSkywalkPacketBufferPool::withName("itlmt7925WifiPool", this, 1, &po);
+    itlmtTrace(ctl, "pool=%s", pool ? "ok" : "null");
     if (!pool) return false;
 
     // Apple creates the common Rx submission queue before any interface (queueId 0, capacity c); where it is registered is not
@@ -88,22 +107,34 @@ bool itlmt7925WifiInterface::createPoolAndQueues()
         // Service class of each queue (Apple: table {0, 0x00100080, 0x00380100, 0x00400180} by AC) is NOT set: the plain factory
         // has no parameter for it, the BCM subclass passes it to IOSkywalkTxSubmissionQueue::initWithPool.
         txSub[i] = IOSkywalkTxSubmissionQueue::withPool(pool, kTxCapacity, i, this, txSubmissionAction, this, 0);
-        if (!txSub[i]) return false;
+        if (!txSub[i]) {
+            itlmtTrace(ctl, "txSub[%u]=null", i);
+            return false;
+        }
     }
     txComp = IOSkywalkTxCompletionQueue::withPool(pool, kTxCapacity, kNumTx, this, txCompletionAction, this, 0);
     rxComp = IOSkywalkRxCompletionQueue::withPool(pool, kRxCapacity, kNumTx + 1, this, rxCompletionAction, this, 0);
+    itlmtTrace(ctl, "queues rxSub=%d txComp=%d rxComp=%d", rxSub != nullptr, txComp != nullptr, rxComp != nullptr);
     return rxSub && txComp && rxComp;
 }
 
 bool itlmt7925WifiInterface::startWithInfo(IO80211Controller *controller, IOSkywalkEthernetInterface::RegistrationInfo *info)
 {
     ctl = controller;
-    if (!info || field<uint32_t>(info, 0) != 1 || field<uint32_t>(info, 4) != 0x130) return false;
-    if (!super::start(controller)) return false;       // IO80211InfraInterface::start(IOService *)
+    if (!info || field<uint32_t>(info, 0) != 1 || field<uint32_t>(info, 4) != 0x130) {
+        itlmtTrace(ctl, "sw:bad info");
+        return false;
+    }
+    bool sup = super::start(controller);       // IO80211InfraInterface::start(IOService *)
+    itlmtTrace(ctl, "sw:IO80211InfraInterface::start=%d", sup);
+    if (!sup) return false;
 
     IO80211WorkQueue *wq = getWorkQueue();
+    itlmtTrace(ctl, "sw:getWorkQueue=%s", wq ? "ok" : "null");
     if (!wq) return false;
-    if (!createPoolAndQueues()) {
+    bool made = createPoolAndQueues();
+    itlmtTrace(ctl, "sw:pool+queues=%d", made);
+    if (!made) {
         destroyPoolAndQueues();
         return false;
     }
@@ -116,18 +147,23 @@ bool itlmt7925WifiInterface::startWithInfo(IO80211Controller *controller, IOSkyw
     wq->retain();
     queued = wq;
     for (uint32_t i = 0; i < n; i++) {
-        if (wq->addEventSource(queues[i]) != kIOReturnSuccess) {
+        IOReturn r = wq->addEventSource(queues[i]);
+        if (r != kIOReturnSuccess) {
+            itlmtTrace(ctl, "sw:addEventSource[%u]=%x", i, r);
             // remove the ones already on the loop: destroyPoolAndQueues removes every non-null queue, a failed add is harmless
             destroyPoolAndQueues();
             return false;
         }
     }
+    itlmtTrace(ctl, "sw:addEventSource x%u ok", n);
 
     headroom = field<uint16_t>(info, 0x3c);
     field<uint32_t>(info, 0x48) -= headroom;
     field<uint32_t>(info, 0x4c) -= headroom;
 
-    if (registerInfraEthernetInterface(info, queues, n, pool, pool) != kIOReturnSuccess) {
+    IOReturn rr = registerInfraEthernetInterface(info, queues, n, pool, pool);
+    itlmtTrace(ctl, "sw:registerInfraEthernetInterface=%x", rr);
+    if (rr != kIOReturnSuccess) {
         destroyPoolAndQueues();
         return false;
     }

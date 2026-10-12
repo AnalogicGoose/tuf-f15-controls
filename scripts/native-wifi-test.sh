@@ -93,6 +93,7 @@ logs)
   ioreg -l -w0 | grep -i -B2 -A12 'itlmt7925' > "$o/ioreg.txt" || true
   log show --last boot --predicate 'eventMessage CONTAINS[c] "itlmt" OR process == "kernel"' --style compact > "$o/log.txt" 2>&1 || true
   dmesg | grep -i itlmt > "$o/dmesg.txt" || true
+  ioreg -l -w0 | grep -E 'itlmt_native_trace|IOInterfaceNamePrefix|IOInterfaceUnit|IO80211InterfaceRole' > "$o/native-trace.txt" || true
   nvram boot-args > "$o/boot-args.txt" || true
   ifconfig -a | grep -E '^[a-z]+[0-9]+:' > "$o/interfaces.txt"
   echo "$o (check for SSIDs/MACs before sharing)";;

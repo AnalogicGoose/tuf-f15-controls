@@ -123,3 +123,19 @@ early log (`scripts/usblog.ps1 -Esp -Read` on Windows).
   registered/matched; no en9 and no service named Wi-Fi in networksetup. Native start/failure IOLog messages were absent from
   collected logs, so the precise publication/failure step is unknown. Sleep/wake not tested. Phase 1 power-table test was
   skipped at the user's direction; exclusive mode disables core scan/join. Persistent per-step logging is needed before retry.
+
+* 2026-10-12, analysis of the phase-2 result (cloud, from `abi/native-wifi/24H32/round3|4`, no new hardware data): the interface child has
+  only `IO80211InterfaceRole` in the registry. `IOSkywalkNetworkInterface::registerNetworkInterface` (round4 `-a`/`-b`) sets
+  `IOInterfaceNamePrefix` (via `getBSDNamePrefix`, slot 318) and `IOInterfaceUnit` on the interface before anything is published, and
+  neither is present, so the registration either was not reached or failed before that point. `IOService::attach(core)` keeps the
+  child in the registry even after `detachInterface(ifc, false)` and `release()` (retain 4 fits both a failed and a successful
+  start), so the object's presence says nothing about the outcome. The earlier "unverified" item is the strongest suspect:
+  `registerNetworkInterface` builds a queue set with `IOSkywalkQueueSet::isWMMSchedModelCapable` (type 0xb if capable, else 3)
+  and `createWithQueues`, failing with `0xe00002c2`; our four Tx queues all have service class 0, Apple's have
+  {0, 0x00100080, 0x00380100, 0x00400180}. Not proven: `isWMMSchedModelCapable`/`createWithQueues` are not in the dumps yet
+  (round 8 tool: `tools/dump_native_wifi_round8.py`). Role 2 is `IO80211InterfaceRole = LowLatency` in the registry; whether that is
+  the intended role for the primary Wi-Fi interface is **chưa xác định**.
+* Next build (commit after 7428c5e) records every step of `makeInterface`/`startWithInfo` in the registry property
+  `itlmt_native_trace` of the controller (IOLog output was not found in any collected log, stage A or B). Read it with
+  `ioreg -l | grep itlmt_native_trace` or `scripts/native-wifi-test.sh logs` (`native-trace.txt`). Expected last entry on success:
+  `sw:registerInfraEthernetInterface=0; mk:startWithInfo ok`.

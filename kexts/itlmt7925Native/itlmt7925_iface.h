@@ -13,6 +13,10 @@
 #include "skywalk_min.h"
 
 
+// Appends "; <text>" to the registry property "itlmt_native_trace" of `e` (cap 480 bytes). IOLog output of third-party kexts was
+// not found in the collected logs of stage A/B, a registry property survives and is read with `ioreg -l`.
+void itlmtTrace(IORegistryEntry *e, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
+
 class itlmt7925WifiInterface : public IO80211InfraProtocol {
     OSDeclareDefaultStructors(itlmt7925WifiInterface)
 
