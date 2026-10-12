@@ -18,7 +18,7 @@ The items below are not covered by that license, or carry attribution requiremen
 * **asusctl / rog-control-center** ([gitlab.com/asus-linux/asusctl](https://gitlab.com/asus-linux/asusctl), now
   [github.com/opengamingcollective/asusctl](https://github.com/opengamingcollective/asusctl); <https://asus-linux.org>), by
   Luke Jones and the asus-linux contributors, MPL-2.0: the feature set and the way it is organised (platform profile, PPT
-  power limits, charge limit, per-board limits) that `kexts/AsusWmi` and `docs/ASUSCTL-MACOS.md` follow. No asusctl code is
+  power limits, charge limit, per-board limits) that `kexts/AsusWmi`, the `macos/RogControl` app and `docs/ASUSCTL-MACOS.md` follow. No asusctl code is
   included; any later port of its files would keep them under MPL-2.0 with their notices.
 * Linux **asus-wmi** (`drivers/platform/x86/asus-wmi.c`, `include/linux/platform_data/x86/asus-wmi.h`; Corentin Chary and
   contributors, GPL-2.0-or-later) and **asus-armoury** (`drivers/platform/x86/asus-armoury.[ch]`; Luke Jones, GPL-2.0): the
