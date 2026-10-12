@@ -87,7 +87,12 @@ No SMBIOS values, passphrases, MACs or neighbour SSIDs belong in this file.
    (`IOFBConfig` has 3360x2100 and 2560x1600 with flags 0x00200003) but CoreGraphics drops them, so no HiDPI mode was built.
    Apple's own override for the 2880x1800 MacBook Pro panel (`DisplayVendorID-610/DisplayProductID-a013`) uses
    `w h 9 0xa00000` (always | mirror deps, valid for HiRes | mirroring); `scripts/macos-install-hidpi.sh` now writes that.
-   `hidpi-try list --all` prints every mode with its flags. Not tested yet (needs sudo for /Library, then log out or reboot).
+   `hidpi-try list --all` prints every mode with its flags. Result after reboot: the HiRes modes are installed (flags
+   0x00a00003) and CoreGraphics still hides them; the 2880x1800 entry is dropped as a duplicate of the native mode.
+   **But WindowServer's own table (private `CGSGetDisplayModeDescriptionOfLength`) has density-2 modes**: "1440 x 900"
+   on the native 2880x1800 mode (60 and 120 Hz), 1680x1050 and 1280x800. `CGDisplayCopyAllDisplayModes` leaves them out
+   (NVRMFB's `getInformationForDisplayMode` reports its own flags, never HiRes). `hidpi-try 1440` now falls back to
+   that table and switches with `CGSConfigureDisplayMode` (as displayplacer does), native backing only, 15 s auto-revert.
    **Keep 2880 x 1800 in System Settings.** Next try (round c): the override plus the WindowServer pref
    `DisplayResolutionEnabled` (what one-key-hidpi sets; there is no HiDPI kext, HiDPI is built by WindowServer on the native
    mode). A real HiDPI mode keeps the 2880x1800 framebuffer, so NVRMFB needs no scaled mode set. Switch only with
