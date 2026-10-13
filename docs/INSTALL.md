@@ -179,7 +179,7 @@ Without it macOS has **no framebuffer** on this laptop (black screen after the b
 
 * The driver is [NullMoth's NVIDIA driver](https://github.com/nullmoth/nvidia-macos-driver) (third-party, PolyForm
   Noncommercial: read its README and licence). **Use our fork for this laptop:**
-  [`thanhnndev/nvidia-macos-driver`](https://github.com/thanhnndev/nvidia-macos-driver), branch **`ga403wm`** = upstream `v1.14.7` + the OLED brightness driver
+  [`thanhnndev/nvidia-macos-driver`](https://github.com/thanhnndev/nvidia-macos-driver), branch **`ga403wm`** = upstream `v1.15.0` + the OLED brightness driver
   (`NVRMEdpBL`, AUX-only panel) + the non-temporal VRAM clear ([patch list](https://github.com/thanhnndev/nvidia-macos-driver/blob/ga403wm/docs/GA403WM-PATCHES.md)).
   The fork carries source only, no binaries, so the install has two parts:
   1. **Upstream release first**, *inside* macOS 15, with its own `install.sh` / the 1401 Mac app (NVRM, NVAccel, the
@@ -196,11 +196,10 @@ Without it macOS has **no framebuffer** on this laptop (black screen after the b
           bash scripts/macos-edpbl-install.sh            # reboot loads it;  --undo puts the upstream NVRMFB back
      ```
      Details, evidence and the boot-arg `nvrmedpbl=0|1|2` off switch: [OLED-BRIGHTNESS-DPCD.md](OLED-BRIGHTNESS-DPCD.md).
-* Status: the reference machine had upstream **1.14.2** + exactly these two patches and got **1.14.7 + the overlay installed on
-  2026-10-13** (loaded at the next boot; not yet confirmed booted). The fork branch is rebased onto 1.14.7
-  and builds there to the **same two binaries** (the sources of `NVRMFB` and the rest of `kexts/` did not change between
-  1.14.2 and 1.14.7 except `nvrm-accel.cpp` in NVRM); 1.14.7's NVRM, NVRMFB and NVRMAGDC are byte-identical to 1.14.2's, so
-  the overlay links as before. Plain upstream also works on this laptop, but the desktop stutters and OLED brightness is only confirmed with
+* Status: the reference machine had upstream **1.14.2** + exactly these two patches, then **1.14.7**, and got **1.15.0 + the overlay
+  installed on 2026-10-13** (loaded at the next boot; not yet confirmed booted). The fork branch is rebased onto 1.15.0 without
+  conflicts: upstream changed neither the backlight nor the VRAM clear, so both patches are still needed (the VRAM clear only
+  as a measured 3-4 % since the PAT fix, [VRAM-GRANT-STALL.md](VRAM-GRANT-STALL.md)). Plain upstream also works on this laptop, but the desktop stutters and OLED brightness is only confirmed with
   the patch ([NULLMOTH.md](NULLMOTH.md)). The EFI already carries the driver's prerequisites (`csr-active-config` =
   `43 0A 00 00`, boot-args, `SecureBootModel = Disabled`); see [../efi/README.md](../efi/README.md#nvidia-dgpu-nullmoth-driver).
   AMFIPass must be loaded.

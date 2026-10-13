@@ -366,8 +366,33 @@ upstream"), `VRAM-GRANT-STALL.md`, `OLED-BRIGHTNESS-DPCD.md`.
 3. `scripts/macos-nvrmfb-vramclear-ab.sh` (root): MB/s for `clear_mode` 0 and 1; record in `VRAM-GRANT-STALL.md`; re-check
    the stall picture and `tools/framepace.swift`.
 4. Report upstream: the VRAM clear (branch `nvrmfb-vram-clear-nontemporal`) and the AUX backlight (branch
-   `nvrm-edp-aux-backlight`, commit `3501a25`) as PRs from the fork; nothing is pushed yet (2026-10-13: only the combined
-   branch `ga403wm` = v1.14.7 + both is on the fork; the per-concern PR branches are still local).
+   `nvrm-edp-aux-backlight`, commit `3501a25`) as PRs from the fork; (2026-10-13: both are pushed to the fork, rebased onto
+   v1.15.0, next to the combined branch `ga403wm`; no PR opened. The VRAM clear is no longer worth proposing: the cause was the
+   PAT slot, see `VRAM-GRANT-STALL.md`. The AUX backlight is the one to send.)
+
+## Next steps (2026-10-13): after the reboot into 1.15.0 + overlay
+
+State on the machine (nothing of this is loaded until the reboot): upstream NullMoth **1.15.0** (installed 17:43, backup
+`/Library/NullMoth/backup-20261013-174350.lXzh5Q`), NVRMFB = VRAM-clear + AUX-brightness hook (`ddabaa59...`), `NVRMEdpBL.kext`
+(`433dfcbf...`), boot-arg `nvrmacpibl=1`. Built from fork `ga403wm` @ `fa4cdd4` (= v1.15.0 + patches). 1.15.0 fixed neither of
+our two patches; it is "the last release for macOS 15". Read `NULLMOTH.md`, `OLED-BRIGHTNESS-DPCD.md`, `VRAM-GRANT-STALL.md`.
+
+1. Boots? Both displays up (OLED 2880x1800 @ 120 Hz, Mi Monitor 1920x1080 @ 144 Hz) and `kmutil showloaded | grep nullmoth` lists
+   `NVRMEdpBL`. If not: boot-arg `nvrmedpbl=0`, or `scripts/macos-edpbl-install.sh --undo` (upstream 1.15.0 stays), or
+   `uninstall.sh /Library/NullMoth/backup-20261013-174350.lXzh5Q` (back to the 1.14.7 files), or the picker's "Start once without
+   NVIDIA driver".
+2. Brightness: the checklist in `OLED-BRIGHTNESS-DPCD.md` ("Verify after the reboot"). Still without a recorded result: on the
+   17:27 boot (1.14.7 overlay) the kext was loaded, but `log show --boot --info --debug` found no `NVRM-edpbl:` line (the
+   `nvrm-dpcd` read as a normal user returns 0x1b, insufficient permissions), so test the slider / Fn+F7/F8 and read DPCD `0x721`
+   (= 02) with `nvrm-dpcd` as root.
+3. WindowServer: 1.15.0 claims "high WindowServer CPU and low frame rate at 4K", "old content after a redraw" and "window copies
+   up to 35x faster". Re-measure with the same interval as 2026-10-12 17:43 (33.4 % of one CPU, 34.5 flips/s; `tools/framepace.swift`)
+   and record it in `WINDOWSERVER-CPU.md`. The instrumented readback plugin is gone (an upgrade removes it; rebuild from
+   `claude/windowserver-iosurface-readback` against v1.15.0 if stage 2 is ever needed).
+4. Chrome / Edge / Electron: 1.15.0 turns their GPU path (ANGLE Metal) on again by default; if pages show corrupted areas, start
+   with `NVMTL_ANGLE_METAL=0` and tell upstream (their known issue).
+5. `macos-ws-pat-check.sh` and the clear A/B read `debug.nvrmfb_clear_*`; those exist only while the VRAM-clear patch is in the
+   build. If the patch is dropped, rebuild `ga403wm` without commit `0530397` (VRAM clear) and re-run the overlay installer.
 
 ## NullMoth update to 1.12.0 (manual route, EFI part done 2026-10-11)
 

@@ -1,6 +1,6 @@
 #!/bin/bash
 # Installs the AUX-brightness kext (NVRMEdpBL) and the NVRMFB that asks it first, on top of an installed upstream NullMoth
-# driver (1.14.2 .. 1.14.7; both kexts are built from the fork branch ga403wm of thanhnndev/nvidia-macos-driver).
+# driver (1.14.2 .. 1.15.0; both kexts are built from the fork branch ga403wm of thanhnndev/nvidia-macos-driver).
 #   scripts/macos-edpbl-install.sh          install
 #   scripts/macos-edpbl-install.sh --undo   restore the NVRMFB / NVRM plist that were there, remove the kext, rebuild the collection
 # Root (run through osascript "with administrator privileges", see docs/OLED-BRIGHTNESS-DPCD.md). Reboot loads it.
