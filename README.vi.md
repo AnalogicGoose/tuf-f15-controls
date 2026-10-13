@@ -4,7 +4,7 @@
 EFI OpenCore, kext, app thanh menu và ghi chú nghiên cứu. English: [README.md](README.md).
 
 <p align="center">
-  <img src="docs/images/hero.svg" alt="Ảnh giữ chỗ: màn hình macOS trên GA403WM" width="720">
+  <img src="docs/images/hero.jpg" alt="macOS Sequoia trên ROG Zephyrus G14 (GA403WM): RogControl và About This Mac" width="720">
 </p>
 
 > ## ⚠️ Dự án "vibe-code". Đọc kỹ trước khi đụng vào máy.
@@ -64,7 +64,7 @@ Mọi dòng trong bảng đều có ngày tháng và bằng chứng trong [docs/
 
 ## Ảnh chụp
 
-Ảnh thật của RogControl và About This Mac (chụp trên GA403WM tham chiếu, macOS 15.8.1). Menu ItlWiFi, picker OpenCore và ảnh hero vẫn là ảnh giữ chỗ: bản Wi-Fi native đang port, còn picker cần chụp bằng điện thoại. Xem [docs/images/README.md](docs/images/README.md).
+Ảnh thật của RogControl và About This Mac (chụp trên GA403WM tham chiếu, macOS 15.8.1). Menu ItlWiFi và picker OpenCore vẫn là ảnh giữ chỗ: bản Wi-Fi native đang port, còn picker cần chụp bằng điện thoại. Xem [docs/images/README.md](docs/images/README.md).
 
 | Popover RogControl | Cửa sổ RogControl | Menu ItlWiFi |
 |---|---|---|

@@ -4,7 +4,7 @@
 OpenCore EFI, kernel extensions, menu bar apps and research notes. Tiếng Việt: [README.vi.md](README.vi.md).
 
 <p align="center">
-  <img src="docs/images/hero.svg" alt="Screenshot placeholder: macOS desktop on the GA403WM" width="720">
+  <img src="docs/images/hero.jpg" alt="macOS Sequoia on the ROG Zephyrus G14 (GA403WM): RogControl and About This Mac" width="720">
 </p>
 
 > ## ⚠️ This is a vibe-coded project. Read before you touch your laptop.
@@ -66,7 +66,7 @@ Everything in this table is dated and sourced in [docs/HANDOFF.md](docs/HANDOFF.
 
 ## Screenshots
 
-Real screenshots of RogControl and About This Mac (taken on the reference GA403WM, macOS 15.8.1). The ItlWiFi menu, the OpenCore picker and the hero image are still placeholders: the native Wi-Fi port is in progress and the picker needs a photo. See [docs/images/README.md](docs/images/README.md).
+Real screenshots of RogControl and About This Mac (taken on the reference GA403WM, macOS 15.8.1). The ItlWiFi menu and the OpenCore picker are still placeholders: the native Wi-Fi port is in progress and the picker needs a photo. See [docs/images/README.md](docs/images/README.md).
 
 | RogControl popover | RogControl window | ItlWiFi menu |
 |---|---|---|

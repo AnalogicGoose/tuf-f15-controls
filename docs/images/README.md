@@ -1,12 +1,12 @@
 # Screenshots
 
-The remaining `.svg` files here (`hero`, `itlwifi`, `opencore-picker`) are **placeholders**; the other shots are real PNGs from the reference machine (2026-10-13). Replace each with a real screenshot using the same base name
+The remaining `.svg` files here (`itlwifi`, `opencore-picker`) are **placeholders**; the other shots are real PNGs from the reference machine (2026-10-13). Replace each with a real screenshot using the same base name
 (`hero.png` and so on) and update the `<img>`/`![]()` links in [README.md](../../README.md) and
 [README.vi.md](../../README.vi.md) from `.svg` to `.png`.
 
 | File | What to capture | Notes |
 |---|---|---|
-| `hero` | The desktop with About This Mac, RogControl and the ItlWiFi menu open | 1440 px wide is plenty |
+| `hero` | **Done** (`hero.jpg`, 1600x900): composite of the RogControl window, popover and About This Mac shots, made with [scripts/make-hero.swift](../../scripts/make-hero.swift). JPEG because the PNG was 1.1 MB. Redo it with the ItlWiFi shot once that exists | |
 | `rogcontrol-popover` | The menu bar popover (modes, Tctl, power, fans, charge limit) | light or dark, be consistent |
 | `rogcontrol-window` | Window, Performance tab, Manual selected | |
 | `fan-curves` | CPU and GPU firmware fan-curve chart | |
