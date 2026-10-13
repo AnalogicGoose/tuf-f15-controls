@@ -10,7 +10,7 @@ Ký hiệu: 🍎 macOS · 🐧 Linux · 🪟 Windows · 🖥 bất kỳ. "Root" 
 
 ## 1. Dùng bản build sẵn (release v1)
 
-[Release](https://github.com/thanhnndev/ga403wm-hackintosh/releases) chứa kext, app và daemon CPU đã build sẵn (x86_64; app ký ad-hoc, kext và daemon không ký: OpenCore nạp kext nên không cần chữ ký), không cần
+[Release](https://github.com/thanhnndev/ga403wm-hackintosh/releases) chứa kext, app và daemon CPU đã build sẵn (x86_64; app và daemon ký ad-hoc, kext không ký: OpenCore nạp kext nên không cần chữ ký), không cần
 Xcode cho phần này. **Vẫn cần clone repo** để dùng các script cài.
 
 ```bash

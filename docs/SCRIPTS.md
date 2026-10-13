@@ -19,7 +19,7 @@ Contents: [1. Get the prebuilt release](#1-use-the-prebuilt-release-v1) · [2. B
 ## 1. Use the prebuilt release (v1)
 
 The [release](https://github.com/thanhnndev/ga403wm-hackintosh/releases) contains the kexts, apps and the CPU policy daemon, already
-built (x86_64; the apps are ad-hoc signed, the kexts and the daemon are unsigned: OpenCore injects the kexts, no signature is needed), so you do not need Xcode for them. **You still need a clone of the repo** for the install scripts.
+built (x86_64; the apps and the daemon are ad-hoc signed, the kexts are unsigned: OpenCore injects the kexts, no signature is needed), so you do not need Xcode for them. **You still need a clone of the repo** for the install scripts.
 
 ```bash
 git clone https://github.com/thanhnndev/ga403wm-hackintosh && cd ga403wm-hackintosh
