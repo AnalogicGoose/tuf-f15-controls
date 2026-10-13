@@ -76,8 +76,8 @@ power source (AC Performance 128, AC Turbo 0, battery 191, Silent 255); pauses d
 |---|---|---|---|
 | **OpenCore 1.0.9 + `fix-zen5-fsb.diff`** | boot loader; the patch fixes the Zen 5 FSB calculation | ✅ | [patches/opencore](../patches/opencore), `opencore` workflow |
 | **NullMoth NVIDIA driver** (1.14.2) | RTX 5060 + OLED framebuffer, Metal-over-Vulkan | ✅ (third-party, PolyForm Noncommercial) | <https://github.com/nullmoth/nvidia-macos-driver>, [NULLMOTH.md](NULLMOTH.md) |
-| **NVRMFB VRAM-clear patch** | VRAM grant clear ~110 MB/s then ~1 GB/s with the PAT fix (was 8 MB per 0.7-1.1 s: desktop stutter) | 🟡 PR pending upstream | fork branch `nvrmfb-vram-clear-nontemporal`, [VRAM-GRANT-STALL.md](VRAM-GRANT-STALL.md) |
-| **NVRMEdpBL** | OLED brightness over eDP AUX (DPCD `0x722/3`) | ✅ works (confirmed 2026-10-12); upstream PR pending | fork branch `nvrm-edp-aux-backlight`, [OLED-BRIGHTNESS-DPCD.md](OLED-BRIGHTNESS-DPCD.md) |
+| **NVRMFB VRAM-clear patch** | VRAM grant clear ~110 MB/s then ~1 GB/s with the PAT fix (was 8 MB per 0.7-1.1 s: desktop stutter) | 🟡 not sent upstream (upstream 1.14.0 has its own `nvu_zero_wide`) | fork branch `nvrmfb-vram-clear-nontemporal` (local only, not pushed), [VRAM-GRANT-STALL.md](VRAM-GRANT-STALL.md) |
+| **NVRMEdpBL** | OLED brightness over eDP AUX (DPCD `0x722/3`) | ✅ works (confirmed 2026-10-12); not sent upstream yet | fork branch `nvrm-edp-aux-backlight` (local only, not pushed), [OLED-BRIGHTNESS-DPCD.md](OLED-BRIGHTNESS-DPCD.md) |
 | **WindowServer PAT patch** | PA6 = write-combining instead of UC- | ✅ | [WINDOWSERVER-RESEARCH.md](WINDOWSERVER-RESEARCH.md) |
 | Acidanthera, Voodoo, ... kexts | Lilu, VirtualSMC, AppleALC, VoodooI2C, ... | see list | [../efi/KEXTS.md](../efi/KEXTS.md) |
 

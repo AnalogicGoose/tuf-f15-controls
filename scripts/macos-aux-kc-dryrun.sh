@@ -1,10 +1,10 @@
 #!/bin/bash
 # Dry run: builds an auxiliary kernel collection from a scratch copy of /Library/Extensions' NullMoth kexts plus the staged
 # NVRMEdpBL kext / NVRMFB, and lists the bundles it contains. Installs nothing. Needs root (kmutil rejects kexts that are
-# not root:wheel): run through osascript. Log: /Users/thanhnndev/efi-audit/brightness/test-kc.log
+# not root:wheel): run through osascript. Log: ${NM_HOME:-/Users/thanhnndev}/efi-audit/brightness/test-kc.log
 set -u
 PATH=/usr/bin:/bin:/usr/sbin:/sbin
-B=/Users/thanhnndev/efi-audit/brightness
+B=${NM_HOME:-/Users/thanhnndev}/efi-audit/brightness
 ST=$B/stage
 [ "$(id -u)" -eq 0 ] || { echo "needs root"; exit 1; }
 rm -rf $B/repo && mkdir -p $B/repo || exit 1

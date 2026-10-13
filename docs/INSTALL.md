@@ -98,15 +98,15 @@ OpenCore release afterwards):
    with that CPU.
 3. **Boot-args** (reference, trimmed for daily use):
    ```
-   debug=0x100 keepsyms=1 -vi2c-force-polling nvfb=1 nvaccel=1 nvfbheads=4 -nvkmsnosmooth
-   amfi_get_out_of_my_way=0x1 amfi=0x80 ipc_control_port_options=0 -nvrmnobootscreen msgbuf=1048576
+   -vi2c-force-polling nvfb=1 nvaccel=1 nvfbheads=4 -nvkmsnosmooth
+   amfi_get_out_of_my_way=0x1 amfi=0x80 ipc_control_port_options=0 -nvrmnobootscreen nvrmacpibl=1
    itlmt_m1=0 itlmt_m2=1 itlmt_m3=1 itlmt_fast=6
    ```
-   Add `-v` while installing; drop it later (boot is faster without verbose output; Cmd+V in the picker gives verbose once).
+   Add `-v debug=0x100 keepsyms=1` while installing / bringing up; drop them later (boot is faster without verbose output; Cmd+V in the picker gives verbose once).
    Meaning of each: [../efi/README.md](../efi/README.md#boot-args-reference-machine).
-4. **USB map:** the reference `UTBDefault.kext` is a placeholder. The author's own map (UTBMap, XHC0 ports 1-7) is not
-   published yet. Until it is, USB works through the ports macOS finds; the internal keyboard `0b05:19b6` must stay mapped.
-   Making your own map is on the [roadmap](ROADMAP.md).
+4. **USB map:** `Kexts/UTBMap.kext` (in the release's `EFI-reference.zip`) is the author's map for this laptop (four AMD xHCI
+   controllers, enabled in `config.plist`); `UTBDefault.kext` stays disabled. It only fits the same model: on a different
+   machine, map your ports with the USBToolBox tool instead. The internal keyboard `0b05:19b6` must stay mapped as internal.
 5. `SSDT-Disable_Network_GPP5.aml` must stay **disabled** (otherwise macOS cannot see the Wi-Fi card).
 
 Do **not** run NullMoth's "1401 Build" on a config you edited by hand: it overwrites `config.plist`.
@@ -181,8 +181,15 @@ Without it macOS has **no framebuffer** on this laptop (black screen after the b
   the 1401 Mac app. It is third-party (PolyForm Noncommercial), read its README and license.
 * The EFI already carries its prerequisites (`csr-active-config` = `43 0A 00 00`, boot-args, `SecureBootModel = Disabled`);
   see [../efi/README.md](../efi/README.md#nvidia-dgpu-nullmoth-driver). AMFIPass must be loaded.
-* Reference machine: upstream **1.14.2** + local patches (VRAM clear, OLED brightness). See [NULLMOTH.md](NULLMOTH.md). The
-  patched builds are not distributed yet; plain upstream works but has the desktop stutter described there.
+* Reference machine: upstream **1.14.2** + two local patches (VRAM clear, OLED brightness). See [NULLMOTH.md](NULLMOTH.md).
+  **On another machine use plain upstream** (1.14.7 is current; 1.14.2 -> 1.14.7 changed only `nvrm-accel.cpp` among the kexts).
+  Our patches are **not distributed** (PolyForm Noncommercial; no binaries), are pinned to the 1.14.2 binaries by SHA-256 and
+  their fork branches are still local to the author's machine, so you cannot apply them yet. Plain upstream works but has the desktop
+  stutter described in NULLMOTH.md; OLED brightness is only confirmed with the patch.
+* Do **not** copy BAR values (`ResizeGpuBars`, `ResizeAppleGpuBars`) or the `IONDRVSupport` block from another board: the
+  `EFI-reference.zip` is in the installer-safe state and the driver's installer switches them (upstream README: "Do not replace a
+  working configuration with fixed BAR values from another board"). Since 1.14.3 it also turns `DisableVariableWrite` on for Ryzen
+  EFIs with `OpenRuntime.efi`: macOS can then no longer change the startup disk itself.
 * Safety net: the 1401/NullMoth tools add a *"Start once without NVIDIA driver"* entry to the picker. Use it if the screen
   stays black.
 

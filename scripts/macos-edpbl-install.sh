@@ -7,8 +7,8 @@
 # (f3e7bff4...), or this build.
 set -u
 PATH=/usr/bin:/bin:/usr/sbin:/sbin
-BASE=/Users/thanhnndev/efi-audit/brightness/stage
-UP=/Users/thanhnndev/efi-audit/upgrade-1.14.2/pkg/pkgroot/Library/Extensions/NVRMFB.kext/Contents/MacOS/NVRMFB
+BASE=${NM_HOME:-/Users/thanhnndev}/efi-audit/brightness/stage
+UP=${NM_HOME:-/Users/thanhnndev}/efi-audit/upgrade-1.14.2/pkg/pkgroot/Library/Extensions/NVRMFB.kext/Contents/MacOS/NVRMFB
 FB_SHA=$(awk '$2=="NVRMFB"{print $1}' "$BASE/SHA256SUMS" 2>/dev/null)   # written by macos-build-nullmoth-local.sh
 EDP_SHA=$(awk '$2=="NVRMEdpBL"{print $1}' "$BASE/SHA256SUMS" 2>/dev/null)
 EXT=/Library/Extensions; KEXE=$EXT/NVRMFB.kext/Contents/MacOS/NVRMFB; NVRMPL=$EXT/NVRM.kext/Contents/Info.plist

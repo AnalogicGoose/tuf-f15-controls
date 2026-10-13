@@ -6,7 +6,7 @@
 # Needs root (run through osascript "with administrator privileges"). A reboot loads the result.
 set -u
 PATH=/usr/bin:/bin:/usr/sbin:/sbin
-BASE=/Users/thanhnndev/efi-audit/upgrade-1.14.2
+BASE=${NM_HOME:-/Users/thanhnndev}/efi-audit/upgrade-1.14.2
 PRISTINE=$BASE/pkg/pkgroot/Library/Extensions/NVRMFB.kext/Contents/MacOS/NVRMFB
 PATCHED=$BASE/patched/NVRMFB
 PATCHED_SHA=f3e7bff458de1abb29888e559915d25d7afe84f514bbd0a4b45740566edb7c25

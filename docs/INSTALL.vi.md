@@ -97,15 +97,15 @@ Sửa `config.plist` (bằng `tools/occonfig.py`, ProperTree hoặc OpenCore Con
    dùng CPU đó.
 3. **Boot-args** (tham khảo, rút gọn cho dùng hằng ngày):
    ```
-   debug=0x100 keepsyms=1 -vi2c-force-polling nvfb=1 nvaccel=1 nvfbheads=4 -nvkmsnosmooth
-   amfi_get_out_of_my_way=0x1 amfi=0x80 ipc_control_port_options=0 -nvrmnobootscreen msgbuf=1048576
+   -vi2c-force-polling nvfb=1 nvaccel=1 nvfbheads=4 -nvkmsnosmooth
+   amfi_get_out_of_my_way=0x1 amfi=0x80 ipc_control_port_options=0 -nvrmnobootscreen nvrmacpibl=1
    itlmt_m1=0 itlmt_m2=1 itlmt_m3=1 itlmt_fast=6
    ```
-   Thêm `-v` khi cài đặt; bỏ sau đó (boot nhanh hơn khi không verbose; bấm Cmd+V trong picker để verbose một lần).
+   Thêm `-v debug=0x100 keepsyms=1` khi cài đặt / bring-up; bỏ sau đó (boot nhanh hơn khi không verbose; bấm Cmd+V trong picker để verbose một lần).
    Ý nghĩa từng tham số: [../efi/README.md](../efi/README.md#boot-args-reference-machine).
-4. **USB map:** `UTBDefault.kext` trong EFI tham khảo chỉ là chỗ giữ chỗ. Bản map riêng của tác giả (UTBMap, XHC0 port 1-7) chưa
-   công bố. Trước mắt USB chạy qua các port macOS tự tìm; bàn phím trong máy `0b05:19b6` phải giữ ở dạng port nội bộ. Làm map
-   riêng nằm trong [roadmap](ROADMAP.md).
+4. **USB map:** `Kexts/UTBMap.kext` (trong `EFI-reference.zip` của release) là bản map của tác giả cho laptop này (bốn controller xHCI
+   AMD, đã bật trong `config.plist`); `UTBDefault.kext` để tắt. Nó chỉ khớp đúng model này: máy khác thì tự map port bằng công cụ
+   USBToolBox. Bàn phím trong máy `0b05:19b6` phải giữ ở dạng port nội bộ.
 5. `SSDT-Disable_Network_GPP5.aml` phải để **tắt** (nếu bật, macOS không thấy card Wi-Fi).
 
 **Không** chạy "1401 Build" của NullMoth lên config đã sửa tay: nó ghi đè `config.plist`.
@@ -176,8 +176,15 @@ Không có nó, macOS **không có framebuffer** trên laptop này (đen màn h�
   app Mac 1401. Đây là phần mềm bên thứ ba (PolyForm Noncommercial), đọc README và license của họ.
 * EFI đã mang sẵn điều kiện cần (`csr-active-config` = `43 0A 00 00`, boot-args, `SecureBootModel = Disabled`); xem
   [../efi/README.md](../efi/README.md#nvidia-dgpu-nullmoth-driver). AMFIPass phải được nạp.
-* Máy tham chiếu: upstream **1.14.2** + bản vá cục bộ (VRAM clear, độ sáng OLED). Xem [NULLMOTH.md](NULLMOTH.md). Bản vá chưa được
-  phân phối; upstream thuần vẫn chạy nhưng desktop giật như mô tả ở đó.
+* Máy tham chiếu: upstream **1.14.2** + hai bản vá cục bộ (VRAM clear, độ sáng OLED). Xem [NULLMOTH.md](NULLMOTH.md).
+  **Máy khác: dùng upstream thuần** (hiện là 1.14.7; từ 1.14.2 đến 1.14.7 chỉ `nvrm-accel.cpp` đổi trong phần kext). Bản vá của
+  mình **chưa phân phối** (PolyForm Noncommercial, không có binary), ghim theo SHA-256 của binary 1.14.2 và nhánh fork còn nằm
+  trên máy tác giả, nên bạn chưa áp được. Upstream thuần chạy nhưng desktop giật như mô tả trong NULLMOTH.md; độ sáng OLED chỉ
+  được xác nhận khi có bản vá.
+* **Đừng** chép giá trị BAR (`ResizeGpuBars`, `ResizeAppleGpuBars`) hay mục `IONDRVSupport` từ board khác: `EFI-reference.zip` ở
+  trạng thái an toàn cho installer, installer của driver tự đổi (README upstream: không thay cấu hình đang chạy bằng giá trị BAR cố
+  định của board khác). Từ 1.14.3 nó còn bật `DisableVariableWrite` trên EFI Ryzen có `OpenRuntime.efi`: macOS không còn tự đổi
+  được ổ khởi động.
 * Lưới an toàn: công cụ 1401/NullMoth thêm mục *"Start once without NVIDIA driver"* vào picker. Dùng khi màn hình vẫn đen.
 
 ## 8. App và daemon (trên macOS đã cài)
