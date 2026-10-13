@@ -172,15 +172,31 @@ USB chỉ cần để khởi động bộ cài. Dùng hằng ngày, máy tham ch
 
 Không có nó, macOS **không có framebuffer** trên laptop này (đen màn hình sau logo).
 
-* Cài [driver của NullMoth](https://github.com/nullmoth/nvidia-macos-driver) *bên trong* macOS 15 bằng `install.sh` của họ /
-  app Mac 1401. Đây là phần mềm bên thứ ba (PolyForm Noncommercial), đọc README và license của họ.
-* EFI đã mang sẵn điều kiện cần (`csr-active-config` = `43 0A 00 00`, boot-args, `SecureBootModel = Disabled`); xem
+* Driver là [driver NVIDIA của NullMoth](https://github.com/nullmoth/nvidia-macos-driver) (bên thứ ba, PolyForm
+  Noncommercial: đọc README và license của họ). **Dùng fork của mình cho laptop này:**
+  [`thanhnndev/nvidia-macos-driver`](https://github.com/thanhnndev/nvidia-macos-driver), nhánh **`ga403wm`** = upstream `v1.14.7` + driver độ sáng OLED (`NVRMEdpBL`,
+  panel chỉ có AUX) + VRAM clear non-temporal ([danh sách bản vá](https://github.com/thanhnndev/nvidia-macos-driver/blob/ga403wm/docs/GA403WM-PATCHES.md)).
+  Fork chỉ chứa mã nguồn, không có binary, nên cài gồm hai phần:
+  1. **Cài bản upstream trước**, *bên trong* macOS 15, bằng `install.sh` của họ / app Mac 1401 (NVRM, NVAccel, plugin
+     WindowServer, thay đổi OpenCore và `uninstall.sh` đều từ đó).
+  2. **Rồi hai phần của fork** (`NVRMFB` + `NVRMEdpBL.kext`) chồng lên:
+     ```sh
+     # chạy từ một bản clone của repo này (script nằm trong scripts/)
+     git clone --depth 1 --branch 610.57.04 https://github.com/NVIDIA/open-gpu-kernel-modules ~/ogkm610   # header
+     git clone --branch ga403wm https://github.com/thanhnndev/nvidia-macos-driver.git ~/nvidia-macos-driver-ga403wm
+     BRIGHT_DIR=~/efi-audit/brightness bash scripts/macos-build-nullmoth-local.sh ~/nvidia-macos-driver-ga403wm   # cần Xcode CLT
+     # root (osascript "with administrator privileges" hoặc sudo), kiểm hash, backup ở /Library/NullMoth/edpbl-patch:
+     sudo env BRIGHT_DIR=~/efi-audit/brightness bash scripts/macos-aux-kc-dryrun.sh    # dựng collection thử, không cài gì
+     sudo env BRIGHT_DIR=~/efi-audit/brightness UPSTREAM_NVRMFB=<pkgroot>/Library/Extensions/NVRMFB.kext/Contents/MacOS/NVRMFB \
+          bash scripts/macos-edpbl-install.sh            # reboot để nạp;  --undo trả NVRMFB upstream về
+     ```
+     Chi tiết, bằng chứng và công tắc tắt boot-arg `nvrmedpbl=0|1|2`: [OLED-BRIGHTNESS-DPCD.md](OLED-BRIGHTNESS-DPCD.md).
+* Trạng thái: máy tham chiếu chạy upstream **1.14.2** + đúng hai bản vá này. Nhánh fork đã rebase lên 1.14.7 và build ra **cùng
+  hai binary** (mã nguồn `NVRMFB` và phần còn lại của `kexts/` không đổi giữa 1.14.2 và 1.14.7, trừ `nvrm-accel.cpp` của NVRM);
+  chưa boot thử máy với gói 1.14.7 + lớp chồng này. Upstream thuần cũng chạy trên laptop này, nhưng desktop giật và độ sáng OLED
+  chỉ được xác nhận khi có bản vá ([NULLMOTH.md](NULLMOTH.md)). EFI đã mang sẵn điều kiện cần của driver
+  (`csr-active-config` = `43 0A 00 00`, boot-args, `SecureBootModel = Disabled`); xem
   [../efi/README.md](../efi/README.md#nvidia-dgpu-nullmoth-driver). AMFIPass phải được nạp.
-* Máy tham chiếu: upstream **1.14.2** + hai bản vá cục bộ (VRAM clear, độ sáng OLED). Xem [NULLMOTH.md](NULLMOTH.md).
-  **Máy khác: dùng upstream thuần** (hiện là 1.14.7; từ 1.14.2 đến 1.14.7 chỉ `nvrm-accel.cpp` đổi trong phần kext). Bản vá của
-  mình **chưa phân phối** (PolyForm Noncommercial, không có binary), ghim theo SHA-256 của binary 1.14.2 và nhánh fork còn nằm
-  trên máy tác giả, nên bạn chưa áp được. Upstream thuần chạy nhưng desktop giật như mô tả trong NULLMOTH.md; độ sáng OLED chỉ
-  được xác nhận khi có bản vá.
 * **Đừng** chép giá trị BAR (`ResizeGpuBars`, `ResizeAppleGpuBars`) hay mục `IONDRVSupport` từ board khác: `EFI-reference.zip` ở
   trạng thái an toàn cho installer, installer của driver tự đổi (README upstream: không thay cấu hình đang chạy bằng giá trị BAR cố
   định của board khác). Từ 1.14.3 nó còn bật `DisableVariableWrite` trên EFI Ryzen có `OpenRuntime.efi`: macOS không còn tự đổi

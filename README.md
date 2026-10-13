@@ -106,7 +106,7 @@ Every kext and app, what it does and how far along it is: **[docs/COMPONENTS.md]
 | `AmdCppc.kext` + `AmdCppcPolicy` | CPU boost/EPP control + daemon | ✅ |
 | `MtkBtFw.kext` | MT7925 Bluetooth firmware loader | ✅ |
 | `BtLeDlFix.kext` | Lilu plugin for BLE mice | ✅ |
-| `NVRMEdpBL.kext` (in a NullMoth fork) | OLED brightness over eDP AUX | ✅ (not sent upstream yet; fork branch is local) |
+| `NVRMEdpBL.kext` ([our NullMoth fork](https://github.com/thanhnndev/nvidia-macos-driver/tree/ga403wm), branch `ga403wm`) | OLED brightness over eDP AUX | ✅ (not sent upstream; install the driver from the fork, [INSTALL.md §7](docs/INSTALL.md#7-nvidia-driver-rtx-5060--the-oled)) |
 | `ItlDiag.kext` | boot diagnostics | debug tool |
 | **ROG Control** (`RogControl.app`) | menu bar + window: profiles, fans, charge, lighting | ✅ |
 | **ItlWiFi** (`ItlWiFi.app`) | menu bar Wi-Fi: scan, join, speed test | ✅ |

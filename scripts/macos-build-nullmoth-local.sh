@@ -2,12 +2,14 @@
 # Builds the machine-local NullMoth pieces from the fork worktree and stages them with SHA256SUMS:
 #   NVRMFB          kexts/NVRMFB/fb/nvrm-fb.cpp  (upstream + VRAM-clear + the NVRMEdpBL hook, from the checked-out tree)
 #   NVRMEdpBL.kext  kexts/NVRM/nvrm_edpbl.cpp + kexts/NVRMEdpBL/NVRMEdpBL.cpp
-# Usage: bash scripts/macos-build-nullmoth-local.sh [worktree]   (default ~/develop/projects/nvidia-macos-driver-ws-edpbl,
-#        branch nvrm-edp-aux-backlight; headers from ~/ogkm610 = open-gpu-kernel-modules 610.57.04, see docs/NULLMOTH.md)
-# Output: ~/efi-audit/brightness/stage. Then: scripts/macos-aux-kc-dryrun.sh (root), scripts/macos-edpbl-install.sh (root).
+# Usage: bash scripts/macos-build-nullmoth-local.sh [worktree]   (default ~/develop/projects/nvidia-macos-driver-ws-ga403 =
+#        a checkout of https://github.com/thanhnndev/nvidia-macos-driver branch ga403wm; headers from ~/ogkm610 =
+#        open-gpu-kernel-modules 610.57.04, see docs/NULLMOTH.md)
+# Output: $BRIGHT_DIR/stage (default ~/efi-audit/brightness/stage). Then: scripts/macos-aux-kc-dryrun.sh (root), scripts/macos-edpbl-install.sh (root).
 set -euo pipefail
-WT=${1:-$HOME/develop/projects/nvidia-macos-driver-ws-edpbl}
-OUT=$HOME/efi-audit/brightness/build; ST=$HOME/efi-audit/brightness/stage
+WT=${1:-$HOME/develop/projects/nvidia-macos-driver-ws-ga403}   # worktree of fork branch ga403wm
+BR=${BRIGHT_DIR:-$HOME/efi-audit/brightness}
+OUT=$BR/build; ST=$BR/stage
 O=$HOME/ogkm610; KMS=$O/src/nvidia-modeset; NV=$O/src/nvidia
 SDK=$(xcrun --show-sdk-path); KHDR="$SDK/System/Library/Frameworks/Kernel.framework/Headers"
 [ -d "$WT/kexts/NVRMEdpBL" ] || { echo "STOP: $WT has no kexts/NVRMEdpBL (wrong branch?)"; exit 1; }
@@ -43,4 +45,5 @@ cp kexts/NVRMEdpBL/Info.plist "$OUT/NVRMEdpBL.kext/Contents/Info.plist"
 rm -rf "$ST/NVRMEdpBL.kext"; cp "$OUT/NVRMFB" "$ST/NVRMFB"; cp -R "$OUT/NVRMEdpBL.kext" "$ST/"
 ( cd "$ST"; { shasum -a 256 NVRMFB | awk '{print $1"  NVRMFB"}'
               shasum -a 256 NVRMEdpBL.kext/Contents/MacOS/NVRMEdpBL | awk '{print $1"  NVRMEdpBL"}'; } > SHA256SUMS; cat SHA256SUMS )
+git -C "$WT" rev-parse --short HEAD > "$ST/FORK_HEAD" 2>/dev/null || true   # which fork commit this was built from
 echo "staged in $ST"

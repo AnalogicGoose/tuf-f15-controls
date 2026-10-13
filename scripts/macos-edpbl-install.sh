@@ -1,14 +1,20 @@
 #!/bin/bash
-# Installs the AUX-brightness kext (NVRMEdpBL) and the NVRMFB that asks it first, on top of upstream NullMoth 1.14.2.
+# Installs the AUX-brightness kext (NVRMEdpBL) and the NVRMFB that asks it first, on top of an installed upstream NullMoth
+# driver (1.14.2 .. 1.14.7; both kexts are built from the fork branch ga403wm of thanhnndev/nvidia-macos-driver).
 #   scripts/macos-edpbl-install.sh          install
 #   scripts/macos-edpbl-install.sh --undo   restore the NVRMFB / NVRM plist that were there, remove the kext, rebuild the collection
 # Root (run through osascript "with administrator privileges", see docs/OLED-BRIGHTNESS-DPCD.md). Reboot loads it.
-# Runtime off switch: boot-arg nvrmedpbl=0. NVRMFB accepted as "before": upstream 1.14.2, the VRAM-clear-only build
-# (f3e7bff4...), or this build.
+# Runtime off switch: boot-arg nvrmedpbl=0. NVRMFB accepted as "before": the NVRMFB of the upstream package you point
+# UPSTREAM_NVRMFB at (the pkgroot of the NullMoth release you installed), the 1.14.2 VRAM-clear-only build (f3e7bff4...),
+# or this build.
+# Paths (root has no useful $HOME under osascript, so the console user's home is the default):
+#   BRIGHT_DIR        where macos-build-nullmoth-local.sh staged the build   (default <home>/efi-audit/brightness)
+#   UPSTREAM_NVRMFB   the pristine NVRMFB of the installed release, for the "before" check (optional)
 set -u
 PATH=/usr/bin:/bin:/usr/sbin:/sbin
-BASE=${NM_HOME:-/Users/thanhnndev}/efi-audit/brightness/stage
-UP=${NM_HOME:-/Users/thanhnndev}/efi-audit/upgrade-1.14.2/pkg/pkgroot/Library/Extensions/NVRMFB.kext/Contents/MacOS/NVRMFB
+NMH=${NM_HOME:-$(eval echo "~$(stat -f %Su /dev/console)")}
+BASE=${BRIGHT_DIR:-$NMH/efi-audit/brightness}/stage
+UP=${UPSTREAM_NVRMFB:-$NMH/efi-audit/upgrade-1.14.2/pkg/pkgroot/Library/Extensions/NVRMFB.kext/Contents/MacOS/NVRMFB}
 FB_SHA=$(awk '$2=="NVRMFB"{print $1}' "$BASE/SHA256SUMS" 2>/dev/null)   # written by macos-build-nullmoth-local.sh
 EDP_SHA=$(awk '$2=="NVRMEdpBL"{print $1}' "$BASE/SHA256SUMS" 2>/dev/null)
 EXT=/Library/Extensions; KEXE=$EXT/NVRMFB.kext/Contents/MacOS/NVRMFB; NVRMPL=$EXT/NVRM.kext/Contents/Info.plist
@@ -51,8 +57,8 @@ if [ "${1:-}" = --undo ]; then
 fi
 
 CUR=$(sha "$KEXE")
-[ "$CUR" = "$FB_SHA" ] || [ "$CUR" = "$(sha "$UP")" ] || [ "$CUR" = f3e7bff458de1abb29888e559915d25d7afe84f514bbd0a4b45740566edb7c25 ] \
-  || die "installed NVRMFB ($CUR) is neither upstream 1.14.2, the VRAM patch, nor this build"
+[ "$CUR" = "$FB_SHA" ] || { [ -f "$UP" ] && [ "$CUR" = "$(sha "$UP")" ]; } || [ "$CUR" = f3e7bff458de1abb29888e559915d25d7afe84f514bbd0a4b45740566edb7c25 ] \
+  || die "installed NVRMFB ($CUR) is neither the upstream NVRMFB (set UPSTREAM_NVRMFB), the 1.14.2 VRAM patch, nor this build"
 [ "$(sha "$BASE/NVRMFB")" = "$FB_SHA" ] || die "staged NVRMFB hash differs from the reviewed build"
 [ "$(sha "$BASE/NVRMEdpBL.kext/Contents/MacOS/NVRMEdpBL")" = "$EDP_SHA" ] || die "staged NVRMEdpBL hash differs from the reviewed build"
 mkdir -p "$STATE" || die "state dir"
@@ -71,5 +77,5 @@ plutil -replace OSBundleCompatibleVersion -string 0.1 "$NVRMPL" || { rollback; d
 rm -rf "$EDPK"; cp -R "$BASE/NVRMEdpBL.kext" "$EDPK" && chown -R root:wheel "$EDPK" && chmod -R go-w "$EDPK" && chmod 755 "$EDPK/Contents/MacOS/NVRMEdpBL" \
   || { rollback; die "install NVRMEdpBL.kext"; }
 if ! rebuild_kc NVRM NVRMFB NVRMEdpBL NVRMAGDC NVAccel; then rollback; die "kernel collection rebuild failed; everything put back (collection untouched)"; fi
-{ echo "installed $(date)"; echo "NVRMFB sha256 $FB_SHA"; echo "NVRMEdpBL sha256 $EDP_SHA"; echo "fork branch nvrm-edp-aux-backlight (3501a25, 2c07cf7, c1bfb54)"; } > "$STATE/installed"
+{ echo "installed $(date)"; echo "NVRMFB sha256 $FB_SHA"; echo "NVRMEdpBL sha256 $EDP_SHA"; echo "fork thanhnndev/nvidia-macos-driver branch ga403wm @ $(cat "$BASE/FORK_HEAD" 2>/dev/null || echo unknown)"; } > "$STATE/installed"
 echo "installed. Reboot to load it. Off switch: boot-arg nvrmedpbl=0. Undo: sudo bash $0 --undo"

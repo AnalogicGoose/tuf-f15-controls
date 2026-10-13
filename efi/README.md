@@ -112,7 +112,7 @@ only carries what that driver asks of OpenCore:
 The two BAR values and the missing `Block` entry are the driver's *installer-phase* settings; its Mac app switches them when it
 installs the driver. The 890M is hidden with `disable-gpu`, WhateverGreen is disabled, and BIOS needs Above 4G Decoding ON and
 CSM OFF. On the reference machine it works (RTX 5060 + the OLED at 2880x1800 @ 120 Hz; upstream 1.14.2 plus two local patches,
-[docs/NULLMOTH.md](../docs/NULLMOTH.md)). Read the driver's own README and licence before relying on it. The configuration in this
+[docs/NULLMOTH.md](../docs/NULLMOTH.md); install the driver from [our fork](https://github.com/thanhnndev/nvidia-macos-driver/tree/ga403wm), [docs/INSTALL.md §7](../docs/INSTALL.md#7-nvidia-driver-rtx-5060--the-oled)). Read the driver's own README and licence before relying on it. The configuration in this
 folder is in the **installer-safe** state (the "Value here" column; the driver's installer switches the BAR values and the `Block`
 entry and adds its own "1401: ..." tool entries), so do not paste BAR values from another board.
 

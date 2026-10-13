@@ -102,7 +102,7 @@ Từng kext, app: làm gì, đến đâu rồi: **[docs/COMPONENTS.md](docs/COMP
 | `AmdCppc.kext` + `AmdCppcPolicy` | Điều khiển boost/EPP CPU + daemon | ✅ |
 | `MtkBtFw.kext` | Nạp firmware Bluetooth MT7925 | ✅ |
 | `BtLeDlFix.kext` | Plugin Lilu cho chuột BLE | ✅ |
-| `NVRMEdpBL.kext` (trong fork NullMoth) | Độ sáng OLED qua eDP AUX | ✅ (chưa gửi upstream; nhánh fork còn nằm cục bộ) |
+| `NVRMEdpBL.kext` ([fork NullMoth của mình](https://github.com/thanhnndev/nvidia-macos-driver/tree/ga403wm), nhánh `ga403wm`) | Độ sáng OLED qua eDP AUX | ✅ (chưa gửi upstream; cài driver từ fork, [INSTALL.vi.md §7](docs/INSTALL.vi.md#7-driver-nvidia-rtx-5060--oled)) |
 | `ItlDiag.kext` | chẩn đoán lúc boot | công cụ debug |
 | **ROG Control** (`RogControl.app`) | thanh menu + cửa sổ: profile, quạt, sạc, đèn | ✅ |
 | **ItlWiFi** (`ItlWiFi.app`) | Wi-Fi trên thanh menu: quét, kết nối, speed test | ✅ |

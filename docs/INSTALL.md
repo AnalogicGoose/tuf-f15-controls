@@ -177,15 +177,32 @@ ESP:
 
 Without it macOS has **no framebuffer** on this laptop (black screen after the boot logo).
 
-* Install [NullMoth's driver](https://github.com/nullmoth/nvidia-macos-driver) *inside* macOS 15 with its own `install.sh` /
-  the 1401 Mac app. It is third-party (PolyForm Noncommercial), read its README and license.
-* The EFI already carries its prerequisites (`csr-active-config` = `43 0A 00 00`, boot-args, `SecureBootModel = Disabled`);
-  see [../efi/README.md](../efi/README.md#nvidia-dgpu-nullmoth-driver). AMFIPass must be loaded.
-* Reference machine: upstream **1.14.2** + two local patches (VRAM clear, OLED brightness). See [NULLMOTH.md](NULLMOTH.md).
-  **On another machine use plain upstream** (1.14.7 is current; 1.14.2 -> 1.14.7 changed only `nvrm-accel.cpp` among the kexts).
-  Our patches are **not distributed** (PolyForm Noncommercial; no binaries), are pinned to the 1.14.2 binaries by SHA-256 and
-  their fork branches are still local to the author's machine, so you cannot apply them yet. Plain upstream works but has the desktop
-  stutter described in NULLMOTH.md; OLED brightness is only confirmed with the patch.
+* The driver is [NullMoth's NVIDIA driver](https://github.com/nullmoth/nvidia-macos-driver) (third-party, PolyForm
+  Noncommercial: read its README and licence). **Use our fork for this laptop:**
+  [`thanhnndev/nvidia-macos-driver`](https://github.com/thanhnndev/nvidia-macos-driver), branch **`ga403wm`** = upstream `v1.14.7` + the OLED brightness driver
+  (`NVRMEdpBL`, AUX-only panel) + the non-temporal VRAM clear ([patch list](https://github.com/thanhnndev/nvidia-macos-driver/blob/ga403wm/docs/GA403WM-PATCHES.md)).
+  The fork carries source only, no binaries, so the install has two parts:
+  1. **Upstream release first**, *inside* macOS 15, with its own `install.sh` / the 1401 Mac app (NVRM, NVAccel, the
+     WindowServer plugin, the OpenCore changes and its own `uninstall.sh` come from it).
+  2. **Then the fork's two pieces** (`NVRMFB` + `NVRMEdpBL.kext`) on top:
+     ```sh
+     # run from a clone of this repository (the scripts are in its scripts/)
+     git clone --depth 1 --branch 610.57.04 https://github.com/NVIDIA/open-gpu-kernel-modules ~/ogkm610   # headers
+     git clone --branch ga403wm https://github.com/thanhnndev/nvidia-macos-driver.git ~/nvidia-macos-driver-ga403wm
+     BRIGHT_DIR=~/efi-audit/brightness bash scripts/macos-build-nullmoth-local.sh ~/nvidia-macos-driver-ga403wm   # needs Xcode CLT
+     # root (osascript "with administrator privileges" or sudo), hash-checked, backups in /Library/NullMoth/edpbl-patch:
+     sudo env BRIGHT_DIR=~/efi-audit/brightness bash scripts/macos-aux-kc-dryrun.sh    # builds a scratch collection, installs nothing
+     sudo env BRIGHT_DIR=~/efi-audit/brightness UPSTREAM_NVRMFB=<pkgroot>/Library/Extensions/NVRMFB.kext/Contents/MacOS/NVRMFB \
+          bash scripts/macos-edpbl-install.sh            # reboot loads it;  --undo puts the upstream NVRMFB back
+     ```
+     Details, evidence and the boot-arg `nvrmedpbl=0|1|2` off switch: [OLED-BRIGHTNESS-DPCD.md](OLED-BRIGHTNESS-DPCD.md).
+* Status: the reference machine runs upstream **1.14.2** + exactly these two patches. The fork branch is rebased onto 1.14.7
+  and builds there to the **same two binaries** (the sources of `NVRMFB` and the rest of `kexts/` did not change between
+  1.14.2 and 1.14.7 except `nvrm-accel.cpp` in NVRM); a machine running the 1.14.7 package with this overlay has not been
+  booted yet. Plain upstream also works on this laptop, but the desktop stutters and OLED brightness is only confirmed with
+  the patch ([NULLMOTH.md](NULLMOTH.md)). The EFI already carries the driver's prerequisites (`csr-active-config` =
+  `43 0A 00 00`, boot-args, `SecureBootModel = Disabled`); see [../efi/README.md](../efi/README.md#nvidia-dgpu-nullmoth-driver).
+  AMFIPass must be loaded.
 * Do **not** copy BAR values (`ResizeGpuBars`, `ResizeAppleGpuBars`) or the `IONDRVSupport` block from another board: the
   `EFI-reference.zip` is in the installer-safe state and the driver's installer switches them (upstream README: "Do not replace a
   working configuration with fixed BAR values from another board"). Since 1.14.3 it also turns `DisableVariableWrite` on for Ryzen

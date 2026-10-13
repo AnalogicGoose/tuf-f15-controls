@@ -176,7 +176,7 @@ and refuses other versions. See [NULLMOTH.md](NULLMOTH.md). Do not run them blin
 
 | Script | Where | Root | What | Undo |
 |---|---|---|---|---|
-| `scripts/macos-nvrmfb-vramclear-patch.sh` | 🍎 | root | installs the NVRMFB with the non-temporal VRAM clear (`movnti`; fork branch `nvrmfb-vram-clear-nontemporal`). **Author-specific paths** (`~/efi-audit/upgrade-1.14.2`) | `--undo` |
+| `scripts/macos-nvrmfb-vramclear-patch.sh` | 🍎 | root | legacy, 1.14.2 only: installs the VRAM-clear-only NVRMFB (`movnti`); superseded by `macos-edpbl-install.sh`, which installs the combined build from the fork branch `ga403wm`. **Author-specific paths** (`~/efi-audit/upgrade-1.14.2`) | `--undo` |
 | `scripts/macos-nvrmfb-vramclear-ab.sh` | 🍎 | root | A/B of the clear modes, prints MB/s (needs the patched NVRMFB loaded) | |
 | `scripts/macos-vramtest.sh` | 🍎 | sudo | times an 8 MB VRAM grant 5x via `debug.nvrmfb_vramtest` | |
 | `scripts/macos-build-nullmoth-local.sh` | 🍎 | no | builds NVRMFB + `NVRMEdpBL.kext` from the fork worktree, stages them with `SHA256SUMS`. **Author-specific** (needs the fork checkout and open-gpu-kernel-modules headers) | |

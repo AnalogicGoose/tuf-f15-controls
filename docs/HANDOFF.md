@@ -366,7 +366,8 @@ upstream"), `VRAM-GRANT-STALL.md`, `OLED-BRIGHTNESS-DPCD.md`.
 3. `scripts/macos-nvrmfb-vramclear-ab.sh` (root): MB/s for `clear_mode` 0 and 1; record in `VRAM-GRANT-STALL.md`; re-check
    the stall picture and `tools/framepace.swift`.
 4. Report upstream: the VRAM clear (branch `nvrmfb-vram-clear-nontemporal`) and the AUX backlight (branch
-   `nvrm-edp-aux-backlight`, commit `3501a25`) as PRs from the fork; nothing is pushed yet.
+   `nvrm-edp-aux-backlight`, commit `3501a25`) as PRs from the fork; nothing is pushed yet (2026-10-13: only the combined
+   branch `ga403wm` = v1.14.7 + both is on the fork; the per-concern PR branches are still local).
 
 ## NullMoth update to 1.12.0 (manual route, EFI part done 2026-10-11)
 
@@ -459,8 +460,9 @@ means "no framebuffer", not "kernel hung" (the diag worker kept writing).
 * Root steps are run by the agent through `osascript -e 'do shell script "<wrapper file>" with administrator privileges'`
   (the user types the password in the dialog); do not ask the user to run `sudo` in a terminal. Put the commands in a
   wrapper file: `$?` inside the `-e` string breaks AppleScript quoting.
-* One branch per concern in the fork (VRAM clear, AUX backlight); a local combined tree only for the build. Leave other
-  sessions' work (Wi-Fi, Bluetooth, RogControl) untouched.
+* One branch per concern in the fork for upstream PRs (VRAM clear, AUX backlight); the combined branch `ga403wm` (upstream
+  tag + both, pushed 2026-10-13, worktree `nvidia-macos-driver-ws-ga403`) is what the README/INSTALL send users to and what
+  the build script uses. Rebase it onto the next upstream tag. Leave other sessions' work (Wi-Fi, Bluetooth, RogControl) untouched.
 
 ## CPU policy update (2026-10-12)
 
