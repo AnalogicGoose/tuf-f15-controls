@@ -10,7 +10,7 @@ The `.svg` files here are **placeholders**. Replace each with a real screenshot 
 | `rogcontrol-popover` | The menu bar popover (modes, Tctl, power, fans, charge limit) | light or dark, be consistent |
 | `rogcontrol-window` | Window, Performance tab, Manual selected | |
 | `fan-curves` | CPU and GPU firmware fan-curve chart | |
-| `itlwifi` | ItlWiFi popover with the scan list; a second shot with the speed test is welcome | **blur SSIDs, BSSIDs, IPs, MAC** |
+| `itlwifi` | ItlWiFi popover with the scan list; a second shot with the speed test is welcome. **Skipped for now:** the native Wi-Fi port is in progress, shoot it after it lands | **blur SSIDs, BSSIDs, IPs, MAC** |
 | `opencore-picker` | OpenCore picker with macOS, Windows, Linux (photo of the screen is fine) | |
 | `about-this-mac` | About This Mac / System Information | **blur serial number and UUID** |
 

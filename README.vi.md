@@ -151,6 +151,8 @@ docs/                hướng dẫn cài, hướng dẫn script (có HiDPI), th�
 
 ## Đóng góp, ghi công, giấy phép
 
+* **Tác giả và người duy trì:** [thanhnndev](https://github.com/thanhnndev) (<https://github.com/thanhnndev>): bring-up GA403WM,
+  driver Wi-Fi `itlmt7925`, RogControl và phần còn lại của repo này.
 * Báo cáo từ các chủ GA403WM khác là thứ giá trị nhất: mở issue bằng mẫu **Hardware report** và đọc [CONTRIBUTING.md](CONTRIBUTING.md).
 * Dự án đứng trên công sức của người khác: [NullMoth](https://github.com/nullmoth/1401) (nền EFI và driver NVIDIA), Acidanthera
   (OpenCore, Lilu, VirtualSMC, AppleALC, ...), các dự án Linux `mt76`, `btmtk`, `asus-wmi`, `asusctl` (tham khảo thiết kế). Danh sách và giấy phép: [NOTICE.md](NOTICE.md).

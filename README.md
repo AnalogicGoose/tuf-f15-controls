@@ -147,6 +147,8 @@ docs/                install guide, scripts guide (incl. HiDPI), components, roa
 
 ## Contributing, credits, license
 
+* **Author and maintainer:** [thanhnndev](https://github.com/thanhnndev) (<https://github.com/thanhnndev>): the GA403WM bring-up,
+  the `itlmt7925` Wi-Fi driver, RogControl and the rest of this repository.
 * Reports from other GA403WM owners are the most valuable thing: open an issue with the **Hardware report** template and
   read [CONTRIBUTING.md](CONTRIBUTING.md).
 * This project stands on others' work: [NullMoth](https://github.com/nullmoth/1401) (EFI base and NVIDIA driver), Acidanthera

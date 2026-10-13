@@ -1,5 +1,7 @@
 # Third-party material
 
+Author and maintainer of this repository: thanhnndev, <https://github.com/thanhnndev>.
+
 Everything under `kexts/`, `macos/`, `scripts/`, `test/`, `tools/`, `docs/` is licensed under the [Clear BSD License](LICENSE).
 The items below are not covered by that license, or carry attribution requirements of their own.
 
