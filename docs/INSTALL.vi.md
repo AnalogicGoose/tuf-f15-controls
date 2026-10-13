@@ -191,9 +191,10 @@ Không có nó, macOS **không có framebuffer** trên laptop này (đen màn h�
           bash scripts/macos-edpbl-install.sh            # reboot để nạp;  --undo trả NVRMFB upstream về
      ```
      Chi tiết, bằng chứng và công tắc tắt boot-arg `nvrmedpbl=0|1|2`: [OLED-BRIGHTNESS-DPCD.md](OLED-BRIGHTNESS-DPCD.md).
-* Trạng thái: máy tham chiếu chạy upstream **1.14.2** + đúng hai bản vá này. Nhánh fork đã rebase lên 1.14.7 và build ra **cùng
+* Trạng thái: máy tham chiếu từng chạy upstream **1.14.2** + đúng hai bản vá này, và đã được cài **1.14.7 + lớp chồng này ngày
+  2026-10-13** (nạp ở lần boot kế tiếp; chưa xác nhận đã boot). Nhánh fork đã rebase lên 1.14.7 và build ra **cùng
   hai binary** (mã nguồn `NVRMFB` và phần còn lại của `kexts/` không đổi giữa 1.14.2 và 1.14.7, trừ `nvrm-accel.cpp` của NVRM);
-  chưa boot thử máy với gói 1.14.7 + lớp chồng này. Upstream thuần cũng chạy trên laptop này, nhưng desktop giật và độ sáng OLED
+  NVRM, NVRMFB, NVRMAGDC của 1.14.7 giống từng byte với 1.14.2 nên lớp chồng liên kết như cũ. Upstream thuần cũng chạy trên laptop này, nhưng desktop giật và độ sáng OLED
   chỉ được xác nhận khi có bản vá ([NULLMOTH.md](NULLMOTH.md)). EFI đã mang sẵn điều kiện cần của driver
   (`csr-active-config` = `43 0A 00 00`, boot-args, `SecureBootModel = Disabled`); xem
   [../efi/README.md](../efi/README.md#nvidia-dgpu-nullmoth-driver). AMFIPass phải được nạp.

@@ -196,10 +196,11 @@ Without it macOS has **no framebuffer** on this laptop (black screen after the b
           bash scripts/macos-edpbl-install.sh            # reboot loads it;  --undo puts the upstream NVRMFB back
      ```
      Details, evidence and the boot-arg `nvrmedpbl=0|1|2` off switch: [OLED-BRIGHTNESS-DPCD.md](OLED-BRIGHTNESS-DPCD.md).
-* Status: the reference machine runs upstream **1.14.2** + exactly these two patches. The fork branch is rebased onto 1.14.7
+* Status: the reference machine had upstream **1.14.2** + exactly these two patches and got **1.14.7 + the overlay installed on
+  2026-10-13** (loaded at the next boot; not yet confirmed booted). The fork branch is rebased onto 1.14.7
   and builds there to the **same two binaries** (the sources of `NVRMFB` and the rest of `kexts/` did not change between
-  1.14.2 and 1.14.7 except `nvrm-accel.cpp` in NVRM); a machine running the 1.14.7 package with this overlay has not been
-  booted yet. Plain upstream also works on this laptop, but the desktop stutters and OLED brightness is only confirmed with
+  1.14.2 and 1.14.7 except `nvrm-accel.cpp` in NVRM); 1.14.7's NVRM, NVRMFB and NVRMAGDC are byte-identical to 1.14.2's, so
+  the overlay links as before. Plain upstream also works on this laptop, but the desktop stutters and OLED brightness is only confirmed with
   the patch ([NULLMOTH.md](NULLMOTH.md)). The EFI already carries the driver's prerequisites (`csr-active-config` =
   `43 0A 00 00`, boot-args, `SecureBootModel = Disabled`); see [../efi/README.md](../efi/README.md#nvidia-dgpu-nullmoth-driver).
   AMFIPass must be loaded.

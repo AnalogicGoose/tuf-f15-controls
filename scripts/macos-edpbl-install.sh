@@ -62,6 +62,10 @@ CUR=$(sha "$KEXE")
 [ "$(sha "$BASE/NVRMFB")" = "$FB_SHA" ] || die "staged NVRMFB hash differs from the reviewed build"
 [ "$(sha "$BASE/NVRMEdpBL.kext/Contents/MacOS/NVRMEdpBL")" = "$EDP_SHA" ] || die "staged NVRMEdpBL hash differs from the reviewed build"
 mkdir -p "$STATE" || die "state dir"
+# "before" = what upstream's install.sh left. Keep it on a re-run of this script (installed == this build), refresh it when
+# the installed NVRMFB is not this build (a newer upstream release was installed since), or undo would bring back old files.
+FRESH=0; [ "$CUR" = "$FB_SHA" ] || FRESH=1
+if [ "$FRESH" = 1 ]; then rm -f "$STATE/NVRMFB.before" "$STATE/NVRM.Info.plist.before" "$STATE/AuxiliaryKernelExtensions.kc.before"; fi
 [ -f "$STATE/NVRMFB.before" ] || cp -p "$KEXE" "$STATE/NVRMFB.before"
 [ -f "$STATE/NVRM.Info.plist.before" ] || cp -p "$NVRMPL" "$STATE/NVRM.Info.plist.before"
 [ -f "$STATE/AuxiliaryKernelExtensions.kc.before" ] || cp -p "$KC" "$STATE/AuxiliaryKernelExtensions.kc.before" 2>/dev/null
