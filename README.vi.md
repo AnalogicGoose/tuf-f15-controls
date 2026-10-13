@@ -1,161 +1,108 @@
-# ga403wm-hackintosh (Tiếng Việt)
+# GA403WM Hackintosh
 
-**macOS trên ASUS ROG Zephyrus G14 (GA403WM, 2025): Ryzen AI 9 HX 370 "Strix Point" + RTX 5060 Laptop.**
-EFI OpenCore, kext, app thanh menu và ghi chú nghiên cứu. English: [README.md](README.md).
+macOS Sequoia trên **ASUS ROG Zephyrus G14 (2025)** — Ryzen AI 9 HX 370 + RTX 5060 Laptop.
+EFI OpenCore, driver và tiện ích dành cho máy này.
+
+[English](README.md) · [Cài đặt](docs/INSTALL.vi.md) · [Release](https://github.com/thanhnndev/ga403wm-hackintosh/releases) · [Roadmap](docs/ROADMAP.md)
 
 <p align="center">
-  <img src="docs/images/hero.jpg" alt="macOS Sequoia trên ROG Zephyrus G14 (GA403WM): RogControl và About This Mac" width="720">
+  <img src="docs/images/hero.jpg" alt="RogControl và About This Mac trên GA403WM" width="720">
 </p>
 
-> ## ⚠️ Dự án "vibe-code". Đọc kỹ trước khi đụng vào máy.
->
-> **Gần như toàn bộ mã và tài liệu ở đây do AI (Claude của Anthropic) viết**, do một người chỉ đạo và test trên **một** chiếc
-> GA403WM. Chưa ai audit mã. Cụ thể:
->
-> * Các kext (`itlmt7925`, `AsusWmi`, `AmdCppc`, `MtkBtFw`, ...) chạy **trong nhân macOS**. Lỗi = kernel panic, treo máy, tệ nhất là hỏng dữ liệu.
->   `AsusWmi` và `AmdCppc` ghi vào EC, BIOS (qua SMI) và thanh ghi CPU.
-> * Driver Wi-Fi viết từ đầu và lưu mật khẩu Wi-Fi của bạn **dạng chữ thường** trong kext.
-> * EFI và boot-args lấy từ dự án khác rồi chỉnh cho đến khi máy này boot được. Không được "gia cố" (SIP gần như tắt, AMFI nới lỏng, Secure Boot tắt).
-> * Mọi thứ chạy được **trên máy tham chiếu**. Máy của bạn (BIOS khác, panel khác, SKU khác) có thể không chạy.
-> * **Không bảo hành.** Brick máy, panic, mất dữ liệu, mất bảo hành là việc của bạn. Xem [LICENSE](LICENSE).
->
-> Backup tất cả. Giữ USB cứu hộ Windows/Linux. Đừng cài lên máy không thể cài lại. Đừng dùng cho công việc không được phép mất.
-> Hãy coi đây là dự án nghiên cứu, không phải sản phẩm.
+## Tương thích
 
-## Tình trạng trong một phút
+Đã test trên **một chiếc GA403WM**, BIOS **GA403WM.310**, OLED **2880 × 1800 @ 120 Hz**. BIOS, panel và biến thể GA403 khác chưa được test. Tình trạng bên dưới cập nhật ngày **2026-10-12**; bằng chứng và lịch sử test nằm trong [HANDOFF](docs/HANDOFF.md).
 
-| | |
+| Yêu cầu | Chi tiết |
 |---|---|
-| macOS hỗ trợ | **macOS 15 Sequoia** duy nhất (phát triển trên 15.6.1, đang dùng hằng ngày trên **15.8.1**, build 24H32) |
-| **macOS 26 Tahoe** | **Chưa hỗ trợ, chưa test.** Ở lại 15 cho đến khi 15 ổn định. Driver NVIDIA phụ thuộc chỉ dành cho macOS 15. Đừng nâng cấp. |
-| Máy | ASUS ROG Zephyrus G14 **GA403WM**, BIOS GA403WM.310, OLED 2880x1800. Biến thể GA403 khác: chưa test |
-| Boot | OpenCore 1.0.9 + bản vá Zen 5, từ ESP trong máy; Windows/Linux vẫn nằm trong picker OpenCore |
-| Đồ họa | RTX 5060 qua [driver NullMoth](https://github.com/nullmoth/nvidia-macos-driver); **bắt buộc chế độ GPU "Ultimate" (MUX)**, iGPU không dùng được |
-| Wi-Fi | Driver tự viết (`itlmt7925`, gọi là "legacy"), đạt tốc độ tối đa của link (HE, 160 MHz). Hiện là **Ethernet** (en*). Phải **inject SSID/mật khẩu** ([hướng dẫn](docs/INSTALL.vi.md#4-wi-fi-inject-mạng)). Driver **native** mới chỉ là bản thử nghiệm dang dở, **chưa chạy**: đừng bật ([dùng driver nào](docs/WIFI-DRIVERS.md#tiếng-việt)) |
-| Vấn đề còn lại | Các lỗi lớn trước đây (touchpad, chuột BLE, tốc độ Wi-Fi, độ sáng, điều khiển ROG, HiDPI) đã **sửa xong** tính đến 2026-10-12. Còn: Wi-Fi chưa native (hiện là Ethernet); **sleep/wake chưa chạy ổn (không có deep sleep)**; phần lớn phím Fn chưa map; chưa kiểm chứng âm thanh, đầu đọc SD, % pin |
-| Dùng hằng ngày | Ổn khi **cắm sạc và dùng màn hình ngoài qua HDMI**. Thời lượng pin **chưa test, và vì RTX 5060 là GPU duy nhất nên không hứa hẹn gì** về pin |
+| macOS | Chỉ **15 Sequoia**. Phát triển trên 15.6.1; đang dùng hằng ngày trên **15.8.1 (24H32)** |
+| Chế độ GPU | **Ultimate / MUX chỉ dùng dGPU**. Radeon 890M không có driver và bị ẩn khỏi macOS |
+| Driver đồ họa | NullMoth **1.14.2** với hai bản vá riêng; dùng [fork GA403WM](https://github.com/thanhnndev/nvidia-macos-driver/tree/ga403wm) để có độ sáng OLED |
+| Bootloader | OpenCore **1.0.9** với bản vá timer Zen 5 |
 
-Chú giải dùng xuyên suốt: ✅ đã kiểm chứng trên máy tham chiếu · 🟡 đã viết, cần test thêm · 🔧 đang làm ·
-❌ không chạy · ⚪ chưa làm / chưa kiểm chứng.
+**macOS 26 Tahoe chưa hỗ trợ, chưa test. Đừng nâng cấp:** driver NVIDIA chỉ hỗ trợ macOS 15. Hiện máy được dùng hằng ngày khi cắm sạc và nối màn hình ngoài qua HDMI; thời lượng pin chưa test.
 
-## Cái gì chạy
+## Tình trạng phần cứng
 
-| Mảng | Trạng thái | Ghi chú | Chi tiết |
-|---|---|---|---|
-| Boot macOS 15 từ ổ trong | ✅ | OpenCore 1.0.9 + `fix-zen5-fsb.diff` (timer chạy sớm ~10 lần trên Zen 5) | [efi/README.md](efi/README.md) |
-| CPU (12 nhân / 24 luồng) | ✅ | `AmdCppc` + `AmdCppcPolicy` bật CPPC; nhân Zen 5 lên ~4,9 GHz khi tải (trước đó kẹt 2 GHz) | [docs/CPU-POWER.md](docs/CPU-POWER.md) |
-| NVIDIA RTX 5060 + OLED 2880x1800 @ 120 Hz | ✅ | Driver bên thứ ba NullMoth 1.14.2 + hai bản vá cục bộ. Cần MUX = chỉ dGPU. Màn ngoài chạy được | [docs/NULLMOTH.md](docs/NULLMOTH.md) |
-| Phím / chuột USB / webcam | ✅ | `ItlXhciKick` sửa lỗi nhả phím trễ 2 giây; port map USB nằm trong EFI chuẩn (sắp có, xem mục Cài đặt) | [docs/USB-XHCI-LAG.md](docs/USB-XHCI-LAG.md) |
-| Wi-Fi MT7925 | ✅ | `itlmt7925`: WPA2-PSK, DHCP, HE / 160 MHz đạt tốc độ tối đa của link. Hiện là Ethernet, chưa WPA3 / 6 GHz. **Đang port Wi-Fi native, chưa dùng được** | [docs/WIFI.md](docs/WIFI.md), [dùng driver nào](docs/WIFI-DRIVERS.md#tiếng-việt) |
-| Bluetooth MT7925 | ✅ | `MtkBtFw` nạp firmware; tai nghe (classic) và chuột BLE kết nối được (`BtLeDlFix`) | [docs/BLUETOOTH.md](docs/BLUETOOTH.md) |
-| Chế độ hiệu năng ROG, quạt, giới hạn sạc | ✅ | `AsusWmi` + app RogControl. Silent/Performance/Turbo đổi xung nhịp và tốc độ quạt thật | [docs/ASUSCTL-MACOS.md](docs/ASUSCTL-MACOS.md) |
-| Đèn bàn phím, đèn Slash | ✅ | Qua `AsusWmi` (HID report gửi từ kernel) | [docs/ASUSCTL-MACOS.md](docs/ASUSCTL-MACOS.md) |
-| Độ sáng OLED | ✅ | Panel chỉ điều khiển qua AUX; `NVRMEdpBL` (DPCD) điều khiển nó. Thanh trượt và phím độ sáng làm tối chính OLED | [docs/OLED-BRIGHTNESS-DPCD.md](docs/OLED-BRIGHTNESS-DPCD.md) |
-| Sleep / wake | ❌ | Chưa có deep sleep; wake chậm và không ổn định. Một chu kỳ hoàn tất thì khôi phục được chính sách CPU, nhưng đừng trông cậy vào sleep hay đóng nắp | [docs/ROADMAP.md](docs/ROADMAP.md) |
-| Dual boot Windows / Linux | ✅ | Chọn từ picker OpenCore; có ghi chú sửa entry UEFI bị mất | [docs/DUAL-BOOT.md](docs/DUAL-BOOT.md) |
-| Touchpad (I2C `093a:3011`) | ✅ | Hoạt động (chết ngày 2026-10-10, đã sửa 2026-10-12) | [HANDOFF](docs/HANDOFF.md) |
-| HiDPI **2x** (như scale 200 % của Windows) | ✅ | "looks like 1440 x 900" trên OLED 2880x1800 ở 120 Hz nhờ file override màn hình. Hỗ trợ tỉ lệ 2x; không hỗ trợ tỉ lệ lẻ | [docs/SCRIPTS.vi.md §4](docs/SCRIPTS.vi.md#4-hidpi-looks-like-1440-x-900-từng-bước) |
-| Phím Fn khác ngoài độ sáng / đèn bàn phím | ⚪ | Chưa map; sẽ lập bảng mã phím | [docs/ROADMAP.md](docs/ROADMAP.md) |
-| Âm thanh, đầu đọc thẻ SD, % pin | ⚪ | Kext đã có trong EFI (AppleALC layout 33, Sinetek-rtsx, SMCBatteryManager) nhưng **chưa kiểm chứng** | |
-| Wi-Fi gốc trong System Settings / AirDrop / Continuity | ⚪ | Cần port `IO80211Controller`; mới ở mức nghiên cứu | [docs/WIFI-AS-WIFI.md](docs/WIFI-AS-WIFI.md) |
-| iGPU Radeon 890M | ❌ | Cố ý ẩn khỏi macOS; không có driver | |
+✅ Đã kiểm chứng trên máy tham chiếu · ❌ Chưa chạy ổn · ⚪ Chưa kiểm chứng hoặc chưa hỗ trợ
 
-Mọi dòng trong bảng đều có ngày tháng và bằng chứng trong [docs/HANDOFF.md](docs/HANDOFF.md) (sổ nhật ký, tiếng Anh).
+| Chức năng | Trạng thái | Ghi chú |
+|---|:---:|---|
+| Boot / dual boot | ✅ | Boot từ ESP trong máy; chọn Windows/Linux trong OpenCore. [EFI](efi/README.md) · [Dual boot / khôi phục UEFI](docs/DUAL-BOOT.md) |
+| CPU | ✅ | 12 nhân / 24 luồng; CPPC và boost ~4,9 GHz nhờ `AmdCppc` + `AmdCppcPolicy`. [CPU](docs/CPU-POWER.md) |
+| RTX 5060 / màn hình | ✅ | OLED trong máy ở 120 Hz và màn hình ngoài. [NVIDIA](docs/NULLMOTH.md) |
+| Độ sáng OLED / HiDPI | ✅ | Thanh trượt hệ thống và phím độ sáng điều khiển panel qua `NVRMEdpBL`. HiDPI **2×**, “looks like 1440 × 900”; không hỗ trợ tỉ lệ lẻ. [Độ sáng](docs/OLED-BRIGHTNESS-DPCD.md) · [Cài HiDPI](docs/SCRIPTS.vi.md#4-hidpi-looks-like-1440-x-900-từng-bước) |
+| Phím, chuột USB, webcam | ✅ | `ItlXhciKick` sửa lỗi nhả phím trễ 2 giây. USB map đã test sẽ đi kèm EFI chuẩn. [USB](docs/USB-XHCI-LAG.md) |
+| Touchpad | ✅ | I2C `093a:3011`; sửa xong ngày 2026-10-12. [Ghi chép test](docs/HANDOFF.md) |
+| Wi-Fi MT7925 | ✅ | `itlmt7925` (“legacy”): WPA2-PSK, DHCP, HE / 160 MHz đạt tốc độ tối đa của link. Hiện là **Ethernet**; cần inject SSID/mật khẩu. Chưa có WPA3 hay 6 GHz. [Wi-Fi](docs/WIFI.md) · [Chọn driver](docs/WIFI-DRIVERS.md#tiếng-việt) |
+| Bluetooth MT7925 | ✅ | Tai nghe classic và chuột BLE qua `MtkBtFw` + `BtLeDlFix`. [Bluetooth](docs/BLUETOOTH.md) |
+| Điều khiển ROG / đèn | ✅ | Profile, quạt, giới hạn sạc, đèn bàn phím và Slash qua `AsusWmi` + RogControl. [Điều khiển ROG](docs/ASUSCTL-MACOS.md) |
+| Sleep / wake | ❌ | Chưa có deep sleep ổn định; wake chậm và thiếu ổn định. Chu kỳ hoàn tất khôi phục được chính sách CPU. Đừng trông cậy vào sleep hay đóng nắp. |
+| Các phím Fn khác | ⚪ | Độ sáng và đèn bàn phím hoạt động; phần lớn phím còn lại chưa map. |
+| Âm thanh / đầu đọc SD / % pin | ⚪ | EFI có AppleALC layout 33, Sinetek-rtsx và SMCBatteryManager; chưa kiểm chứng hoạt động. |
+| Wi-Fi native / AirDrop / Continuity | ⚪ | Bản port `IO80211Controller` đang thử nghiệm, **chưa dùng được**. Đừng bật. [Nghiên cứu](docs/WIFI-AS-WIFI.md) |
 
-## Ảnh chụp
+## Trước khi cài
 
-Ảnh thật của RogControl và About This Mac (chụp trên GA403WM tham chiếu, macOS 15.8.1). Menu ItlWiFi vẫn là ảnh giữ chỗ: bản Wi-Fi native đang port. Xem [docs/images/README.md](docs/images/README.md).
+Đây là dự án thử nghiệm. Gần như toàn bộ mã và tài liệu do AI (Claude) viết, được một người hướng dẫn và test; chưa có audit độc lập.
 
-| Popover RogControl | Cửa sổ RogControl | Menu ItlWiFi |
-|---|---|---|
-| ![RogControl popover](docs/images/rogcontrol-popover.png) | ![RogControl window](docs/images/rogcontrol-window.png) | ![ItlWiFi (giữ chỗ)](docs/images/itlwifi.svg) |
+- Kext chạy trong kernel; lỗi có thể gây panic, treo máy hoặc mất dữ liệu. `AsusWmi` và `AmdCppc` ghi vào EC, BIOS qua SMI và thanh ghi CPU.
+- EFI được chỉnh từ các dự án khác: SIP gần như tắt, AMFI nới lỏng, Secure Boot tắt.
+- Mật khẩu Wi-Fi đã inject được lưu **dạng văn bản thuần trong kext**. Đừng chia sẻ kext chứa mật khẩu. Log cũng chứa địa chỉ MAC và SSID/BSSID xung quanh; che trước khi đăng.
+- Backup ổ đĩa và giữ USB cứu hộ Windows/Linux. Chỉ cài trên máy có thể cài lại; tránh dùng cho công việc không được phép mất dữ liệu. Không bảo hành; xem [LICENSE](LICENSE).
 
-| About This Mac | Đường cong quạt |
-|---|---|
-| ![About This Mac](docs/images/about-this-mac.png) | ![Fan curves](docs/images/fan-curves.png) |
+Repo để trống `itl_ssid*/itl_psk*` và dùng SMBIOS giữ chỗ `CHANGE_ME_*`. CI kiểm tra thông tin đăng nhập và định danh thật bị lọt vào repo.
 
 ## Cài đặt
 
-> 📦 **EFI chuẩn: sắp có.** EFI hoàn chỉnh đang chạy của tác giả (kèm USB port map thật và các thiết lập đã test) sẽ được **upload sau
-> thành asset của GitHub release**, README này sẽ được cập nhật khi có. Trước đó, thư mục `efi/` và `EFI-reference.zip` trong release chỉ là
-> bản *tham khảo đã làm sạch* (SMBIOS giữ chỗ, USB map giữ chỗ, boot-args debug): đủ để tự ghép EFI theo hướng dẫn, nhưng không phải bản đã test.
+> **Chưa có EFI hoàn chỉnh đã test.** Thư mục `efi/` và `EFI-reference.zip` trong release là bản tham khảo đã làm sạch: SMBIOS giữ chỗ, USB map giữ chỗ và boot-args debug. EFI đang chạy, kèm USB map đã test, dự kiến được bổ sung vào release sau.
 
-Hướng dẫn đầy đủ: **[docs/INSTALL.vi.md](docs/INSTALL.vi.md)** (English: [docs/INSTALL.md](docs/INSTALL.md)). Tóm tắt:
+Làm theo **[INSTALL.vi.md](docs/INSTALL.vi.md)**. Các bước chính:
 
-1. BIOS: MUX = **Ultimate**, Above 4G Decoding **ON**, CSM **OFF**, Secure Boot **OFF**. Backup ổ đĩa.
-2. Tải **[release v1 build sẵn](https://github.com/thanhnndev/ga403wm-hackintosh/releases)** (kext, app, daemon CPU, OpenCore đã vá, EFI tham khảo, checksum; hoặc
-   `bash scripts/build.sh` trên Mac) cộng các kext bên thứ ba trong [efi/KEXTS.md](efi/KEXTS.md). Cách dùng release và mọi script:
-   **[docs/SCRIPTS.vi.md](docs/SCRIPTS.vi.md)** (English: [SCRIPTS.md](docs/SCRIPTS.md)).
-3. Ghép EFI từ [efi/](efi/README.md), **tự tạo SMBIOS**, thêm OpenCore đã vá.
-4. **Inject mạng Wi-Fi** vào `itlmt7925.kext` (chưa có Wi-Fi native dùng được: [dùng driver nào](docs/WIFI-DRIVERS.md#tiếng-việt)) hoặc dùng USB tethering.
-5. Cài macOS 15 (nên dùng bộ cài offline: bộ cài online nặng 16 GB nhưng đường Wi-Fi không dành cho việc đó), rồi cài driver NVIDIA, các app và daemon CPU.
+1. Backup ổ đĩa. Trong BIOS: MUX **Ultimate**, Above 4G Decoding **ON**, CSM **OFF**, Secure Boot **OFF**.
+2. Tải [release v1](https://github.com/thanhnndev/ga403wm-hackintosh/releases): kext, app, daemon CPU, OpenCore đã vá, EFI tham khảo và checksum. Hoặc build trên Mac bằng `bash scripts/build.sh`. Thêm [kext bên thứ ba](efi/KEXTS.md).
+3. Ghép [EFI](efi/README.md), **tự tạo SMBIOS**, dùng OpenCore đã vá (`fix-zen5-fsb.diff` sửa timer chạy sớm ~10 lần).
+4. [Inject mạng Wi-Fi](docs/INSTALL.vi.md#4-wi-fi-inject-mạng) vào `itlmt7925.kext`, hoặc dùng USB tethering. Dùng driver legacy; bản native chưa chạy được.
+5. Cài macOS 15, rồi cài [driver NVIDIA từ fork](docs/INSTALL.vi.md#7-driver-nvidia-rtx-5060--oled), app và daemon CPU. Nên dùng bộ cài offline; bộ cài online 16 GB không phù hợp với driver Wi-Fi hiện tại.
 
-## Thành phần
+Cách dùng release, script cài đặt, chẩn đoán và HiDPI: **[SCRIPTS.vi.md](docs/SCRIPTS.vi.md)**.
 
-Từng kext, app: làm gì, đến đâu rồi: **[docs/COMPONENTS.md](docs/COMPONENTS.md)** (tiếng Anh).
+## Tiện ích và mã nguồn
 
-| Thành phần | Một dòng | Trạng thái |
-|---|---|---|
-| `itlmt7925.kext` | Driver Wi-Fi MT7925 | ✅ tốc độ tối đa của link, hiện là Ethernet (đang port native) |
-| `ItlXhciKick.kext` | Sửa lỗi USB trễ trên xHCI AMD | ✅ |
-| `AsusWmi.kext` | ASUS WMI/EC/HID: profile, quạt, giới hạn sạc, đèn nền, Slash | ✅ |
-| `AmdCppc.kext` + `AmdCppcPolicy` | Điều khiển boost/EPP CPU + daemon | ✅ |
-| `MtkBtFw.kext` | Nạp firmware Bluetooth MT7925 | ✅ |
-| `BtLeDlFix.kext` | Plugin Lilu cho chuột BLE | ✅ |
-| `NVRMEdpBL.kext` ([fork NullMoth của mình](https://github.com/thanhnndev/nvidia-macos-driver/tree/ga403wm), nhánh `ga403wm`) | Độ sáng OLED qua eDP AUX | ✅ (chưa gửi upstream; cài driver từ fork, [INSTALL.vi.md §7](docs/INSTALL.vi.md#7-driver-nvidia-rtx-5060--oled)) |
-| `ItlDiag.kext` | chẩn đoán lúc boot | công cụ debug |
-| **ROG Control** (`RogControl.app`) | thanh menu + cửa sổ: profile, quạt, sạc, đèn | ✅ |
-| **ItlWiFi** (`ItlWiFi.app`) | Wi-Fi trên thanh menu: quét, kết nối, speed test | ✅ |
-| **TapGuard** (`TapGuard.app`) | bỏ qua tap touchpad khi đang gõ | ✅ |
+- **RogControl:** thanh menu và cửa sổ cho profile Silent / Performance / Turbo / Manual, giới hạn SPL/SPPT/FPPT, nhiệt độ/công suất CPU, tốc độ và đường cong quạt firmware, giới hạn sạc 60/80/100%, đèn bàn phím và Slash. Cài đặt AC/pin riêng, áp lại khi đăng nhập hoặc đổi nguồn; đèn áp lại sau wake. Turbo tắt khi dùng pin. MUX chỉ đọc; chưa có Aura từng phím hay overdrive panel. Có `--bench`.
+- **ItlWiFi:** quét mạng, kết nối và speed test trên thanh menu cho driver Wi-Fi hiện là Ethernet. Ảnh ItlWiFi bên dưới là ảnh giữ chỗ.
+- **TapGuard:** bỏ qua tap touchpad khi đang gõ.
 
-### ROG Control làm được gì
+Chi tiết driver và app, gồm công cụ chẩn đoán boot `ItlDiag`: **[COMPONENTS.md](docs/COMPONENTS.md)**.
 
-* Chọn chế độ **Silent / Performance / Turbo / Manual** (Turbo tắt khi dùng pin, như Armoury Crate); Manual chỉnh SPL / SPPT / FPPT.
-* Nhiệt độ CPU (Tctl), công suất package (RAPL), tốc độ quạt CPU/GPU, **đường cong quạt** của firmware (biểu đồ CPU/GPU).
-* **Giới hạn sạc** 60 / 80 / 100 %, thông tin pin; cài đặt riêng cho AC và pin, tự áp lại khi đổi nguồn và sau khi đăng nhập.
-* **Đèn bàn phím** và **đèn Slash** (độ sáng, chế độ), gửi lại sau khi wake.
-* Trạng thái GPU MUX (chỉ đọc), `--bench` đo hiệu năng từng profile.
-* Chưa có: đổi GPU MUX (cố ý chỉ đọc), hiệu ứng Aura từng phím, overdrive panel (BIOS này không có).
+| RogControl | Đường cong quạt |
+|---|---|
+| ![Cửa sổ RogControl](docs/images/rogcontrol-window.png) | ![Đường cong quạt](docs/images/fan-curves.png) |
 
-## Roadmap
+[Popover](docs/images/rogcontrol-popover.png) · [About This Mac](docs/images/about-this-mac.png) · [ItlWiFi giữ chỗ](docs/images/itlwifi.svg) · [Ghi chú ảnh](docs/images/README.md)
 
-**[docs/ROADMAP.md](docs/ROADMAP.md)** liệt kê từng hạng mục: đang làm gì, ở nhánh nào, bước kế tiếp. Điểm chính:
-
-* 🔧 **Wi-Fi native** (port `IO80211Controller`, đang làm) để menu bar và System Settings hoạt động; driver `itlmt7925` vẫn giữ làm phương án dự phòng
-* 🔧 mượt hơn cho desktop (WindowServer CPU), đẩy các bản vá NVIDIA (VRAM clear, độ sáng OLED) lên upstream
-* ❌ **sửa sleep/wake** (hiện chưa có deep sleep), ⚪ **map các phím Fn** của bàn phím, ⚪ test thời lượng pin (không hứa hẹn: dGPU là GPU duy nhất)
-* ⚪ kiểm chứng âm thanh, đầu đọc SD, % pin; một chủ máy thứ hai cài lại được từ repo
-* ⚪ bản release đầu tiên có kext build bằng CI (bước build app trong CI hiện đang lỗi: xem roadmap)
-* ⚪ **Chuẩn hoá codebase** (hàm dùng chung, dọn code debug, script): từng thành phần một, chỉ sau khi thành phần đó chứng minh ổn định
-* ⚪ **macOS 26**: chỉ sau khi 15 ổn định. Chưa lên kế hoạch.
-
-## Cấu trúc repo
-
-```
-efi/                 config.plist OpenCore đã làm sạch + SSDT, danh sách kext bên thứ ba (KEXTS.md, kexts.json)
-kexts/               itlmt7925, ItlXhciKick, AsusWmi, AmdCppc, MtkBtFw, BtLeDlFix, ItlDiag
-macos/               RogControl, ItlWiFi, TapGuard (app Swift), AmdCppcPolicy (launch daemon)
-fw/                  firmware MediaTek MT7925 (linux-firmware) kèm license
-patches/opencore/    bản vá OpenCorePkg cho Zen 5
-scripts/             build, cài đặt, inject Wi-Fi, thu log, export EFI + kiểm tra riêng tư
-tools/               công cụ đọc kernel collection, thăm dò HiDPI / frame pacing / xung CPU
-test/                test trên host (WPA2, capabilities, Block Ack, ...), chạy trong CI
-docs/                hướng dẫn cài, hướng dẫn script (có HiDPI), thành phần, roadmap, ghi chú nghiên cứu, HANDOFF (sổ nhật ký)
+```text
+efi/                Config OpenCore tham khảo, SSDT, danh sách kext bên thứ ba
+kexts/              Wi-Fi, USB, điều khiển ASUS, CPU, Bluetooth, chẩn đoán
+macos/              RogControl, ItlWiFi, TapGuard, daemon AmdCppcPolicy
+fw/                 Firmware MT7925 từ linux-firmware và license
+patches/opencore/   Bản vá Zen 5
+scripts/            Build, cài đặt, inject mạng, log, export EFI/kiểm tra riêng tư
+tools/              Đọc kernel collection, kiểm tra màn hình và CPU
+test/               Test trên host (WPA2, capabilities, Block Ack…), chạy trong CI
+docs/               Hướng dẫn, thành phần, nghiên cứu và ghi chép test
 ```
 
-## Riêng tư
+## Việc tiếp theo
 
-* Repo không chứa mật khẩu Wi-Fi hay định danh SMBIOS: `Info.plist` để trống `itl_ssid*/itl_psk*`, `efi/OC/config.plist` chỉ có
-  giá trị giữ chỗ `CHANGE_ME_*`, CI sẽ fail nếu lộ giá trị thật. Kext **bạn** đã inject mật khẩu thì chứa mật khẩu dạng chữ thường: đừng chia sẻ.
-* Log chứa địa chỉ MAC của card và SSID/BSSID xung quanh. Che trước khi đăng issue.
+[ROADMAP.md](docs/ROADMAP.md) theo dõi nhánh và bước tiếp theo: Wi-Fi native (giữ `itlmt7925` làm dự phòng), sleep/wake, phím Fn, test pin, kiểm chứng âm thanh/SD/% pin, hiệu năng WindowServer và gửi bản vá NVIDIA VRAM-clear/độ sáng lên upstream. Còn chờ báo cáo cài đặt từ chủ máy thứ hai, bản release có tag đầu tiên với kext build bằng CI (bước build app trong CI đang lỗi), và dọn mã từng thành phần sau khi ổn định. macOS 26 chờ macOS 15 ổn định trước.
 
-## Đóng góp, ghi công, giấy phép
+## Đóng góp và giấy phép
 
-* **Tác giả và người duy trì:** [thanhnndev](https://github.com/thanhnndev) (<https://github.com/thanhnndev>): bring-up GA403WM,
-  driver Wi-Fi `itlmt7925`, RogControl và phần còn lại của repo này.
-* Báo cáo từ các chủ GA403WM khác là thứ giá trị nhất: mở issue bằng mẫu **Hardware report** và đọc [CONTRIBUTING.md](CONTRIBUTING.md).
-* Dự án đứng trên công sức của người khác: [NullMoth](https://github.com/nullmoth/1401) (nền EFI và driver NVIDIA), Acidanthera
-  (OpenCore, Lilu, VirtualSMC, AppleALC, ...), các dự án Linux `mt76`, `btmtk`, `asus-wmi`, `asusctl` (tham khảo thiết kế). Danh sách và giấy phép: [NOTICE.md](NOTICE.md).
-* Mã: [Clear BSD License](LICENSE) (dựa trên driver Linux `mt76`, BSD-3-Clause-Clear, © MediaTek). Firmware trong `fw/`: [license của MediaTek](fw/LICENCE.mediatek).
-  `efi/` dẫn xuất từ `nullmoth/1401` (PolyForm Noncommercial 1.0.0), **không** thuộc Clear BSD: chỉ dùng phi thương mại.
-* Không liên kết với ASUS, Apple, NVIDIA, MediaTek, AMD hay NullMoth. Bạn tự chịu trách nhiệm tuân thủ điều khoản giấy phép macOS của Apple.
+Tác giả và người duy trì: [thanhnndev](https://github.com/thanhnndev). Chủ máy GA403WM có thể gửi issue theo mẫu **Hardware report**; đọc [CONTRIBUTING.md](CONTRIBUTING.md).
+
+Cảm ơn [NullMoth](https://github.com/nullmoth/1401) cho nền EFI và driver NVIDIA, Acidanthera cho OpenCore/Lilu/VirtualSMC/AppleALC, cùng Linux `mt76`, `btmtk`, `asus-wmi` và `asusctl` cho thiết kế tham khảo. Ghi công và giấy phép đầy đủ: [NOTICE.md](NOTICE.md).
+
+Mã dùng [Clear BSD License](LICENSE), gồm phần viết lại từ Linux `mt76` của MediaTek (BSD-3-Clause-Clear). Firmware dùng [license MediaTek](fw/LICENCE.mediatek). **EFI dẫn xuất từ `nullmoth/1401`, dùng PolyForm Noncommercial 1.0.0: chỉ sử dụng phi thương mại.** Bản vá độ sáng OLED nằm trong fork nhánh `ga403wm`, chưa gửi upstream.
+
+Không liên kết với ASUS, Apple, NVIDIA, MediaTek, AMD hay NullMoth. Nhãn hiệu thuộc chủ sở hữu tương ứng; người dùng tự chịu trách nhiệm tuân thủ giấy phép macOS của Apple.
