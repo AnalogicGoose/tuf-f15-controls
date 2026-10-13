@@ -1,5 +1,18 @@
 # GA403WM Hackintosh
 
+## Dự án vibe-code — đọc trước khi cài
+
+Đây là dự án vibe-code, đang ở mức thử nghiệm. **Gần như toàn bộ mã và tài liệu do AI (Claude) viết**, được một người hướng dẫn và test; chưa có audit độc lập.
+
+- Kext chạy trong kernel; lỗi có thể gây panic, treo máy hoặc mất dữ liệu. `AsusWmi` và `AmdCppc` ghi vào EC, BIOS qua SMI và thanh ghi CPU.
+- EFI được chỉnh từ các dự án khác: SIP gần như tắt, AMFI nới lỏng, Secure Boot tắt.
+- Mật khẩu Wi-Fi đã inject được lưu **dạng văn bản thuần trong kext**. Đừng chia sẻ kext chứa mật khẩu. Log cũng chứa địa chỉ MAC và SSID/BSSID xung quanh; che trước khi đăng.
+- Backup ổ đĩa và giữ USB cứu hộ Windows/Linux. Chỉ cài trên máy có thể cài lại; tránh dùng cho công việc không được phép mất dữ liệu. Không bảo hành; xem [LICENSE](LICENSE).
+
+Repo để trống `itl_ssid*/itl_psk*` và dùng SMBIOS giữ chỗ `CHANGE_ME_*`. CI kiểm tra thông tin đăng nhập và định danh thật bị lọt vào repo.
+
+## Giới thiệu
+
 macOS Sequoia trên **ASUS ROG Zephyrus G14 (2025)** — Ryzen AI 9 HX 370 + RTX 5060 Laptop.
 EFI OpenCore, driver và tiện ích dành cho máy này.
 
@@ -24,34 +37,22 @@ EFI OpenCore, driver và tiện ích dành cho máy này.
 
 ## Tình trạng phần cứng
 
-✅ Đã kiểm chứng trên máy tham chiếu · ❌ Chưa chạy ổn · ⚪ Chưa kiểm chứng hoặc chưa hỗ trợ
+Mục đã đánh dấu được kiểm chứng trên máy tham chiếu. Mục chưa đánh dấu còn lỗi, chưa kiểm chứng hoặc chưa hỗ trợ.
 
-| Chức năng | Trạng thái | Ghi chú |
-|---|:---:|---|
-| Boot / dual boot | ✅ | Boot từ ESP trong máy; chọn Windows/Linux trong OpenCore. [EFI](efi/README.md) · [Dual boot / khôi phục UEFI](docs/DUAL-BOOT.md) |
-| CPU | ✅ | 12 nhân / 24 luồng; CPPC và boost ~4,9 GHz nhờ `AmdCppc` + `AmdCppcPolicy`. [CPU](docs/CPU-POWER.md) |
-| RTX 5060 / màn hình | ✅ | OLED trong máy ở 120 Hz và màn hình ngoài. [NVIDIA](docs/NULLMOTH.md) |
-| Độ sáng OLED / HiDPI | ✅ | Thanh trượt hệ thống và phím độ sáng điều khiển panel qua `NVRMEdpBL`. HiDPI **2×**, “looks like 1440 × 900”; không hỗ trợ tỉ lệ lẻ. [Độ sáng](docs/OLED-BRIGHTNESS-DPCD.md) · [Cài HiDPI](docs/SCRIPTS.vi.md#4-hidpi-looks-like-1440-x-900-từng-bước) |
-| Phím, chuột USB, webcam | ✅ | `ItlXhciKick` sửa lỗi nhả phím trễ 2 giây. USB map đã test sẽ đi kèm EFI chuẩn. [USB](docs/USB-XHCI-LAG.md) |
-| Touchpad | ✅ | I2C `093a:3011`; sửa xong ngày 2026-10-12. [Ghi chép test](docs/HANDOFF.md) |
-| Wi-Fi MT7925 | ✅ | `itlmt7925` (“legacy”): WPA2-PSK, DHCP, HE / 160 MHz đạt tốc độ tối đa của link. Hiện là **Ethernet**; cần inject SSID/mật khẩu. Chưa có WPA3 hay 6 GHz. [Wi-Fi](docs/WIFI.md) · [Chọn driver](docs/WIFI-DRIVERS.md#tiếng-việt) |
-| Bluetooth MT7925 | ✅ | Tai nghe classic và chuột BLE qua `MtkBtFw` + `BtLeDlFix`. [Bluetooth](docs/BLUETOOTH.md) |
-| Điều khiển ROG / đèn | ✅ | Profile, quạt, giới hạn sạc, đèn bàn phím và Slash qua `AsusWmi` + RogControl. [Điều khiển ROG](docs/ASUSCTL-MACOS.md) |
-| Sleep / wake | ❌ | Chưa có deep sleep ổn định; wake chậm và thiếu ổn định. Chu kỳ hoàn tất khôi phục được chính sách CPU. Đừng trông cậy vào sleep hay đóng nắp. |
-| Các phím Fn khác | ⚪ | Độ sáng và đèn bàn phím hoạt động; phần lớn phím còn lại chưa map. |
-| Âm thanh / đầu đọc SD / % pin | ⚪ | EFI có AppleALC layout 33, Sinetek-rtsx và SMCBatteryManager; chưa kiểm chứng hoạt động. |
-| Wi-Fi native / AirDrop / Continuity | ⚪ | Bản port `IO80211Controller` đang thử nghiệm, **chưa dùng được**. Đừng bật. [Nghiên cứu](docs/WIFI-AS-WIFI.md) |
+- [x] **Boot / dual boot:** Boot từ ESP trong máy; chọn Windows/Linux trong OpenCore. [EFI](efi/README.md) · [Dual boot / khôi phục UEFI](docs/DUAL-BOOT.md)
+- [x] **CPU:** 12 nhân / 24 luồng; CPPC và boost ~4,9 GHz nhờ `AmdCppc` + `AmdCppcPolicy`. [CPU](docs/CPU-POWER.md)
+- [x] **RTX 5060 / màn hình:** OLED trong máy ở 120 Hz và màn hình ngoài. [NVIDIA](docs/NULLMOTH.md)
+- [x] **Độ sáng OLED / HiDPI:** Thanh trượt hệ thống và phím độ sáng điều khiển panel qua `NVRMEdpBL`. HiDPI **2×**, “looks like 1440 × 900”; không hỗ trợ tỉ lệ lẻ. [Độ sáng](docs/OLED-BRIGHTNESS-DPCD.md) · [Cài HiDPI](docs/SCRIPTS.vi.md#4-hidpi-looks-like-1440-x-900-từng-bước)
+- [x] **Phím, chuột USB, webcam:** `ItlXhciKick` sửa lỗi nhả phím trễ 2 giây. USB map đã test sẽ đi kèm EFI chuẩn. [USB](docs/USB-XHCI-LAG.md)
+- [x] **Touchpad:** I2C `093a:3011`; sửa xong ngày 2026-10-12. [Ghi chép test](docs/HANDOFF.md)
+- [x] **Wi-Fi MT7925:** `itlmt7925` (“legacy”): WPA2-PSK, DHCP, HE / 160 MHz đạt tốc độ tối đa của link. Hiện là **Ethernet**; cần inject SSID/mật khẩu. Chưa có WPA3 hay 6 GHz. [Wi-Fi](docs/WIFI.md) · [Chọn driver](docs/WIFI-DRIVERS.md#tiếng-việt)
+- [x] **Bluetooth MT7925:** Tai nghe classic và chuột BLE qua `MtkBtFw` + `BtLeDlFix`. [Bluetooth](docs/BLUETOOTH.md)
+- [x] **Điều khiển ROG / đèn:** Profile, quạt, giới hạn sạc, đèn bàn phím và Slash qua `AsusWmi` + RogControl. [Điều khiển ROG](docs/ASUSCTL-MACOS.md)
+- [ ] **Sleep / wake:** Chưa có deep sleep ổn định; wake chậm và thiếu ổn định. Chu kỳ hoàn tất khôi phục được chính sách CPU. Đừng trông cậy vào sleep hay đóng nắp.
+- [ ] **Các phím Fn khác:** Độ sáng và đèn bàn phím hoạt động; phần lớn phím còn lại chưa map.
+- [ ] **Âm thanh / đầu đọc SD / % pin:** EFI có AppleALC layout 33, Sinetek-rtsx và SMCBatteryManager; chưa kiểm chứng hoạt động.
+- [ ] **Wi-Fi native / AirDrop / Continuity:** Bản port `IO80211Controller` đang thử nghiệm, **chưa dùng được**. Đừng bật. [Nghiên cứu](docs/WIFI-AS-WIFI.md)
 
-## Trước khi cài
-
-Đây là dự án thử nghiệm. Gần như toàn bộ mã và tài liệu do AI (Claude) viết, được một người hướng dẫn và test; chưa có audit độc lập.
-
-- Kext chạy trong kernel; lỗi có thể gây panic, treo máy hoặc mất dữ liệu. `AsusWmi` và `AmdCppc` ghi vào EC, BIOS qua SMI và thanh ghi CPU.
-- EFI được chỉnh từ các dự án khác: SIP gần như tắt, AMFI nới lỏng, Secure Boot tắt.
-- Mật khẩu Wi-Fi đã inject được lưu **dạng văn bản thuần trong kext**. Đừng chia sẻ kext chứa mật khẩu. Log cũng chứa địa chỉ MAC và SSID/BSSID xung quanh; che trước khi đăng.
-- Backup ổ đĩa và giữ USB cứu hộ Windows/Linux. Chỉ cài trên máy có thể cài lại; tránh dùng cho công việc không được phép mất dữ liệu. Không bảo hành; xem [LICENSE](LICENSE).
-
-Repo để trống `itl_ssid*/itl_psk*` và dùng SMBIOS giữ chỗ `CHANGE_ME_*`. CI kiểm tra thông tin đăng nhập và định danh thật bị lọt vào repo.
 
 ## Cài đặt
 

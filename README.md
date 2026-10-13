@@ -1,5 +1,18 @@
 # GA403WM Hackintosh
 
+## Vibe-coded project — read before installing
+
+This is a vibe-coded, experimental project. **Almost all code and documentation was AI-written (Claude)**, directed and tested by one person, with no independent audit.
+
+- Kexts run in the kernel; bugs can cause panics, hangs or data loss. `AsusWmi` and `AmdCppc` write to the EC, BIOS through SMI, and CPU registers.
+- EFI settings are adapted from other projects: SIP is mostly disabled, AMFI is relaxed and Secure Boot is off.
+- Injected Wi-Fi passwords are stored **in plain text inside the kext**. Never share a credential-injected kext. Logs also contain MAC addresses and nearby SSIDs/BSSIDs; redact them before posting.
+- Back up your disk and keep Windows/Linux recovery media. Use a machine you can reinstall, and avoid work you cannot afford to lose. No warranty; see [LICENSE](LICENSE).
+
+The repo ships empty `itl_ssid*/itl_psk*` fields and `CHANGE_ME_*` SMBIOS placeholders. CI checks for real credentials and identifiers.
+
+## Overview
+
 macOS Sequoia on the **ASUS ROG Zephyrus G14 (2025)** — Ryzen AI 9 HX 370 + RTX 5060 Laptop.
 OpenCore EFI, custom drivers and utilities for this machine.
 
@@ -24,34 +37,22 @@ Tested on **one GA403WM**, BIOS **GA403WM.310**, OLED **2880 × 1800 @ 120 Hz**.
 
 ## Hardware status
 
-✅ Verified on the reference machine · ❌ Not working reliably · ⚪ Unverified or unavailable
+Checked items are verified on the reference machine. Unchecked items are unreliable, unverified or unsupported.
 
-| Feature | Status | Notes |
-|---|:---:|---|
-| Boot / dual boot | ✅ | Internal ESP; Windows and Linux available in the OpenCore picker. [EFI](efi/README.md) · [Dual boot / UEFI recovery](docs/DUAL-BOOT.md) |
-| CPU | ✅ | 12 cores / 24 threads; CPPC and boost to ~4.9 GHz with `AmdCppc` + `AmdCppcPolicy`. [CPU power](docs/CPU-POWER.md) |
-| RTX 5060 / displays | ✅ | Internal OLED at 120 Hz and external display. [NVIDIA](docs/NULLMOTH.md) |
-| OLED brightness / HiDPI | ✅ | System slider and brightness keys control the panel through `NVRMEdpBL`. HiDPI **2×**, “looks like 1440 × 900”; fractional scales unsupported. [Brightness](docs/OLED-BRIGHTNESS-DPCD.md) · [HiDPI setup](docs/SCRIPTS.md#4-hidpi-looks-like-1440-x-900-step-by-step) |
-| USB keyboard, mouse, webcam | ✅ | `ItlXhciKick` fixes the 2-second key-release lag. Tested USB map pending in the standard EFI. [USB](docs/USB-XHCI-LAG.md) |
-| Touchpad | ✅ | I2C `093a:3011`; fixed 2026-10-12. [Test notes](docs/HANDOFF.md) |
-| MT7925 Wi-Fi | ✅ | `itlmt7925` (“legacy”): WPA2-PSK, DHCP, HE / 160 MHz at full link speed. Appears as **Ethernet**; requires SSID/password injection. No WPA3 or 6 GHz. [Wi-Fi](docs/WIFI.md) · [Driver selection](docs/WIFI-DRIVERS.md) |
-| MT7925 Bluetooth | ✅ | Classic headphones and BLE mice via `MtkBtFw` + `BtLeDlFix`. [Bluetooth](docs/BLUETOOTH.md) |
-| ROG controls / lighting | ✅ | Profiles, fans, charge limit, keyboard backlight and Slash lighting via `AsusWmi` + RogControl. [ROG controls](docs/ASUSCTL-MACOS.md) |
-| Sleep / wake | ❌ | No reliable deep sleep; wake is slow and unreliable. Completed cycles restore CPU policy. Do not rely on lid close or sleep. |
-| Other Fn keys | ⚪ | Brightness and keyboard lighting work; most other keys are not mapped. |
-| Audio / SD reader / battery % | ⚪ | EFI includes AppleALC layout 33, Sinetek-rtsx and SMCBatteryManager; functionality is unverified. |
-| Native Wi-Fi / AirDrop / Continuity | ⚪ | `IO80211Controller` port is experimental and **not usable**. Do not enable it. [Research](docs/WIFI-AS-WIFI.md) |
+- [x] **Boot / dual boot:** Internal ESP; Windows and Linux available in the OpenCore picker. [EFI](efi/README.md) · [Dual boot / UEFI recovery](docs/DUAL-BOOT.md)
+- [x] **CPU:** 12 cores / 24 threads; CPPC and boost to ~4.9 GHz with `AmdCppc` + `AmdCppcPolicy`. [CPU power](docs/CPU-POWER.md)
+- [x] **RTX 5060 / displays:** Internal OLED at 120 Hz and external display. [NVIDIA](docs/NULLMOTH.md)
+- [x] **OLED brightness / HiDPI:** System slider and brightness keys control the panel through `NVRMEdpBL`. HiDPI **2×**, “looks like 1440 × 900”; fractional scales unsupported. [Brightness](docs/OLED-BRIGHTNESS-DPCD.md) · [HiDPI setup](docs/SCRIPTS.md#4-hidpi-looks-like-1440-x-900-step-by-step)
+- [x] **USB keyboard, mouse, webcam:** `ItlXhciKick` fixes the 2-second key-release lag. Tested USB map pending in the standard EFI. [USB](docs/USB-XHCI-LAG.md)
+- [x] **Touchpad:** I2C `093a:3011`; fixed 2026-10-12. [Test notes](docs/HANDOFF.md)
+- [x] **MT7925 Wi-Fi:** `itlmt7925` (“legacy”): WPA2-PSK, DHCP, HE / 160 MHz at full link speed. Appears as **Ethernet**; requires SSID/password injection. No WPA3 or 6 GHz. [Wi-Fi](docs/WIFI.md) · [Driver selection](docs/WIFI-DRIVERS.md)
+- [x] **MT7925 Bluetooth:** Classic headphones and BLE mice via `MtkBtFw` + `BtLeDlFix`. [Bluetooth](docs/BLUETOOTH.md)
+- [x] **ROG controls / lighting:** Profiles, fans, charge limit, keyboard backlight and Slash lighting via `AsusWmi` + RogControl. [ROG controls](docs/ASUSCTL-MACOS.md)
+- [ ] **Sleep / wake:** No reliable deep sleep; wake is slow and unreliable. Completed cycles restore CPU policy. Do not rely on lid close or sleep.
+- [ ] **Other Fn keys:** Brightness and keyboard lighting work; most other keys are not mapped.
+- [ ] **Audio / SD reader / battery %:** EFI includes AppleALC layout 33, Sinetek-rtsx and SMCBatteryManager; functionality is unverified.
+- [ ] **Native Wi-Fi / AirDrop / Continuity:** `IO80211Controller` port is experimental and **not usable**. Do not enable it. [Research](docs/WIFI-AS-WIFI.md)
 
-## Before installing
-
-This is an experimental project. Almost all code and documentation was AI-written (Claude), directed and tested by one person, with no independent audit.
-
-- Kexts run in the kernel; bugs can cause panics, hangs or data loss. `AsusWmi` and `AmdCppc` write to the EC, BIOS through SMI, and CPU registers.
-- EFI settings are adapted from other projects: SIP is mostly disabled, AMFI is relaxed and Secure Boot is off.
-- Injected Wi-Fi passwords are stored **in plain text inside the kext**. Never share a credential-injected kext. Logs also contain MAC addresses and nearby SSIDs/BSSIDs; redact them before posting.
-- Back up your disk and keep Windows/Linux recovery media. Use a machine you can reinstall, and avoid work you cannot afford to lose. No warranty; see [LICENSE](LICENSE).
-
-The repo ships empty `itl_ssid*/itl_psk*` fields and `CHANGE_ME_*` SMBIOS placeholders. CI checks for real credentials and identifiers.
 
 ## Installation
 
