@@ -21,10 +21,12 @@ First public build. "v1" is the version of this bundle; the kexts carry their ow
 | `TapGuard.app.zip` | ignore touchpad taps while typing | `/Applications` |
 | `AmdCppcPolicy.zip` | CPU policy launch daemon (binary) | `scripts/macos-amdcppc-policy-install.sh` |
 | `OpenCore-1.0.9-zen5-fsb.zip` | OpenCore 1.0.9 with the Zen 5 timer patch (if the build step succeeded) | ESP |
-| `EFI-reference.zip` | *sanitized reference*: `config.plist` + SSDTs + kext list, placeholder SMBIOS and USB map. **PolyForm Noncommercial**. The tested **standard EFI will be added to this release later** | see INSTALL |
+| `EFI-reference.zip` | *sanitized reference*: `config.plist` (placeholder SMBIOS, debug off, legacy Wi-Fi boot-args, NVIDIA values in the installer-safe state), SSDTs, the author's `UTBMap.kext` for this laptop, kext list. **PolyForm Noncommercial**. No OpenCore binaries, drivers or third-party kexts inside | see INSTALL |
 | `SHA256SUMS.txt`, `LICENSE`, `LICENCE.mediatek` | checksums, licenses | |
 
-Third-party kexts (Lilu, VirtualSMC, VoodooI2C, ...) and the NVIDIA driver are **not** included: see `efi/KEXTS.md`.
+Third-party kexts (Lilu, VirtualSMC, VoodooI2C, ...) are **not** included: see `efi/KEXTS.md`.
+
+**NVIDIA (RTX 5060 + the OLED):** not included either. Use [NullMoth's driver](https://github.com/nullmoth/nvidia-macos-driver) through our fork, branch [`ga403wm`](https://github.com/thanhnndev/nvidia-macos-driver/tree/ga403wm) (upstream 1.14.7 + OLED brightness over eDP AUX + faster VRAM clear, source only, PolyForm Noncommercial). Steps: [INSTALL.md §7](https://github.com/thanhnndev/ga403wm-hackintosh/blob/main/docs/INSTALL.md#7-nvidia-driver-rtx-5060--the-oled).
 
 ### How to use it
 
