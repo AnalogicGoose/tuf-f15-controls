@@ -64,15 +64,15 @@ Mọi dòng trong bảng đều có ngày tháng và bằng chứng trong [docs/
 
 ## Ảnh chụp
 
-Ảnh thật của RogControl và About This Mac (chụp trên GA403WM tham chiếu, macOS 15.8.1). Menu ItlWiFi và picker OpenCore vẫn là ảnh giữ chỗ: bản Wi-Fi native đang port, còn picker cần chụp bằng điện thoại. Xem [docs/images/README.md](docs/images/README.md).
+Ảnh thật của RogControl và About This Mac (chụp trên GA403WM tham chiếu, macOS 15.8.1). Menu ItlWiFi vẫn là ảnh giữ chỗ: bản Wi-Fi native đang port. Xem [docs/images/README.md](docs/images/README.md).
 
 | Popover RogControl | Cửa sổ RogControl | Menu ItlWiFi |
 |---|---|---|
 | ![RogControl popover](docs/images/rogcontrol-popover.png) | ![RogControl window](docs/images/rogcontrol-window.png) | ![ItlWiFi (giữ chỗ)](docs/images/itlwifi.svg) |
 
-| Picker OpenCore | About This Mac | Đường cong quạt |
-|---|---|---|
-| ![OpenCore picker (giữ chỗ)](docs/images/opencore-picker.svg) | ![About This Mac](docs/images/about-this-mac.png) | ![Fan curves](docs/images/fan-curves.png) |
+| About This Mac | Đường cong quạt |
+|---|---|
+| ![About This Mac](docs/images/about-this-mac.png) | ![Fan curves](docs/images/fan-curves.png) |
 
 ## Cài đặt
 
