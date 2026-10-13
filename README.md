@@ -66,15 +66,15 @@ Everything in this table is dated and sourced in [docs/HANDOFF.md](docs/HANDOFF.
 
 ## Screenshots
 
-Placeholders; real screenshots will replace them. See [docs/images/README.md](docs/images/README.md) for what is wanted.
+Real screenshots of RogControl and About This Mac (taken on the reference GA403WM, macOS 15.8.1). The ItlWiFi menu, the OpenCore picker and the hero image are still placeholders: the native Wi-Fi port is in progress and the picker needs a photo. See [docs/images/README.md](docs/images/README.md).
 
 | RogControl popover | RogControl window | ItlWiFi menu |
 |---|---|---|
-| ![RogControl popover (placeholder)](docs/images/rogcontrol-popover.svg) | ![RogControl window (placeholder)](docs/images/rogcontrol-window.svg) | ![ItlWiFi (placeholder)](docs/images/itlwifi.svg) |
+| ![RogControl popover](docs/images/rogcontrol-popover.png) | ![RogControl window](docs/images/rogcontrol-window.png) | ![ItlWiFi (placeholder)](docs/images/itlwifi.svg) |
 
 | OpenCore picker | About This Mac | Fan curves |
 |---|---|---|
-| ![OpenCore picker (placeholder)](docs/images/opencore-picker.svg) | ![About This Mac (placeholder)](docs/images/about-this-mac.svg) | ![Fan curves (placeholder)](docs/images/fan-curves.svg) |
+| ![OpenCore picker (placeholder)](docs/images/opencore-picker.svg) | ![About This Mac](docs/images/about-this-mac.png) | ![Fan curves](docs/images/fan-curves.png) |
 
 ## Install
 

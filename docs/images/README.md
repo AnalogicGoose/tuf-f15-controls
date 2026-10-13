@@ -1,6 +1,6 @@
 # Screenshots
 
-The `.svg` files here are **placeholders**. Replace each with a real screenshot using the same base name
+The remaining `.svg` files here (`hero`, `itlwifi`, `opencore-picker`) are **placeholders**; the other shots are real PNGs from the reference machine (2026-10-13). Replace each with a real screenshot using the same base name
 (`hero.png` and so on) and update the `<img>`/`![]()` links in [README.md](../../README.md) and
 [README.vi.md](../../README.vi.md) from `.svg` to `.png`.
 
