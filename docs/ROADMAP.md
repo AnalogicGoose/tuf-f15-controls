@@ -48,7 +48,7 @@ States: ✅ done · 🔧 in progress (someone is on it now) · 🟡 implemented,
 | 9 | **ROG Control** (`AsusWmi`, `RogControl`) | ✅ | `main` (`kexts/AsusWmi`, `macos/RogControl`) | everything works (confirmed 2026-10-12). Nice to have: Aura effects beyond brightness, GPU MUX stays read-only | [ASUSCTL-MACOS.md](ASUSCTL-MACOS.md), [rog-control-design.md](rog-control-design.md) |
 | 10 | **CPU power** (`AmdCppc`, `AmdCppcPolicy`) | ✅ | `main` | ~4.9 GHz all-core, sleep/wake restore. Next: soak over days, battery-life comparison | [CPU-POWER.md](CPU-POWER.md) |
 | 11 | **OLED brightness** (`NVRMEdpBL`, DPCD AUX) | ✅ | [NullMoth fork](https://github.com/thanhnndev/nvidia-macos-driver/tree/ga403wm), branch `ga403wm` | works (confirmed 2026-10-12). Checklist results are in [OLED-BRIGHTNESS-DPCD.md](OLED-BRIGHTNESS-DPCD.md); RogControl's software dimmer is removed. Left: the visible check of Fn+F7 / Fn+F8 by a person, send the upstream PR | [OLED-BRIGHTNESS-DPCD.md](OLED-BRIGHTNESS-DPCD.md) |
-| 12 | **Desktop smoothness**: VRAM clear, WindowServer CPU, PAT | 🔧 | [NullMoth fork](https://github.com/thanhnndev/nvidia-macos-driver/tree/ga403wm), branch `ga403wm` | VRAM clear now ~1 GB/s with the PAT fix (was ~8 MB / 0.7-1.1 s); WindowServer 33 % of one core in the test; upstream PR | [VRAM-GRANT-STALL.md](VRAM-GRANT-STALL.md), [WINDOWSERVER-CPU.md](WINDOWSERVER-CPU.md), [WINDOWSERVER-RESEARCH.md](WINDOWSERVER-RESEARCH.md) |
+| 12 | **Desktop smoothness**: WindowServer CPU, PAT (the VRAM-clear patch was dropped 2026-10-13) | 🔧 | [NullMoth fork](https://github.com/thanhnndev/nvidia-macos-driver/tree/ga403wm), branch `ga403wm` | VRAM clear ~1 GB/s with the PAT fix on upstream's own code (was ~8 MB / 0.7-1.1 s); WindowServer 33 % of one core in the test; upstream PR for the AUX backlight only | [VRAM-GRANT-STALL.md](VRAM-GRANT-STALL.md), [WINDOWSERVER-CPU.md](WINDOWSERVER-CPU.md), [WINDOWSERVER-RESEARCH.md](WINDOWSERVER-RESEARCH.md) |
 | 13 | **HiDPI 2x** (like Windows scale 200 %) | ✅ | `main` (`scripts/macos-install-hidpi.sh`, `tools/hidpi-try.swift`) | "looks like 1440 x 900" at 120 Hz via the same-size HiRes override; 2x is the supported scale. Next: second-owner confirmation, upstream flag fix so no override is needed | [SCRIPTS.md §4](SCRIPTS.md#4-hidpi-looks-like-1440-x-900-step-by-step), [HANDOFF #7](HANDOFF.md) |
 | 14 | **Black screen / flicker with 120 Hz + modeset** | 🟡 | NullMoth upstream | stable on 1.13-1.14 with the boot raster at 120 Hz; do not change modes at login | [HANDOFF #2](HANDOFF.md), [NULLMOTH.md](NULLMOTH.md) |
 | 15 | **Boot time** (~36 s kernel to login) | 🟡 | `main` (EFI) | OpenCore debug target off, `-nvrmnobootscreen`, verbose off; remaining: GOP console cost | [HANDOFF #9](HANDOFF.md) |
@@ -164,7 +164,7 @@ full link speed); the earlier 8 Mb/s measurements in [HANDOFF.md](HANDOFF.md) ar
 * ✅ **2026-10-12 (owner-confirmed):** I2C touchpad works again, BLE mouse works, Wi-Fi at full link speed, ROG controls all working, OLED brightness works (`NVRMEdpBL`), HiDPI 2x
 
 * ✅ internal-disk install of macOS 15.8.1, OpenCore from the internal ESP, Windows/Linux in the picker
-* ✅ NullMoth 1.14.2 + local VRAM-clear and PAT patches; Zen 5 timer fix; USB lag fix
+* ✅ NullMoth 1.14.2 + PAT fix (the local VRAM-clear patch was dropped once the PAT was fixed); Zen 5 timer fix; USB lag fix
 * ✅ `AsusWmi` (profiles, fans, charge limit, keyboard light, Slash, hotkeys) and `RogControl` redesign
 * ✅ `AmdCppc` 0.2.1 + `AmdCppcPolicy` daemon (CPPC/EPP, sleep/wake restore)
 * ✅ MT7925 Bluetooth firmware loader; BLE fix written

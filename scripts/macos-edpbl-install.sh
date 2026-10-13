@@ -5,8 +5,8 @@
 #   scripts/macos-edpbl-install.sh --undo   restore the NVRMFB / NVRM plist that were there, remove the kext, rebuild the collection
 # Root (run through osascript "with administrator privileges", see docs/OLED-BRIGHTNESS-DPCD.md). Reboot loads it.
 # Runtime off switch: boot-arg nvrmedpbl=0. NVRMFB accepted as "before": the NVRMFB of the upstream package you point
-# UPSTREAM_NVRMFB at (the pkgroot of the NullMoth release you installed), the 1.14.2 VRAM-clear-only build (f3e7bff4...),
-# or this build.
+# UPSTREAM_NVRMFB at (the pkgroot of the NullMoth release you installed), the 1.14.2 VRAM-clear-only build (f3e7bff4...,
+# legacy: the VRAM-clear patch was dropped 2026-10-13), or this build. Another overlay build: run --undo first.
 # Paths (root has no useful $HOME under osascript, so the console user's home is the default):
 #   BRIGHT_DIR        where macos-build-nullmoth-local.sh staged the build   (default <home>/efi-audit/brightness)
 #   UPSTREAM_NVRMFB   the pristine NVRMFB of the installed release, for the "before" check (optional)

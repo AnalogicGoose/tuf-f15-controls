@@ -1,5 +1,5 @@
 #!/bin/bash
-# LEGACY (1.14.2 only; macos-edpbl-install.sh installs the combined build from fork branch ga403wm).
+# LEGACY (1.14.2 only, patch dropped 2026-10-13; macos-edpbl-install.sh installs the AUX-brightness overlay from fork branch ga403wm).
 # Applies the local NVRMFB patch (fork thanhnndev/nvidia-macos-driver, branch nvrmfb-vram-clear-nontemporal) on top of an
 # installed upstream NullMoth 1.14.2, then rebuilds the auxiliary kernel collection the way upstream's install.sh does.
 #   apply-nvrmfb-patch.sh          install the patched NVRMFB executable

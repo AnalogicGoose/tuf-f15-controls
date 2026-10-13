@@ -1,5 +1,6 @@
 #!/bin/bash
-# NVRMFB VRAM-clear A/B (fork branch nvrmfb-vram-clear-nontemporal): needs the patched NVRMFB loaded.
+# LEGACY (the VRAM-clear patch was dropped 2026-10-13; last build: fork tag ga403wm-with-vramclear).
+# NVRMFB VRAM-clear A/B: needs that patched NVRMFB loaded.
 # Root (osascript "with administrator privileges"). Prints MB/s of the grant clear for mode 0 (rep stosq) and 1 (movnti).
 PATH=/usr/bin:/bin:/usr/sbin:/sbin
 sysctl -n debug.nvrmfb_clear_mode >/dev/null 2>&1 || { echo "patched NVRMFB not loaded (no debug.nvrmfb_clear_mode)"; exit 1; }

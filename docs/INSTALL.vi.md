@@ -175,11 +175,11 @@ Không có nó, macOS **không có framebuffer** trên laptop này (đen màn h�
 * Driver là [driver NVIDIA của NullMoth](https://github.com/nullmoth/nvidia-macos-driver) (bên thứ ba, PolyForm
   Noncommercial: đọc README và license của họ). **Dùng fork của mình cho laptop này:**
   [`thanhnndev/nvidia-macos-driver`](https://github.com/thanhnndev/nvidia-macos-driver), nhánh **`ga403wm`** = upstream `v1.15.0` + driver độ sáng OLED (`NVRMEdpBL`,
-  panel chỉ có AUX) + VRAM clear non-temporal ([danh sách bản vá](https://github.com/thanhnndev/nvidia-macos-driver/blob/ga403wm/docs/GA403WM-PATCHES.md)).
+  panel chỉ có AUX; không còn gì khác) ([danh sách bản vá](https://github.com/thanhnndev/nvidia-macos-driver/blob/ga403wm/docs/GA403WM-PATCHES.md)).
   Fork chỉ chứa mã nguồn, không có binary, nên cài gồm hai phần:
   1. **Cài bản upstream trước**, *bên trong* macOS 15, bằng `install.sh` của họ / app Mac 1401 (NVRM, NVAccel, plugin
      WindowServer, thay đổi OpenCore và `uninstall.sh` đều từ đó).
-  2. **Rồi hai phần của fork** (`NVRMFB` + `NVRMEdpBL.kext`) chồng lên:
+  2. **Rồi hai phần của fork** (`NVRMEdpBL.kext` và `NVRMFB` hỏi nó trước) chồng lên:
      ```sh
      # chạy từ một bản clone của repo này (script nằm trong scripts/)
      git clone --depth 1 --branch 610.57.04 https://github.com/NVIDIA/open-gpu-kernel-modules ~/ogkm610   # header
@@ -191,11 +191,11 @@ Không có nó, macOS **không có framebuffer** trên laptop này (đen màn h�
           bash scripts/macos-edpbl-install.sh            # reboot để nạp;  --undo trả NVRMFB upstream về
      ```
      Chi tiết, bằng chứng và công tắc tắt boot-arg `nvrmedpbl=0|1|2`: [OLED-BRIGHTNESS-DPCD.md](OLED-BRIGHTNESS-DPCD.md).
-* Trạng thái: máy tham chiếu từng chạy upstream **1.14.2** + đúng hai bản vá này, rồi **1.14.7**, và đã được cài **1.15.0 + lớp
-  chồng này ngày 2026-10-13** (nạp ở lần boot kế tiếp; chưa xác nhận đã boot). Nhánh fork đã rebase lên 1.15.0 không xung đột:
-  upstream không đổi phần backlight lẫn VRAM clear nên cả hai bản vá vẫn cần (VRAM clear chỉ còn hơn 3-4 % đo được sau khi sửa PAT,
-  [VRAM-GRANT-STALL.md](VRAM-GRANT-STALL.md)). Upstream thuần cũng chạy trên laptop này, nhưng desktop giật và độ sáng OLED
-  chỉ được xác nhận khi có bản vá ([NULLMOTH.md](NULLMOTH.md)). EFI đã mang sẵn điều kiện cần của driver
+* Trạng thái: máy tham chiếu từng chạy upstream **1.14.2** + bản vá VRAM clear và bản vá độ sáng, rồi **1.14.7**, và đã được cài
+  **1.15.0 + lớp độ sáng ngày 2026-10-13** (nạp ở lần boot kế tiếp; chưa xác nhận đã boot). Bản vá VRAM clear đã bỏ: desktop giật
+  do slot PAT của OpenCore chứ không phải driver ([VRAM-GRANT-STALL.md](VRAM-GRANT-STALL.md); bản sửa PAT nằm trong EFI của repo
+  này). Upstream không đổi phần backlight nên bản vá độ sáng vẫn cần. Upstream thuần cũng chạy trên laptop này, nhưng độ sáng
+  OLED chỉ được xác nhận khi có bản vá ([NULLMOTH.md](NULLMOTH.md)). EFI đã mang sẵn điều kiện cần của driver
   (`csr-active-config` = `43 0A 00 00`, boot-args, `SecureBootModel = Disabled`); xem
   [../efi/README.md](../efi/README.md#nvidia-dgpu-nullmoth-driver). AMFIPass phải được nạp.
 * **Đừng** chép giá trị BAR (`ResizeGpuBars`, `ResizeAppleGpuBars`) hay mục `IONDRVSupport` từ board khác: `EFI-reference.zip` ở

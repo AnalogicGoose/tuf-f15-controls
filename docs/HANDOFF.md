@@ -18,7 +18,7 @@ The numbered "Open issues" below are the 2026-10-11 investigation log. As of 202
 | 4. Wi-Fi shows as Ethernet | **native port in progress** | [WIFI-AS-WIFI.md](WIFI-AS-WIFI.md); `itlmt7925` stays as the fallback |
 
 Still open: sleep/wake (broad testing), audio, SD reader, battery %, a second owner reproducing the install, the USB map and the
-standard EFI in the release, upstreaming the NullMoth patches (VRAM clear, AUX backlight). Plan: [ROADMAP.md](ROADMAP.md).
+standard EFI in the release, upstreaming the NullMoth patch (AUX backlight; the VRAM clear was dropped 2026-10-13). Plan: [ROADMAP.md](ROADMAP.md).
 
 ### Measure-and-record session 2026-10-12: skipped on purpose (decided by the owner), and not measurable
 
@@ -373,9 +373,10 @@ upstream"), `VRAM-GRANT-STALL.md`, `OLED-BRIGHTNESS-DPCD.md`.
 ## Next steps (2026-10-13): after the reboot into 1.15.0 + overlay
 
 State on the machine (nothing of this is loaded until the reboot): upstream NullMoth **1.15.0** (installed 17:43, backup
-`/Library/NullMoth/backup-20261013-174350.lXzh5Q`), NVRMFB = VRAM-clear + AUX-brightness hook (`ddabaa59...`), `NVRMEdpBL.kext`
-(`433dfcbf...`), boot-arg `nvrmacpibl=1`. Built from fork `ga403wm` @ `fa4cdd4` (= v1.15.0 + patches). 1.15.0 fixed neither of
-our two patches; it is "the last release for macOS 15". Read `NULLMOTH.md`, `OLED-BRIGHTNESS-DPCD.md`, `VRAM-GRANT-STALL.md`.
+`/Library/NullMoth/backup-20261013-174350.lXzh5Q`), NVRMFB = upstream + the AUX-brightness hook only (`b9040104...`, swapped
+17:59), `NVRMEdpBL.kext` (`433dfcbf...`), boot-arg `nvrmacpibl=1`. Built from fork `ga403wm` @ `f5b5eaa` (= v1.15.0 + the
+brightness patch). 1.15.0 fixed neither of our patches; it is "the last release for macOS 15". The VRAM-clear patch is **dropped**
+(PAT was the cause; tag `ga403wm-with-vramclear`). Read `NULLMOTH.md`, `OLED-BRIGHTNESS-DPCD.md`, `VRAM-GRANT-STALL.md`.
 
 1. Boots? Both displays up (OLED 2880x1800 @ 120 Hz, Mi Monitor 1920x1080 @ 144 Hz) and `kmutil showloaded | grep nullmoth` lists
    `NVRMEdpBL`. If not: boot-arg `nvrmedpbl=0`, or `scripts/macos-edpbl-install.sh --undo` (upstream 1.15.0 stays), or
@@ -391,8 +392,8 @@ our two patches; it is "the last release for macOS 15". Read `NULLMOTH.md`, `OLE
    `claude/windowserver-iosurface-readback` against v1.15.0 if stage 2 is ever needed).
 4. Chrome / Edge / Electron: 1.15.0 turns their GPU path (ANGLE Metal) on again by default; if pages show corrupted areas, start
    with `NVMTL_ANGLE_METAL=0` and tell upstream (their known issue).
-5. `macos-ws-pat-check.sh` and the clear A/B read `debug.nvrmfb_clear_*`; those exist only while the VRAM-clear patch is in the
-   build. If the patch is dropped, rebuild `ga403wm` without commit `0530397` (VRAM clear) and re-run the overlay installer.
+5. `macos-ws-pat-check.sh` still checks PAT PA6 = WC and the WindowServer CPU; it skips the clear A/B (`debug.nvrmfb_clear_*` is
+   gone with the dropped patch). To see whether the clear still matters, `macos-vramtest.sh` (8 MB grants, no counters needed).
 
 ## NullMoth update to 1.12.0 (manual route, EFI part done 2026-10-11)
 
@@ -481,12 +482,12 @@ means "no framebuffer", not "kernel hung" (the diag worker kept writing).
 * Windows boots through OpenCore too: OC ACPI patches apply to Windows as well.
 * NullMoth driver changes are upstream-first: build from the fork (`thanhnndev/nvidia-macos-driver`), install the release
   package with its own `install.sh`, then layer the machine patch with a script that checks hashes, backs up and has
-  `--undo` (`scripts/macos-edpbl-install.sh`, `macos-nvrmfb-vramclear-patch.sh`). Never edit installed kexts by hand.
+  `--undo` (`scripts/macos-edpbl-install.sh`). Never edit installed kexts by hand.
 * Root steps are run by the agent through `osascript -e 'do shell script "<wrapper file>" with administrator privileges'`
   (the user types the password in the dialog); do not ask the user to run `sudo` in a terminal. Put the commands in a
   wrapper file: `$?` inside the `-e` string breaks AppleScript quoting.
-* One branch per concern in the fork for upstream PRs (VRAM clear, AUX backlight); the combined branch `ga403wm` (upstream
-  tag + both, pushed 2026-10-13, worktree `nvidia-macos-driver-ws-ga403`) is what the README/INSTALL send users to and what
+* One branch per concern in the fork for upstream PRs (AUX backlight: `nvrm-edp-aux-backlight`); the branch `ga403wm` (upstream
+  tag + that patch + the machine packaging, pushed 2026-10-13, worktree `nvidia-macos-driver-ws-ga403`) is what the README/INSTALL send users to and what
   the build script uses. Rebase it onto the next upstream tag. Leave other sessions' work (Wi-Fi, Bluetooth, RogControl) untouched.
 
 ## CPU policy update (2026-10-12)

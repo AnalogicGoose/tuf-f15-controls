@@ -147,8 +147,8 @@ hash và từ chối phiên bản khác. Xem [NULLMOTH.md](NULLMOTH.md). Đừng
 
 | Script | Làm gì | Hoàn tác |
 |---|---|---|
-| `macos-nvrmfb-vramclear-patch.sh` | NVRMFB xóa VRAM kiểu non-temporal (`movnti`). **Riêng-máy-tác-giả** | `--undo` |
-| `macos-nvrmfb-vramclear-ab.sh`, `macos-vramtest.sh` | đo MB/s của VRAM clear / thời gian cấp 8 MB | |
+| `macos-nvrmfb-vramclear-patch.sh` | **cũ** (bản vá đã bỏ 2026-10-13): NVRMFB xóa VRAM kiểu non-temporal (`movnti`), chỉ 1.14.2 | `--undo` |
+| `macos-nvrmfb-vramclear-ab.sh`, `macos-vramtest.sh` | đo MB/s của VRAM clear (script A/B **cũ**, cần build đã bỏ) / thời gian cấp 8 MB | |
 | `macos-build-nullmoth-local.sh`, `macos-aux-kc-dryrun.sh` | build NVRMFB + `NVRMEdpBL`, dry run kernel collection. **Riêng-máy-tác-giả** | |
 | `macos-edpbl-install.sh` | cài `NVRMEdpBL` (độ sáng OLED qua DPCD AUX). **Riêng-máy-tác-giả** | `--undo`; boot-arg `nvrmedpbl=0` |
 | `macos-nullmoth-vramclear.sh` | **lỗi thời**, chỉ cho NullMoth 1.13.0 | `--undo` |

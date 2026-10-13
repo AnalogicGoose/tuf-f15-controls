@@ -1,6 +1,6 @@
 #!/bin/bash
 # Builds the machine-local NullMoth pieces from the fork worktree and stages them with SHA256SUMS:
-#   NVRMFB          kexts/NVRMFB/fb/nvrm-fb.cpp  (upstream + VRAM-clear + the NVRMEdpBL hook, from the checked-out tree)
+#   NVRMFB          kexts/NVRMFB/fb/nvrm-fb.cpp  (upstream + the NVRMEdpBL hook, from the checked-out tree)
 #   NVRMEdpBL.kext  kexts/NVRM/nvrm_edpbl.cpp + kexts/NVRMEdpBL/NVRMEdpBL.cpp
 # Usage: bash scripts/macos-build-nullmoth-local.sh [worktree]   (default ~/develop/projects/nvidia-macos-driver-ws-ga403 =
 #        a checkout of https://github.com/thanhnndev/nvidia-macos-driver branch ga403wm; headers from ~/ogkm610 =
