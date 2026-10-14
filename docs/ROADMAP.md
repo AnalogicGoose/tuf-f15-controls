@@ -37,6 +37,8 @@ ceiling of about 2.4 Gb/s at 160 MHz. No throughput benchmark exists yet.
 - [ ] Move from a polled worker to interrupts (MSI) so that the kext is not a busy thread.
 - [ ] Use the real macOS Wi-Fi stack: `IO80211Family` / AirportItlwm-style integration for the menu bar and `airport` tools.
 - [ ] Bluetooth: the MT7925 has a separate USB Bluetooth function, out of scope so far.
+- [ ] **AirDrop** needs AWDL (`awdl0`), which the native driver does not provide; research and phase plan in
+      [ROADMAP-AWDL.md](ROADMAP-AWDL.md).
 - [ ] Option to load the firmware from a file instead of embedding it, when a filesystem is available.
 
 ## Project
