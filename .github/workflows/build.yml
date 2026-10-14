@@ -1,13 +1,15 @@
 name: build-kexts
 
-# Builds every kext (itlmt7925, ItlXhciKick, ItlDiag, AsusWmi, AmdCppc, MtkBtFw, BtLeDlFix) with empty Wi-Fi credentials (credentials are injected locally, never in CI).
+# Builds every kext (itlmt7925, itlmt7925Native, ItlXhciKick, ItlDiag, AsusWmi, AmdCppc, MtkBtFw, BtLeDlFix) with empty Wi-Fi credentials (credentials are injected locally, never in CI).
 # Also builds the menu bar apps (RogControl, ItlWiFi, TapGuard) and the CPU policy daemon, ad-hoc signed.
 # A tag "v*" (for example v1) additionally publishes everything as a GitHub release: kexts, apps, patched OpenCore,
 # the sanitized reference EFI, SHA256SUMS.txt. See .github/release-body.md for the release text.
+# A tag "kext-v*" (for example kext-v1.1) publishes only the kexts, apps and checksums: no OpenCore build, no reference EFI
+# (release text: .github/release-kexts-body.md).
 on:
   push:
     branches: [main]
-    tags: ["v*"]
+    tags: ["v*", "kext-v*"]
   pull_request:
   workflow_dispatch:
 
@@ -62,7 +64,7 @@ jobs:
       - name: Package
         run: |
           mkdir -p dist
-          for k in itlmt7925 ItlXhciKick ItlDiag AsusWmi AmdCppc MtkBtFw BtLeDlFix; do
+          for k in itlmt7925 itlmt7925Native ItlXhciKick ItlDiag AsusWmi AmdCppc MtkBtFw BtLeDlFix; do
             ditto -c -k --keepParent "build/$k.kext" "dist/$k.kext.zip"
           done
           for a in RogControl ItlWiFi TapGuard; do
@@ -86,7 +88,7 @@ jobs:
 
   release:
     # the patched OpenCore is a nice-to-have: a failed OpenCore build must not block the kexts and apps
-    if: ${{ always() && startsWith(github.ref, 'refs/tags/v') && needs.build.result == 'success' }}
+    if: ${{ always() && (startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/tags/kext-v')) && needs.build.result == 'success' }}
     needs: [build, opencore]
     runs-on: ubuntu-latest
     permissions:
@@ -106,6 +108,7 @@ jobs:
           path: oc
 
       - name: Add OpenCore (Zen 5 patch) and the reference EFI
+        if: startsWith(github.ref, 'refs/tags/v')
         run: |
           D=artifact/dist
           if [ -d oc ] && [ -n "$(ls -A oc)" ]; then
@@ -131,7 +134,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          if [[ "$GITHUB_REF_NAME" == kext-v* ]]; then
+            TITLE="$GITHUB_REF_NAME: kexts only (native Wi-Fi front end, A-MSDU off)"
+            NOTES=.github/release-kexts-body.md
+          else
+            TITLE="$GITHUB_REF_NAME: first public build"
+            NOTES=.github/release-body.md
+          fi
           gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
-            --title "$GITHUB_REF_NAME: first public build" \
-            --notes-file .github/release-body.md --generate-notes \
+            --title "$TITLE" \
+            --notes-file "$NOTES" --generate-notes \
             artifact/dist/*

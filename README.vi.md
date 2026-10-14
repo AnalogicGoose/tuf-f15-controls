@@ -51,7 +51,8 @@ Mục đã đánh dấu được kiểm chứng trên máy tham chiếu. Mục c
 - [ ] **Sleep / wake:** Chưa có deep sleep ổn định; wake chậm và thiếu ổn định. Chu kỳ hoàn tất khôi phục được chính sách CPU. Đừng trông cậy vào sleep hay đóng nắp.
 - [ ] **Các phím Fn khác:** Độ sáng và đèn bàn phím hoạt động; phần lớn phím còn lại chưa map.
 - [ ] **Âm thanh / đầu đọc SD / % pin:** EFI có AppleALC layout 33, Sinetek-rtsx và SMCBatteryManager; chưa kiểm chứng hoạt động.
-- [ ] **Wi-Fi native / AirDrop / Continuity:** Bản port `IO80211Controller` đang thử nghiệm, **chưa dùng được**. Đừng bật. [Nghiên cứu](docs/WIFI-AS-WIFI.md)
+- [x] **Wi-Fi native (tuỳ chọn bật):** `itlmt7925Native` đưa MT7925 lên macOS như giao diện Wi-Fi thật (menu Wi-Fi, kết nối từ System Settings, không để mật khẩu trong kext), đo được 28-36 MB/s. Vẫn đang test; EFI tham chiếu để chế độ legacy. [Chọn chế độ, cách bật, cách quay lại](docs/WIFI-DRIVERS.md#tiếng-việt)
+- [ ] **AirDrop / AWDL / Continuity:** chưa chạy; nghiên cứu và kế hoạch theo phase ở [docs/ROADMAP-AWDL.md](docs/ROADMAP-AWDL.md)
 
 
 ## Cài đặt
@@ -63,7 +64,7 @@ Làm theo **[INSTALL.vi.md](docs/INSTALL.vi.md)**. Các bước chính:
 1. Backup ổ đĩa. Trong BIOS: MUX **Ultimate**, Above 4G Decoding **ON**, CSM **OFF**, Secure Boot **OFF**.
 2. Tải [release v1](https://github.com/thanhnndev/ga403wm-hackintosh/releases): kext, app, daemon CPU, OpenCore đã vá, EFI tham khảo và checksum. Hoặc build trên Mac bằng `bash scripts/build.sh`. Thêm [kext bên thứ ba](efi/KEXTS.md).
 3. Ghép [EFI](efi/README.md), **tự tạo SMBIOS**, dùng OpenCore đã vá (`fix-zen5-fsb.diff` sửa timer chạy sớm ~10 lần).
-4. [Inject mạng Wi-Fi](docs/INSTALL.vi.md#4-wi-fi-inject-mạng) vào `itlmt7925.kext`, hoặc dùng USB tethering. Dùng driver legacy; bản native chưa chạy được.
+4. [Inject mạng Wi-Fi](docs/INSTALL.vi.md#4-wi-fi-inject-mạng) vào `itlmt7925.kext`, hoặc dùng USB tethering. Mặc định là chế độ legacy; Wi-Fi native bật thêm bằng boot-args, xem [WIFI-DRIVERS.md](docs/WIFI-DRIVERS.md#tiếng-việt).
 5. Cài macOS 15, rồi cài [driver NVIDIA từ fork](docs/INSTALL.vi.md#7-driver-nvidia-rtx-5060--oled), app và daemon CPU. Nên dùng bộ cài offline; bộ cài online 16 GB không phù hợp với driver Wi-Fi hiện tại.
 
 Cách dùng release, script cài đặt, chẩn đoán và HiDPI: **[SCRIPTS.vi.md](docs/SCRIPTS.vi.md)**.
