@@ -27,7 +27,7 @@ States: ✅ done · 🔧 in progress (someone is on it now) · 🟡 implemented,
 | **M0** | Alpha: boots and is usable on the author's unit | internal-disk install, GPU, USB, Wi-Fi, BT, ROG controls | ✅ |
 | **M1** | **Stable macOS 15 for GA403WM** (public beta) | a second owner reproduces the install from this repo; published USB map and the standard EFI in the release; clean (non-debug) EFI; sleep/wake, audio, SD reader, battery % verified. Release **v1** (prebuilt kexts + apps) comes first, as the starting point for those testers | 🔧 |
 | **M1.5** | **Standardise the codebase** (cleanup, common call conventions) | only per component, only after it is proven stable (see [Codebase standardisation](#codebase-standardisation)); never before M1 for the Wi-Fi driver | ⚪ gated |
-| **M2** | Native Wi-Fi | `IO80211Controller` port: Wi-Fi menu, System Settings pane, no credentials in the kext | 🔧 port in progress |
+| **M2** | Native Wi-Fi | `IO80211Controller` port: Wi-Fi menu, System Settings pane, no credentials in the kext | 🔧 works (28-36 MB/s), opt-in, still testing; AirDrop is next |
 | **M3** | Evaluate macOS 26 | only after M1 holds for a few weeks on 15.x; needs a NVIDIA driver and OpenCore support for 26 | 🧊 not planned yet |
 
 ## Workstreams
@@ -42,7 +42,7 @@ States: ✅ done · 🔧 in progress (someone is on it now) · 🟡 implemented,
 | 3 | **Touchpad** (I2C-HID `ASUP1208`, `093a:3011`) | ✅ | `main` | works again since 2026-10-12 (it died on 2026-10-10). Cause (owner-reported): it is dead after a **warm reboot from Windows into macOS**; a **full shutdown and power on** brings it back. Boot macOS from a cold start (or shut down after Windows) | [HANDOFF](HANDOFF.md) |
 | 4 | **Wi-Fi throughput** (`itlmt7925`) | ✅ | `main` (`kexts/itlmt7925`) | reaches the full link speed (HE, 160 MHz) since 2026-10-12. Record a LAN `iperf3` result with AP model, band and distance in [WIFI.md](WIFI.md) | [WIFI.md](WIFI.md) |
 | 5 | **Wi-Fi app** (ItlWiFi) and runtime control | ✅ | `main` (`macos/ItlWiFi`) | scan / join / reconnect / speed test; becomes optional once native Wi-Fi exists | [WIFI.md](WIFI.md#runtime-control-itlwifi-menu-bar-app) |
-| 6 | **Native Wi-Fi** (`IO80211Controller` subclass, Skywalk) | 🔧 | port in progress (not in this repository yet) | ABI notes: 12 pure virtuals mapped; Skywalk interface and `apple80211_*` structs. Clean-room, no GPL `itlwm` code. `itlmt7925` stays the driver to use until this one works (it is an experiment, not working yet: [WIFI-DRIVERS.md](WIFI-DRIVERS.md)) | [WIFI-AS-WIFI.md](WIFI-AS-WIFI.md), [IO80211-ABI.md](IO80211-ABI.md) |
+| 6 | **Native Wi-Fi** (`IO80211Controller` subclass, Skywalk) | 🔧 | `main` (`kexts/itlmt7925Native`) | scan, WPA2-PSK join from System Settings, link events, data path through the core; 28-36 MB/s (A-MSDU off). Clean-room, no GPL `itlwm` code. Still to verify: sleep/wake, a chip recovery, long uptime; known gaps: WPA3, upload speed. Opt-in, the reference EFI stays legacy: [WIFI-DRIVERS.md](WIFI-DRIVERS.md) | [WIFI-AS-WIFI.md](WIFI-AS-WIFI.md), [IO80211-ABI.md](IO80211-ABI.md) |
 | 7 | **Wi-Fi gaps**: WPA3-SAE, open networks, 6 GHz, power save, regulatory domain, MSI instead of polling | ⚪ | `main` | after throughput | [WIFI.md](WIFI.md) |
 | 8 | **Bluetooth** (`MtkBtFw`, `BtLeDlFix`) | ✅ | `main` | classic and BLE devices connect (confirmed 2026-10-12). Left: treat "no answer to the first PATCH_DWNLD query" on warm reboot as success; pattern table for `BtLeDlFix` per macOS build | [BLUETOOTH.md](BLUETOOTH.md) |
 | 9 | **ROG Control** (`AsusWmi`, `RogControl`) | ✅ | `main` (`kexts/AsusWmi`, `macos/RogControl`) | everything works (confirmed 2026-10-12). Nice to have: Aura effects beyond brightness, GPU MUX stays read-only | [ASUSCTL-MACOS.md](ASUSCTL-MACOS.md), [rog-control-design.md](rog-control-design.md) |
@@ -134,7 +134,7 @@ A component is "proven stable" when all of these hold (the 14-day clock for the 
 ### `itlmt7925` (Wi-Fi)
 
 Speed: link at HE / 160 MHz, 2 streams (PHY ~2.4 Gb/s). The throughput work is **done** (owner-confirmed 2026-10-12: the driver reaches the
-full link speed); the earlier 8 Mb/s measurements in [HANDOFF.md](HANDOFF.md) are history. The native port (workstream 6) is the next big step.
+full link speed); the earlier 8 Mb/s measurements in [HANDOFF.md](HANDOFF.md) are history. The native front end (workstream 6) now reaches 28-36 MB/s as well. **Next: keep testing the native mode (sleep/wake, recovery, uptime) and AirDrop (AWDL, [ROADMAP-AWDL.md](ROADMAP-AWDL.md), phases 0 and 1).**
 
 - [ ] **LAN baseline**: `iperf3` between the Hackintosh and a wired machine, recorded in [WIFI.md](WIFI.md) with AP model, band, distance (the numbers behind "full speed" are not written down yet).
 - [ ] TX path at the lower fast levels: track `TXFREE` instead of waiting per packet.
