@@ -113,12 +113,13 @@ Do **not** run NullMoth's "1401 Build" on a config you edited by hand: it overwr
 
 ## 4. Wi-Fi: inject your network
 
-> **Two drivers exist; use `itlmt7925.kext` (legacy).** The native driver `itlmt7925Native.kext` is an unfinished experiment and does
-> **not** work: do not install or enable it, and do not add `itlmt_native*` boot-args. Details and how to check / go back:
-> [WIFI-DRIVERS.md](WIFI-DRIVERS.md).
+> **Two modes exist.** The default (this section) is the legacy mode of `itlmt7925.kext`: Wi-Fi appears as Ethernet and the
+> network is injected below. The optional native mode (`itlmt7925Native.kext` + boot-args `itlmt_native=1 itlmt_native_if=1
+> itlmt_native_dp=1 itlmt_fast=6`) gives a real Wi-Fi interface and needs no injection; it works but is still being tested.
+> What to set, how to check and how to go back: [WIFI-DRIVERS.md](WIFI-DRIVERS.md).
 
-There is no native Wi-Fi in macOS for this card yet: `itlmt7925.kext` has to be told the network. Until the
-[native Wi-Fi work](ROADMAP.md) lands, the SSID and password live in the kext's `Info.plist`, **in plain text**, and the driver
+In legacy mode `itlmt7925.kext` has to be told the network (native mode joins from the Wi-Fi menu instead,
+[WIFI-DRIVERS.md](WIFI-DRIVERS.md)). In legacy mode the SSID and password live in the kext's `Info.plist`, **in plain text**, and the driver
 connects by itself after boot (boot-args `itlmt_m2=1 itlmt_m3=1`). Up to **4 networks**, in priority order.
 
 **Windows (reads the profiles saved on the PC, elevated PowerShell):**

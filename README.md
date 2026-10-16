@@ -51,7 +51,8 @@ Checked items are verified on the reference machine. Unchecked items are unrelia
 - [ ] **Sleep / wake:** No reliable deep sleep; wake is slow and unreliable. Completed cycles restore CPU policy. Do not rely on lid close or sleep.
 - [ ] **Other Fn keys:** Brightness and keyboard lighting work; most other keys are not mapped.
 - [ ] **Audio / SD reader / battery %:** EFI includes AppleALC layout 33, Sinetek-rtsx and SMCBatteryManager; functionality is unverified.
-- [ ] **Native Wi-Fi / AirDrop / Continuity:** `IO80211Controller` port is experimental and **not usable**. Do not enable it. [Research](docs/WIFI-AS-WIFI.md)
+- [x] **Native Wi-Fi (opt-in):** `itlmt7925Native` presents the MT7925 as a real Wi-Fi interface (Wi-Fi menu, join from System Settings, no credentials in the kext), 28-36 MB/s measured. Still being tested; the reference EFI stays on the legacy mode. [Which mode, how to enable, how to go back](docs/WIFI-DRIVERS.md)
+- [ ] **AirDrop / AWDL / Continuity:** not working; research and phase plan in [docs/ROADMAP-AWDL.md](docs/ROADMAP-AWDL.md)
 
 
 ## Installation
@@ -63,7 +64,7 @@ Follow **[INSTALL.md](docs/INSTALL.md)**. The main steps:
 1. Back up the disk. Set BIOS MUX to **Ultimate**, Above 4G Decoding **ON**, CSM **OFF**, Secure Boot **OFF**.
 2. Download the [v1 release](https://github.com/thanhnndev/ga403wm-hackintosh/releases): kexts, apps, CPU daemon, patched OpenCore, reference EFI and checksums. Or build on a Mac with `bash scripts/build.sh`. Add the [third-party kexts](efi/KEXTS.md).
 3. Assemble the [EFI](efi/README.md), generate **your own SMBIOS**, and use the patched OpenCore (`fix-zen5-fsb.diff` fixes timers firing ~10× early).
-4. [Inject your Wi-Fi network](docs/INSTALL.md#4-wi-fi-inject-your-network) into `itlmt7925.kext`, or use USB tethering. Use the legacy driver; the native port does not work yet.
+4. [Inject your Wi-Fi network](docs/INSTALL.md#4-wi-fi-inject-your-network) into `itlmt7925.kext`, or use USB tethering. Legacy mode is the default; native Wi-Fi is opt-in with boot-args, see [WIFI-DRIVERS.md](docs/WIFI-DRIVERS.md).
 5. Install macOS 15, then the [NVIDIA driver from the fork](docs/INSTALL.md#7-nvidia-driver-rtx-5060--the-oled), apps and CPU policy daemon. An offline installer is recommended; the 16 GB online installer is not suited to the current Wi-Fi path.
 
 Release usage, install scripts, diagnostics and HiDPI setup: **[SCRIPTS.md](docs/SCRIPTS.md)**.
