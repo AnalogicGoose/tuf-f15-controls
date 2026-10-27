@@ -1,3 +1,47 @@
+# TUF Control for macOS: ASUS TUF Dash F15 (FX517ZM)
+
+**A fork of [thanhnndev/ga403wm-hackintosh](https://github.com/thanhnndev/ga403wm-hackintosh)** that brings its ROG Control app and ASUS WMI driver design to the **ASUS TUF Dash F15 FX517ZM** (Intel i7-12650H, RTX 3060 Laptop) on macOS Sequoia with OpenCore.
+
+> ⚠️ **Experimental, AI-written, single-machine project.** Tested on one FX517ZM (macOS 15.8.1, OpenCore 1.0.8, NullMoth NVIDIA 2.5.5). The driver runs in the kernel and sends commands to the BIOS/EC. Other models, BIOS versions or setups are untested. Keep a bootable rescue USB. No warranty.
+
+## What works (TUF Dash F15)
+
+| Feature | Status |
+|---|---|
+| CPU / GPU temperature | ✅ EC sensors (CTMP, VRTT) |
+| Package power (W) | ✅ Intel RAPL, read only |
+| CPU / GPU fan speed | ✅ |
+| Silent / Performance / Turbo | ✅ (Turbo only on AC) |
+| Manual mode: PL1 / PL2 + fan curve base | ✅ 15–65 W / 25–95 W |
+| Firmware fan curves (chart) | ✅ per mode, CPU and GPU |
+| Battery charge limit 60 / 80 / 100 % | ✅ restored at login (the BIOS resets it every boot) |
+| Keyboard backlight brightness | ✅ (RGB: not supported by this BIOS) |
+| Menu bar app + window (ROG Control design) | ✅ |
+| HiDPI "looks like 1680×945" on the 1080p panel | ✅ with NullMoth `nvfbhidpi=1` + display override |
+
+Not included on purpose: GPU MUX switching, NVIDIA Dynamic Boost / TGP writes, raw EC writes.
+
+## Install (short version)
+
+1. Build: `bash scripts/build.sh TufWmi` and `bash scripts/build-tuf-control.sh --install`.
+2. Add `build/TufWmi.kext` to your OpenCore `Kernel → Add` (MinKernel 24.0.0) and boot-arg **`tufwmi=1`** (read only) or **`tufwmi=2`** (controls enabled). Test from a USB first.
+3. Open **TUF Control** from Applications or the menu bar.
+4. Optional HiDPI: add `nvfbhidpi=1` (NullMoth) and the display override described in [docs/TUF-F15-PORT.md](docs/TUF-F15-PORT.md#hidpi-2026-10-26), then pick the size in System Settings → Displays.
+
+Full details, device IDs, safety design and the test history: **[docs/TUF-F15-PORT.md](docs/TUF-F15-PORT.md)**.
+
+## Credits
+
+- **[thanhnndev](https://github.com/thanhnndev)**: original G14 project, AsusWmi WMNB transport and the RogControl app design this port is built on.
+- [asus-linux / asusctl](https://asus-linux.org): the ASUS WMI device IDs and behaviour.
+- The NullMoth NVIDIA driver authors.
+
+BSD-3-Clause-Clear, same as upstream; see [LICENSE](LICENSE) and [NOTICE.md](NOTICE.md).
+
+---
+
+*Original upstream README (ROG Zephyrus G14 GA403WM) follows.*
+
 # GA403WM Hackintosh
 
 ## Vibe-coded project — read before installing

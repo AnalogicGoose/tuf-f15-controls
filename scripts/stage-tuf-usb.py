@@ -3,8 +3,9 @@
 import hashlib,json,os,plistlib,shutil,subprocess,sys
 from pathlib import Path
 root=Path(__file__).resolve().parent.parent
-usb=Path('/Volumes/ESD-USB')
-uuid='F6765325-775B-3954-A864-D3E975CA3CEB'
+# Your test USB: TUF_USB_VOLUME (mount point) and TUF_USB_UUID (diskutil info -> Volume UUID) must both be set.
+usb=Path(os.environ['TUF_USB_VOLUME'])
+uuid=os.environ['TUF_USB_UUID']
 def digest(p):return hashlib.sha256(p.read_bytes()).hexdigest()
 info=plistlib.loads(subprocess.check_output(['diskutil','info','-plist',str(usb)]))
 assert info['VolumeUUID']==uuid and not info['Internal'],'Unexpected volume; no changes made'
@@ -38,7 +39,7 @@ p['NVRAM']['Add'][guid]['boot-args']=' '.join(args)
 p['Kernel']['Add'].append({'Arch':'x86_64','BundlePath':'TufWmi.kext','Comment':'FX517ZM TUF Control opt-in test; no startup firmware writes','Enabled':True,'ExecutablePath':'Contents/MacOS/TufWmi','MaxKernel':'24.99.99','MinKernel':'24.0.0','PlistPath':'Contents/Info.plist'})
 candidate=root/'build/config-tuf-usb-test.plist'
 candidate.write_bytes(plistlib.dumps(p,sort_keys=False))
-validator=Path('/Users/bbtov/Documents/Codex/2026-10-13/hey-x20/work/driver-setup/validator/Utilities/ocvalidate/ocvalidate')
+validator=Path(os.environ.get('OCVALIDATE', root/'build/ocvalidate'))   # OpenCore 1.0.8 Utilities/ocvalidate/ocvalidate
 subprocess.run([str(validator),str(candidate)],check=True)
 backup.mkdir(parents=True)
 shutil.copyfile(cfg,backup/'config.before.plist')

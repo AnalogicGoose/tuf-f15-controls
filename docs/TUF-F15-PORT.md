@@ -35,7 +35,7 @@ Boundary tests cover unknown IDs, missing presence bits, Turbo off AC, supported
 
 ## First boot test
 
-The owner's working internal OpenCore and NVIDIA 2.5.5 stay unchanged. Use the existing 7.8 GB Kingston rescue USB, UUID F6765325-775B-3954-A864-D3E975CA3CEB. `scripts/stage-tuf-usb.py` requires the matching successful kernel-preflight marker, backs up the rescue config, adds the opt-in test kext and boot argument to the USB only, preserves -nvoff and validates the config with OpenCore 1.0.8 ocvalidate. It refuses unknown volumes and existing test files.
+The owner's working internal OpenCore and NVIDIA 2.5.5 stay unchanged. Use a separate rescue USB (set TUF_USB_VOLUME and TUF_USB_UUID for the staging script). `scripts/stage-tuf-usb.py` requires the matching successful kernel-preflight marker, backs up the rescue config, adds the opt-in test kext and boot argument to the USB only, preserves -nvoff and validates the config with OpenCore 1.0.8 ocvalidate. It refuses unknown volumes and existing test files.
 
 After staging: restart, F8, choose UEFI Kingston, then Macintosh HD. Open TUF Control. First read `--status`; confirm fans are plausible and report which profile/charge capabilities are present. Do not describe controls as working until a live request and observation/readback have been tested. Avoid a stress benchmark during initial bring-up.
 
@@ -104,7 +104,7 @@ Host checks: policy tests (curves, PL gating, RGB/keyboard ranges, never-writabl
 
 ## Internal OpenCore (2026-10-26)
 
-At the owner's request TufWmi 0.2.2 is now in the INTERNAL OpenCore (disk0s3, DiskUUID 4AA07760-…): one Kernel.Add entry (same as the USB's) and `tufwmi=2` appended to boot-args; nothing else changed (diff-checked, ocvalidate clean, kernel-collection preflight passed). Backups: `TUF-Control-Backup/config.before-tufwmi.plist` on that ESP and `backups/internal-config.before-tufwmi.plist` here. To undo: mount disk0s3, copy that backup over `EFI/OC/config.plist` (the kext can stay; it is inert without its Kernel.Add entry). The Kingston USB remains a separate rescue (0.2.1, tufwmi=2, NVIDIA on; `stage-tuf-usb.py --restore` returns its original -nvoff config).
+At the owner's request TufWmi 0.2.2 is now in the INTERNAL OpenCore (disk0s3): one Kernel.Add entry (same as the USB's) and `tufwmi=2` appended to boot-args; nothing else changed (diff-checked, ocvalidate clean, kernel-collection preflight passed). Backups: `TUF-Control-Backup/config.before-tufwmi.plist` on that ESP and `backups/internal-config.before-tufwmi.plist` here. To undo: mount disk0s3, copy that backup over `EFI/OC/config.plist` (the kext can stay; it is inert without its Kernel.Add entry). The Kingston USB remains a separate rescue (0.2.1, tufwmi=2, NVIDIA on; `stage-tuf-usb.py --restore` returns its original -nvoff config).
 
 0.2.2: GPU temperature tries SEN3._TMP (device, then EC-relative), then the EC byte VRTT, then its absolute path; per-attempt IOReturn codes in the TufGpuTempDiag registry property. App 0.3.1: opt-in "Restore charge limit at login" (default on, enables Open at Login once) re-requests the last accepted 60/80 % limit when the driver has no charge request (i.e. after a reboot); nothing else is ever re-applied automatically.
 
