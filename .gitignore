@@ -15,3 +15,6 @@ config.*.plist
 !efi/OC/config.plist
 ITLLOG.BIN
 nv*.txt
+
+# local copies of the owner's OpenCore configs (contain SMBIOS serials): never commit
+backups/

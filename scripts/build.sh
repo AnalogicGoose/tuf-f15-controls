@@ -73,6 +73,7 @@ want ItlDiag "${TARGETS[@]+"${TARGETS[@]}"}" && build_kext ItlDiag kexts/ItlDiag
 want AmdCppc "${TARGETS[@]+"${TARGETS[@]}"}" && build_kext AmdCppc kexts/AmdCppc kmod_info.c AmdCppc.cpp
 want MtkBtFw "${TARGETS[@]+"${TARGETS[@]}"}" && build_kext MtkBtFw kexts/MtkBtFw kmod_info.c MtkBtFw.cpp fw_blob.c
 want AsusWmi "${TARGETS[@]+"${TARGETS[@]}"}" && build_kext AsusWmi kexts/AsusWmi kmod_info.c AsusWmi.cpp
+want TufWmi "${TARGETS[@]+"${TARGETS[@]}"}" && build_kext TufWmi kexts/TufWmi kmod_info.c TufWmi.cpp
 # BtLeDlFix is a Lilu plugin: Lilu headers + plugin_start.cpp come from acidanthera/Lilu (cloned into build/Lilu).
 if want BtLeDlFix "${TARGETS[@]+"${TARGETS[@]}"}"; then
   LILU_DIR="${LILU:-build/Lilu}"
